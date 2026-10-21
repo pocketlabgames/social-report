@@ -37,6 +37,9 @@ def _creds(keys_dir):
     return creds
 
 
+LITE = __import__("os").environ.get("REPORT_SITE") == "1"   # website build: skip the per-video analytics the report never shows
+
+
 def _et(ts):
     return pd.Timestamp(ts).tz_convert("America/New_York").strftime("%Y-%m-%d %H:%M")
 
@@ -138,7 +141,7 @@ def fetch(keys_dir, today):
     # per-video daily, traffic sources, retention (one query per public/mapped video)
     first = ch["snippet"]["publishedAt"][:10]
     vid_daily, vid_traffic, retention = [], [], []
-    for vid in (videos["video_id"] if not videos.empty else []):
+    for vid in (videos["video_id"] if not videos.empty and not LITE else []):
         f = f"video=={vid}"
         d = _analytics(yta, startDate=first, endDate=end, dimensions="day", filters=f,
                        metrics="views,engagedViews,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,"

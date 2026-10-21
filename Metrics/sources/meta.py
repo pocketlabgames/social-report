@@ -31,6 +31,11 @@ IG_DEMOGRAPHICS = [("engaged_audience_demographics", "this_month"), ("reached_au
                    ("follower_demographics", None)]
 
 
+# Website build (REPORT_SITE=1, GitHub Actions): skip the per-post insights, daily history, audience, stories and inbox
+# that only the Mac Metrics workbook uses; the report needs just the per-post totals, comments and follower counts.
+LITE = __import__("os").environ.get("REPORT_SITE") == "1"
+
+
 def _et(ts):
     return pd.Timestamp(ts).tz_convert("America/New_York").strftime("%Y-%m-%d %H:%M")
 
@@ -66,13 +71,13 @@ def _post_insights(post_id, token):
 
 
 def _media_insights(mid, token):
-    row = {}
+    row, mets = {}, (["views", "likes", "comments"] if LITE else IG_MEDIA_METRICS)   # all the website shows
     try:
-        j = _get(f"{mid}/insights", token, metric=",".join(IG_MEDIA_METRICS))
+        j = _get(f"{mid}/insights", token, metric=",".join(mets))
         for m in j["data"]:
             row[m["name"]] = m["values"][0]["value"]
     except RuntimeError:  # one unsupported metric fails the batch; fall back one by one
-        for met in IG_MEDIA_METRICS:
+        for met in mets:
             try:
                 row[met] = _get(f"{mid}/insights", token, metric=met)["data"][0]["values"][0]["value"]
             except (RuntimeError, IndexError, KeyError):
@@ -108,7 +113,7 @@ def fetch(keys_dir, today):
         ins = {m["name"]: m["values"][0]["value"] for m in _get(f"{v['id']}/video_insights", pt).get("data", [])}
         social = ins.get("post_video_social_actions") or {}
         reacts = ins.get("post_video_likes_by_reaction_type") or {}
-        post = _post_insights(f"{pid}_{v['post_id']}", pt) if v.get("post_id") else {}
+        post = _post_insights(f"{pid}_{v['post_id']}", pt) if v.get("post_id") and not LITE else {}
         row = {
             "snapshot_date": snap, "video_id": v["id"], "post_id": v.get("post_id"), "type": "Reel",
             "created": _et(v["created_time"]), "caption": (v.get("description") or "").split("\n")[0][:120],
@@ -136,7 +141,7 @@ def fetch(keys_dir, today):
     for p in _all(f"{pid}/posts", pt, fields="id,message,created_time,permalink_url,status_type", limit=50):
         if p["id"].split("_")[-1] in reel_ids or p.get("status_type") == "added_video":
             continue
-        post = _post_insights(p["id"], pt)
+        post = {} if LITE else _post_insights(p["id"], pt)
         other.append({"snapshot_date": snap, "post_id": p["id"].split("_")[-1], "type": p.get("status_type"),
                       "created": _et(p["created_time"]), "caption": (p.get("message") or "").split("\n")[0][:120],
                       "full_caption": p.get("message"), "views": post.get("post_media_view"),
@@ -162,11 +167,11 @@ def fetch(keys_dir, today):
     # Facebook Stories
     stories = [{"story_id": st.get("post_id"), "created": _et(st["creation_time"]) if st.get("creation_time") else None,
                 "media_type": st.get("media_type"), "status": st.get("status"), "url": st.get("url"), "as_of": snap}
-               for st in _all(f"{pid}/stories", pt, limit=50)]
+               for st in ([] if LITE else _all(f"{pid}/stories", pt, limit=50))]
 
     # Facebook audience (Meta returns these only once the Page has ~100 followers)
     demo = []
-    for met in ["page_follows_country", "page_follows_city"]:
+    for met in ([] if LITE else ["page_follows_country", "page_follows_city"]):
         try:
             for d in _get(f"{pid}/insights", pt, metric=met, period="lifetime")["data"]:
                 for k, v in (d["values"][-1]["value"] or {}).items():
@@ -178,7 +183,7 @@ def fetch(keys_dir, today):
     # Facebook inbox (needs pages_messaging)
     inbox = []
     try:
-        for cv in _all(f"{pid}/conversations", pt, fields="id,updated_time,message_count,unread_count", limit=100):
+        for cv in ([] if LITE else _all(f"{pid}/conversations", pt, fields="id,updated_time,message_count,unread_count", limit=100)):
             inbox.append({"conversation_id": cv["id"], "updated": _et(cv["updated_time"]),
                           "messages": cv.get("message_count"), "unread": cv.get("unread_count"), "as_of": snap})
     except RuntimeError as e:
@@ -213,7 +218,7 @@ def fetch(keys_dir, today):
 
     # Instagram Stories (only live ones, last 24 h; the daily run keeps them)
     ig_stories = []
-    for st in _all(f"{ig}/stories", token, fields="id,media_type,timestamp,permalink,caption", limit=50):
+    for st in ([] if LITE else _all(f"{ig}/stories", token, fields="id,media_type,timestamp,permalink,caption", limit=50)):
         row = {"story_id": st["id"], "created": _et(st["timestamp"]), "media_type": st.get("media_type"),
                "caption": st.get("caption"), "url": st.get("permalink"), "as_of": snap}
         for met in IG_STORY_METRICS:
@@ -233,7 +238,7 @@ def fetch(keys_dir, today):
         ignore_index=True)
 
     # Instagram audience (engaged/reached this month; followers once ~100)
-    for met, tf in IG_DEMOGRAPHICS:
+    for met, tf in ([] if LITE else IG_DEMOGRAPHICS):
         for bd in ["country", "city", "age", "gender"]:
             try:
                 kw = {"timeframe": tf} if tf else {}
@@ -251,7 +256,7 @@ def fetch(keys_dir, today):
     since = int(dt.datetime.combine(today - dt.timedelta(days=PAGE_DAYS), dt.time()).timestamp())
     until = int(dt.datetime.combine(today, dt.time()).timestamp())
     days = {}
-    for met in PAGE_METRICS:
+    for met in ([] if LITE else PAGE_METRICS):
         try:
             for d in _get(f"{pid}/insights", pt, metric=met, period="day", since=since, until=until)["data"]:
                 for v in d["values"]:
@@ -264,12 +269,12 @@ def fetch(keys_dir, today):
     igd = {}
     try:
         s = int(dt.datetime.combine(today - dt.timedelta(days=IG_DAYS), dt.time()).timestamp())
-        for v in _get(f"{ig}/insights", token, metric="reach", period="day", since=s, until=until)["data"][0]["values"]:
+        for v in [] if LITE else _get(f"{ig}/insights", token, metric="reach", period="day", since=s, until=until)["data"][0]["values"]:
             igd.setdefault(v["end_time"][:10], {})["reach"] = v["value"]
     except (RuntimeError, IndexError):
         pass
     ig_bd = []
-    for i in range(1, IG_DAYS + 1):
+    for i in range(1, 0 if LITE else IG_DAYS + 1):
         day = today - dt.timedelta(days=i)
         s = int(dt.datetime.combine(day, dt.time()).timestamp())
         try:

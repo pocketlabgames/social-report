@@ -39,18 +39,25 @@ def fetch():
     from sources import meta, tiktok, youtube
     out, errors = {}, []
     import re, time
-    for m in (youtube, meta, tiktok):
-        for attempt in range(1, 4):   # up to 3 tries (e.g. YouTube Analytics 500s are usually temporary)
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one(m):   # one site, up to 3 tries (e.g. YouTube Analytics 500s are usually temporary)
+        for attempt in range(1, 4):
             try:
-                for k, (df, _) in m.fetch(KEYS, dt.date.today()).items():
-                    out[k] = df
-                break
+                t0 = time.time(); got = {k: df for k, (df, _) in m.fetch(KEYS, dt.date.today()).items()}
+                print(f"{m.__name__.split('.')[-1]}: {time.time() - t0:.0f}s")
+                return got, None
             except Exception as e:
                 if attempt == 3:
                     msg = re.sub(r"(token|key|secret)=[^&\s'\"]+", r"\1=***", f"{type(e).__name__}: {e}", flags=re.I)   # never show keys
-                    errors.append(f"{m.__name__.split('.')[-1]} (3 tries): {msg}"[:200])
-                else:
-                    time.sleep(10 * attempt)
+                    return {}, f"{m.__name__.split('.')[-1]} (3 tries): {msg}"[:200]
+                time.sleep(10 * attempt)
+
+    with ThreadPoolExecutor(3) as ex:   # the three sites at the same time
+        for got, err in ex.map(one, (youtube, meta, tiktok)):
+            out.update(got)
+            if err:
+                errors.append(err)
     snap = {}
 
     def posts(name, likes):
@@ -471,7 +478,7 @@ $('t').addEventListener('mousedown', e => {{   // resize: right edge of a header
   addEventListener('mousemove', mv); addEventListener('mouseup', up);
 }});
 $('refresh').onclick = async () => {{
-  if (SITE) {{ window.open(ACT, '_blank'); return msg('On GitHub, tap Run workflow. This page updates about 10 minutes later.'); }}
+  if (SITE) {{ window.open(ACT, '_blank'); return msg('On GitHub, tap Run workflow. This page updates about 3 minutes later.'); }}
   if (!served) return msg('Refresh needs the report helper. Run "Refresh Social Report" once, then use the report it opens.');
   const b = $('refresh'); b.disabled = true; b.textContent = 'Refreshing…'; msg('Pulling Instagram, Facebook, YouTube and TikTok (a few minutes). This page reloads when it’s done.');
   try {{ await fetch('/refresh', {{method: 'POST'}});
