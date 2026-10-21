@@ -234,16 +234,14 @@ def day_change(snap, hist, now):
     cur = {p: (snap.get(p) or {}).get("views") for p in PLAT}
     if any(v is None for v in cur.values()):
         return None
+    target = now - dt.timedelta(hours=24)
     base = None
-    for h in hist:
+    for h in hist:   # the complete check closest to 24 h ago (either side)
         if not all(isinstance(h.get(p), dict) and h[p].get("views") is not None for p in PLAT):
             continue
         t = dt.datetime.strptime(h["checked_at"], "%Y-%m-%d %H:%M")
-        if t <= now - dt.timedelta(hours=24):
+        if base is None or abs(t - target) < abs(dt.datetime.strptime(base["checked_at"], "%Y-%m-%d %H:%M") - target):
             base = h
-        elif base is None:
-            base = h   # nothing 24 h old yet: use the oldest check we have
-            break
     if base is None:
         return None
     t = dt.datetime.strptime(base["checked_at"], "%Y-%m-%d %H:%M")
@@ -321,7 +319,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
     if day:
         sign = "+" if day["total"] >= 0 else "−"
         parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> {NAME[p]} {'+' if day['per'][p] >= 0 else '−'}{abs(day['per'][p]):,}" for p in PLAT)
-        when = "Last 24 hours" if 23 <= day["hours"] <= 30 else f"Since {day['since'].strftime('%b %-d, %-I:%M %p')} ({day['hours']} h, nearest check)"
+        when = "Last 24 hours" if 21 <= day["hours"] <= 27 else f"Last {day['hours']} hours (closest check to 24 h ago: {day['since'].strftime('%b %-d, %-I:%M %p')})"
         day_html = f"<div class='day'><div class='dayl'>{e(when)}</div><div class='dayv'>{sign}{abs(day['total']):,} <small>views</small></div><div class='dayp'>{parts}</div></div>"
     stale_html = "".join(f"<p class='warn'>{NAME[p]} couldn’t be pulled after 3 tries, so its numbers are from the last good check ({e(t)}).</p>" for p, t in stale.items())
     if len(snap) == len(PLAT) and not stale:   # this run becomes "Previous results" in the next report

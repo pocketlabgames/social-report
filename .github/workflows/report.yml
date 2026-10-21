@@ -1,8 +1,9 @@
 name: Social Report
 on:
   schedule:
-    - cron: "0 11 * * *"   # 7 AM EDT / 6 AM EST (GitHub cron is UTC and can run late)
-    - cron: "0 18 * * *"   # 2 PM EDT / 1 PM EST
+    # Eastern 7:23 AM, 11:23 AM, 2:23 PM, 4:23 PM, 7:23 PM, 9:23 PM. GitHub cron is UTC and can run late.
+    # EDT (Mar-Nov): UTC-4. When clocks fall back (EST, UTC-5) change these to 12,16,19,21,0,2.
+    - cron: "23 11,15,18,20,23,1 * * *"
   workflow_dispatch:
 permissions:
   contents: write
