@@ -39,25 +39,18 @@ def fetch():
     from sources import meta, tiktok, youtube
     out, errors = {}, []
     import re, time
-    from concurrent.futures import ThreadPoolExecutor
-
-    def one(m):   # one site, up to 3 tries (e.g. YouTube Analytics 500s are usually temporary)
-        for attempt in range(1, 4):
+    for m in (youtube, meta, tiktok):
+        for attempt in range(1, 4):   # up to 3 tries (e.g. YouTube Analytics 500s are usually temporary)
             try:
-                t0 = time.time(); got = {k: df for k, (df, _) in m.fetch(KEYS, dt.date.today()).items()}
-                print(f"{m.__name__.split('.')[-1]}: {time.time() - t0:.0f}s")
-                return got, None
+                for k, (df, _) in m.fetch(KEYS, dt.date.today()).items():
+                    out[k] = df
+                break
             except Exception as e:
                 if attempt == 3:
                     msg = re.sub(r"(token|key|secret)=[^&\s'\"]+", r"\1=***", f"{type(e).__name__}: {e}", flags=re.I)   # never show keys
-                    return {}, f"{m.__name__.split('.')[-1]} (3 tries): {msg}"[:200]
-                time.sleep(10 * attempt)
-
-    with ThreadPoolExecutor(3) as ex:   # the three sites at the same time
-        for got, err in ex.map(one, (youtube, meta, tiktok)):
-            out.update(got)
-            if err:
-                errors.append(err)
+                    errors.append(f"{m.__name__.split('.')[-1]} (3 tries): {msg}"[:200])
+                else:
+                    time.sleep(10 * attempt)
     snap = {}
 
     def posts(name, likes):
@@ -107,27 +100,12 @@ def fetch():
 
 
 def yt_own_comments(video_ids):
-    """How many comments (top-level + replies) on our videos were written by our own channel. Read-only."""
-    from sources import youtube
-    from googleapiclient.discovery import build
-    yt = build("youtube", "v3", credentials=youtube._creds(KEYS), cache_discovery=False)
-    me = yt.channels().list(part="id", mine=True).execute()["items"][0]["id"]
-    n = 0
-    for vid in video_ids:
-        tok = None
-        while True:
-            try:
-                r = yt.commentThreads().list(part="snippet,replies", videoId=vid, maxResults=100, pageToken=tok).execute()
-            except Exception:
-                break   # comments off / not public yet
-            for t in r.get("items", []):
-                top = t["snippet"]["topLevelComment"]["snippet"]
-                n += (top.get("authorChannelId") or {}).get("value") == me
-                n += sum((x["snippet"].get("authorChannelId") or {}).get("value") == me for x in (t.get("replies") or {}).get("comments", []))
-            tok = r.get("nextPageToken")
-            if not tok:
-                break
-    return n
+    """Our own comments on our YouTube videos, from data/youtube-own-comments.json (the read-only API can't see comment authors)."""
+    p = os.path.join(HERE, "data", "youtube-own-comments.json")
+    if not os.path.exists(p):
+        return None
+    own = json.load(open(p)).get("videos", {})
+    return sum(int(own[vid].get("own_comments", 0)) for vid in video_ids if vid in own)
 
 
 def reddit():
@@ -147,6 +125,7 @@ def reddit():
             "views": int(views.sum()) if views.notna().any() else None,
             "unknown_views": int(views.isna().sum()),
             "top_views": int(views.max()) if views.notna().any() else None,
+            "top_url": str(live.url.loc[views.idxmax()]) if views.notna().any() and pd.notna(live.url.loc[views.idxmax()]) else "",
             "likes": int(ups.sum()) if ups.notna().any() else None,
             "comments": int(com.sum()) if com.notna().any() else None}
 
@@ -245,6 +224,28 @@ def pick(snap):
     return "Instagram + Facebook (one Meta ad covers both)" if set(top2) == {"instagram", "facebook"} else NAME[top2[0]]
 
 
+def day_change(snap, hist, now):
+    """Views gained in the last 24 hours: current totals minus the newest complete check at least 24 h old."""
+    cur = {p: (snap.get(p) or {}).get("views") for p in PLAT}
+    if any(v is None for v in cur.values()):
+        return None
+    base = None
+    for h in hist:
+        if not all(isinstance(h.get(p), dict) and h[p].get("views") is not None for p in PLAT):
+            continue
+        t = dt.datetime.strptime(h["checked_at"], "%Y-%m-%d %H:%M")
+        if t <= now - dt.timedelta(hours=24):
+            base = h
+        elif base is None:
+            base = h   # nothing 24 h old yet: use the oldest check we have
+            break
+    if base is None:
+        return None
+    t = dt.datetime.strptime(base["checked_at"], "%Y-%m-%d %H:%M")
+    per = {p: cur[p] - base[p]["views"] for p in PLAT}
+    return {"total": sum(per.values()), "per": per, "since": t, "hours": round((now - t).total_seconds() / 3600)}
+
+
 def history_html(hist):
     """Every complete check in social-stats-history.json, newest first (shown under Previous results)."""
     rows = [h for h in hist if all(isinstance(h.get(p), dict) for p in PLAT)]
@@ -273,7 +274,7 @@ def history_html(hist):
             f"<tbody>{''.join(reversed(out))}</tbody></table></div>")
 
 
-def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None):
+def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None):
     e = html.escape
     old = json.load(open(LAST)) if os.path.exists(LAST) else None
     cols = [{"id": "label", "label": stamp}] + [{"id": p, "label": NAME[p]} for p in PLAT] + [
@@ -285,7 +286,11 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
             v = r["vals"][p]
             txt = e(fmt(v) + delta(v, r["olds"][p]))
             cells[p] = "<b>" + txt + "</b>" if v is not None and v == r["top"] and r["top"] else txt
+            if r["label"] == "Top post views" and v is not None and (snap.get(p) or {}).get("top_url"):
+                cells[p] = f"<a class='tp' href='{e(snap[p]['top_url'])}' target='_blank' rel='noopener'>{cells[p]}</a>"
         cells["reddit"] = "—" if r["label"] in ("Followers", "Avg views per post") else fmt(r["reddit"])
+        if r["label"] == "Top post views" and rd and rd.get("top_url") and r["reddit"] is not None:
+            cells["reddit"] = f"<a class='tp' href='{e(rd['top_url'])}' target='_blank' rel='noopener'>{cells['reddit']}</a>"
         cells["total"] = e(fmt(r["total"]) + delta(r["total"], r["ototal"]))
         cells["best"] = e(" / ".join(r["best"]))
         trows.append({"id": r["label"], "label": r["label"], "cells": cells})
@@ -307,6 +312,12 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
 <div class="lgs">{old['legend']}</div>
 <div class="chart"><canvas id="pc" role="img" aria-label="Previous report: running total views per platform"></canvas></div>""") if old else ""
     stale = stale or {}
+    day_html = ""
+    if day:
+        sign = "+" if day["total"] >= 0 else "−"
+        parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> {NAME[p]} {'+' if day['per'][p] >= 0 else '−'}{abs(day['per'][p]):,}" for p in PLAT)
+        when = "Last 24 hours" if 23 <= day["hours"] <= 30 else f"Since {day['since'].strftime('%b %-d, %-I:%M %p')} ({day['hours']} h, nearest check)"
+        day_html = f"<div class='day'><div class='dayl'>{e(when)}</div><div class='dayv'>{sign}{abs(day['total']):,} <small>views</small></div><div class='dayp'>{parts}</div></div>"
     stale_html = "".join(f"<p class='warn'>{NAME[p]} couldn’t be pulled after 3 tries, so its numbers are from the last good check ({e(t)}).</p>" for p, t in stale.items())
     if len(snap) == len(PLAT) and not stale:   # this run becomes "Previous results" in the next report
         os.makedirs(os.path.dirname(LAST), exist_ok=True)
@@ -332,6 +343,9 @@ th{{font-weight:500;color:var(--ink2)}} th.rl{{text-align:left}} thead th{{borde
 .mp i{{width:8px;height:8px;border-radius:50%;display:inline-block}} .mp b{{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}} .mp.best{{box-shadow:inset 0 0 0 2px #2A78D6;background:rgba(42,120,214,.14)}} .mp.best span{{color:var(--ink2)}}
 .mc small,.mp small{{color:var(--muted);font-size:12px;font-weight:400}} .mc small.up{{color:#1E9E55}} .mpick{{font-size:17px}}
 @media (max-width:700px){{main{{padding:16px 14px}} h1{{font-size:24px}} .sub{{font-size:14px}} .tw,.ptw,#edit{{display:none}} #m{{display:block}} .hs{{display:none}} .hist th,.hist td{{padding:8px 6px}} .chart{{height:260px}} .note{{font-size:12px}} .lgs{{gap:10px 16px}} h2.ph{{margin-top:32px}}}}
+.day{{display:grid;grid-template-columns:auto auto;align-items:baseline;column-gap:16px;row-gap:4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:0 0 14px}}
+.dayl{{color:var(--ink2);font-weight:500}} .dayv{{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;text-align:right}} .dayv small{{font-size:14px;color:var(--muted);font-weight:400}}
+.dayp{{grid-column:1/-1;font-size:13px;color:var(--ink2)}} a.tp{{color:inherit;text-decoration:underline;text-decoration-color:#2A78D6;text-underline-offset:3px}}
 tr.pick td{{text-align:left}} .warn{{margin:0 0 10px;padding:8px 12px;border-radius:8px;background:#FFF4CC;color:#5c4a00;font-size:14px}} .hist td,.hist th{{color:var(--ink2);font-size:14px}} .dl{{color:var(--muted);font-size:12px}} b{{font-weight:600}}
 .lgs{{display:flex;flex-wrap:wrap;gap:16px;margin:28px 0 8px;font-size:12px;color:var(--ink2)}} .lg{{display:flex;align-items:center;gap:6px}}
 .chart{{position:relative;height:340px}}
@@ -351,7 +365,7 @@ h2.ph{{font-size:18px;font-weight:500;margin:48px 0 4px;padding-top:20px;border-
 <div class="bar"><button id="refresh" class="b red">Refresh</button><button id="edit" class="b blue">Edit Layout</button>
 <span id="tools" hidden><select id="addc"></select><select id="addr"></select><button id="cancel" class="b gray">Cancel</button><button id="reset" class="b gray">Reset Layout</button></span>
 <span id="msg" class="note"></span></div>
-{stale_html}<div class="wrap tw"><table id="t"></table></div><div id="m"></div>
+{day_html}{stale_html}<div class="wrap tw"><table id="t"></table></div><div id="m"></div>
 <p class="note">YouTube average uses public posts only. Facebook comments = viewer comments (the Page's own link comments are left out). Comments = viewer comments only (our own replies and pinned comments are left out). Total excludes Reddit. {e(rnote)}</p>
 <div class="lgs">{legend}</div>
 <div class="chart"><canvas id="c" role="img" aria-label="Running total views per platform, last 7 days"></canvas></div>
@@ -478,7 +492,7 @@ $('t').addEventListener('mousedown', e => {{   // resize: right edge of a header
   addEventListener('mousemove', mv); addEventListener('mouseup', up);
 }});
 $('refresh').onclick = async () => {{
-  if (SITE) {{ window.open(ACT, '_blank'); return msg('On GitHub, tap Run workflow. This page updates about 3 minutes later.'); }}
+  if (SITE) {{ window.open(ACT, '_blank'); return msg('On GitHub, tap Run workflow. This page updates about 10 minutes later.'); }}
   if (!served) return msg('Refresh needs the report helper. Run "Refresh Social Report" once, then use the report it opens.');
   const b = $('refresh'); b.disabled = true; b.textContent = 'Refreshing…'; msg('Pulling Instagram, Facebook, YouTube and TikTok (a few minutes). This page reloads when it’s done.');
   try {{ await fetch('/refresh', {{method: 'POST'}});
@@ -510,7 +524,8 @@ function renderM() {{   // phone view: one card per metric, sites in a 2x2 grid
     const [tv, td] = sp(d.cells.total);
     h += `<div class="mc"><div class="mh"><span class="ml">${{esc(d.label)}}</span>${{tv && tv !== '—' ? `<span class="mt">${{esc(tv)}} ${{dl(td)}}</span>` : ''}}</div><div class="mg">`;
     sites.forEach(c => {{ const raw = d.cells[c.id]; const [v, dd] = sp(raw); if (!v || v === '—' || v === '?') return;
-      h += `<div class="mp${{/<b>/.test(raw || '') ? ' best' : ''}}"><span><i style="background:${{PC[c.id]}}"></i>${{esc(cid(c.id).label.replace(' (manual)', ''))}}</span><div><b>${{esc(v)}}</b> ${{dl(dd)}}</div></div>`; }});
+      const href = (raw || '').match(/href='([^']+)'/); const val = href ? `<a class="tp" href="${{href[1]}}" target="_blank" rel="noopener"><b>${{esc(v)}}</b></a>` : `<b>${{esc(v)}}</b>`;
+      h += `<div class="mp${{/<b>/.test(raw || '') ? ' best' : ''}}"><span><i style="background:${{PC[c.id]}}"></i>${{esc(cid(c.id).label.replace(' (manual)', ''))}}</span><div>${{val}} ${{dl(dd)}}</div></div>`; }});
     h += '</div></div>';
   }});
   m.innerHTML = h;
@@ -603,7 +618,8 @@ def main():
         entry = {"checked_at": now.strftime("%Y-%m-%d %H:%M"), "source": "social_report.py"}
         entry.update({p: {k: v for k, v in snap[p].items() if k != "top_url"} for p in PLAT})
         hist.append(entry)
-    write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist, stale)
+    day = day_change(snap, hist[:-1] if complete else hist, now)   # history before this run
+    write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist, stale, day)
     if not SITE:
         write_xlsx(stamp, rows, labels, series)
     if complete:
