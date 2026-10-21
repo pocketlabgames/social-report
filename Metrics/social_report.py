@@ -58,6 +58,14 @@ def fetch():
                 errors.append(err)
     snap = {}
 
+    def watch(d):   # views-weighted average watch time (s) over the posts that report one
+        col = "avg_watch_s" if "avg_watch_s" in d else "avg_view_s" if "avg_view_s" in d else None
+        if not col:
+            return None
+        w = d[[col, "views"]].dropna()
+        w = w[w.views > 0]
+        return round(float((w[col] * w.views).sum() / w.views.sum()), 1) if len(w) else None
+
     def posts(name, likes):
         d = out.get(name)
         if d is None or d.empty:
@@ -65,7 +73,8 @@ def fetch():
         return {"posts": len(d), "views": int(d.views.fillna(0).sum()), "top_views": int(d.views.fillna(0).max()),
                 "likes": int(d[likes].fillna(0).sum()) if likes in d else None,
                 "comments": int(d.comments.fillna(0).sum()) if "comments" in d else None,
-                "top_url": d.sort_values("views").iloc[-1].get("url", "")}
+                "top_url": d.sort_values("views").iloc[-1].get("url", ""),
+                "avg_watch_s": watch(d)}
 
     acc = out.get("Meta Accounts")
     acc = acc.iloc[-1].to_dict() if acc is not None and not acc.empty else {}
@@ -180,19 +189,19 @@ def daily(now_label, snap):
 def fmt(v):
     if isinstance(v, str):
         return v
-    return "?" if v is None else f"{v:,.0f}"
+    return "?" if v is None else (f"{v:,.1f}" if isinstance(v, float) and v < 100 and v != int(v) else f"{v:,.0f}")
 
 
 def delta(v, old):
     if v is None or old is None or isinstance(v, str) or isinstance(old, str):
         return ""
     d = v - old
-    return f" ({'+' if d >= 0 else '−'}{abs(d):,.0f})"
+    return f" ({'+' if d >= 0 else '−'}{abs(d):,.1f})" if isinstance(d, float) and abs(d) < 100 and d != int(d) else f" ({'+' if d >= 0 else '−'}{abs(d):,.0f})"
 
 
 def build_rows(snap, prev, rd):
     metrics = [("Followers", "followers"), ("Posts", "posts"), ("Total views", "views"), ("Avg views per post", "avg"),
-               ("Top post views", "top_views"), ("Likes / upvotes", "likes"), ("Comments", "comments")]
+               ("Top post views", "top_views"), ("Avg watch time (s)", "avg_watch_s"), ("Likes / upvotes", "likes"), ("Comments", "comments")]
     rows = []
     for label, key in metrics:
         vals, olds = {}, {}
@@ -215,7 +224,12 @@ def build_rows(snap, prev, rd):
                 otot = round(ov / op) if op else None
         if key == "top_views":
             tot = otot = "—"
-        rkey = {"avg": None, "followers": None}.get(key, key)
+        if key == "avg_watch_s":   # total = views-weighted across the sites that report it
+            def wavg(src):
+                pairs = [(src[p]["avg_watch_s"], src[p]["views"]) for p in PLAT if src.get(p) and src[p].get("avg_watch_s") is not None and src[p].get("views")]
+                return round(sum(a * v for a, v in pairs) / sum(v for _, v in pairs), 1) if pairs else None
+            tot, otot = wavg(snap), (wavg(prev) if prev else None)
+        rkey = {"avg": None, "followers": None, "avg_watch_s": None}.get(key, key)
         rv = None if not rd or rkey is None else rd.get(rkey)
         rows.append({"label": label, "vals": vals, "olds": olds, "top": top, "best": best, "total": tot, "ototal": otot, "reddit": rv})
     return rows
@@ -250,7 +264,7 @@ def day_change(snap, hist, now):
 
 
 def history_html(hist):
-    """Every complete check in social-stats-history.json, newest first (shown under Previous results)."""
+    """Every complete check in social-stats-history.json, newest first (shown under 24 hours ago)."""
     rows = [h for h in hist if all(isinstance(h.get(p), dict) for p in PLAT)]
     f = lambda v: "—" if v is None else f"{v:,}"
     def d(v, o):
@@ -277,9 +291,8 @@ def history_html(hist):
             f"<tbody>{''.join(reversed(out))}</tbody></table></div>")
 
 
-def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None):
+def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None, old=None, dry=False):
     e = html.escape
-    old = json.load(open(LAST)) if os.path.exists(LAST) else None
     cols = [{"id": "label", "label": stamp}] + [{"id": p, "label": NAME[p]} for p in PLAT] + [
         {"id": "reddit", "label": "Reddit (manual)"}, {"id": "total", "label": "Total"}, {"id": "best", "label": "Best for ads"}]
     trows = []
@@ -291,7 +304,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
             cells[p] = "<b>" + txt + "</b>" if v is not None and v == r["top"] and r["top"] else txt
             if r["label"] == "Top post views" and v is not None and (snap.get(p) or {}).get("top_url"):
                 cells[p] = f"<a class='tp' href='{e(snap[p]['top_url'])}' target='_blank' rel='noopener'>{cells[p]}</a>"
-        cells["reddit"] = "—" if r["label"] in ("Followers", "Avg views per post") else fmt(r["reddit"])
+        cells["reddit"] = "—" if r["label"] in ("Followers", "Avg views per post", "Avg watch time (s)") else fmt(r["reddit"])
         if r["label"] == "Top post views" and rd and rd.get("top_url") and r["reddit"] is not None:
             cells["reddit"] = f"<a class='tp' href='{e(rd['top_url'])}' target='_blank' rel='noopener'>{cells['reddit']}</a>"
         cells["total"] = e(fmt(r["total"]) + delta(r["total"], r["ototal"]))
@@ -309,11 +322,14 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         f"{' stroke-dasharray=\"4 3\"' if p == 'instagram' else ''}/></svg>{NAME[p]} {fmt((snap.get(p) or {}).get('views'))}"
         f"{delta((snap.get(p) or {}).get('views'), (prev.get(p) or {}).get('views') if prev else None) or ''}</span>" for p in PLAT)
     data = json.dumps({"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}})
+    if dry:
+        return {"stamp": stamp, "table": {"cols": cols, "rows": trows}, "legend": legend,
+                "data": {"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}}}
     olds = json.dumps(old).replace("</", "<\\/") if old else "null"
-    prev_html = (f"""<h2 class="ph">Previous results</h2><p class="sub">{e(old['stamp'])}</p>
+    prev_html = (f"""<h2 class="ph">24 hours ago</h2><p class="sub">{e(old['stamp'])} · the check the card above compares with</p>
 <div class="wrap ptw"><table id="pt"></table></div>
 <div class="lgs">{old['legend']}</div>
-<div class="chart"><canvas id="pc" role="img" aria-label="Previous report: running total views per platform"></canvas></div>""") if old else ""
+<div class="chart"><canvas id="pc" role="img" aria-label="24 hours ago: running total views per platform"></canvas></div>""") if old else ""
     stale = stale or {}
     day_html = ""
     if day:
@@ -322,7 +338,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         when = "Last 24 hours" if 21 <= day["hours"] <= 27 else f"Last {day['hours']} hours (closest check to 24 h ago: {day['since'].strftime('%b %-d, %-I:%M %p')})"
         day_html = f"<div class='day'><div class='dayl'>{e(when)}</div><div class='dayv'>{sign}{abs(day['total']):,} <small>views</small></div><div class='dayp'>{parts}</div></div>"
     stale_html = "".join(f"<p class='warn'>{NAME[p]} couldn’t be pulled after 3 tries, so its numbers are from the last good check ({e(t)}).</p>" for p, t in stale.items())
-    if len(snap) == len(PLAT) and not stale:   # this run becomes "Previous results" in the next report
+    if len(snap) == len(PLAT) and not stale:   # keep the last complete run (Mac report cache)
         os.makedirs(os.path.dirname(LAST), exist_ok=True)
         json.dump({"stamp": stamp, "table": {"cols": cols, "rows": trows}, "legend": legend,
                    "data": {"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}}}, open(LAST, "w"))
@@ -390,7 +406,8 @@ function load(l) {{   // saved layout + anything new in the data that the saved 
   n.cols = n.cols.filter(c => c.custom || cid(c.id)); n.rows = n.rows.filter(r => r.custom || rid(r.id));
   if (!n.cols.some(c => c.id === 'label')) n.cols.unshift({{id: 'label'}});
   T.cols.forEach(c => {{ if (!known.has('c:' + c.id) && !n.cols.some(x => x.id === c.id)) n.cols.push({{id: c.id}}); }});
-  T.rows.forEach(r => {{ if (!known.has('r:' + r.id) && !n.rows.some(x => x.id === r.id)) n.rows.push({{id: r.id}}); }});
+  T.rows.forEach(r => {{ if (!known.has('r:' + r.id) && !n.rows.some(x => x.id === r.id)) {{   // new metric rows go above "Pick for ads"
+    const k = n.rows.findIndex(x => x.id === 'Pick for ads'); n.rows.splice(k < 0 ? n.rows.length : k, 0, {{id: r.id}}); }} }});
   return n;
 }}
 function cell(c, r) {{
@@ -507,7 +524,8 @@ $('refresh').onclick = async () => {{
 function renderPrev() {{   // previous run's table, in the current layout's order (no editing)
   if (!OLD || !$('pt')) return; const P = OLD.table, pc = id => P.cols.find(c => c.id === id), pr = id => P.rows.find(r => r.id === id);
   const cols = L.cols.filter(c => !c.custom && pc(c.id)).map(c => pc(c.id)); P.cols.forEach(c => {{ if (!cols.includes(c)) cols.push(c); }});
-  const rows = L.rows.filter(r => !r.custom && pr(r.id)).map(r => pr(r.id)); P.rows.forEach(r => {{ if (!rows.includes(r)) rows.push(r); }});
+  let rows = L.rows.filter(r => !r.custom && pr(r.id)).map(r => pr(r.id)); P.rows.forEach(r => {{ if (!rows.includes(r)) rows.push(r); }});
+  rows = rows.filter(r => r.full || Object.values(r.cells || {{}}).some(v => v && v !== '?' && v !== '—'));   // skip metrics that check didn't have
   let h = '<thead><tr>' + cols.map(c => `<th class="${{c.id === 'label' ? 'rl' : ''}}">${{esc(c.label)}}</th>`).join('') + '</tr></thead><tbody>';
   rows.forEach(r => {{ h += `<tr class="${{r.full ? 'pick' : ''}}">`; let first = true;
     cols.forEach(c => {{ if (c.id === 'label') {{ h += `<th class="rl">${{esc(r.label)}}</th>`; return; }}
@@ -555,6 +573,8 @@ function mk(canvas, D) {{ if (!canvas) return; const chart = new Chart(canvas, {
 mk(document.getElementById('c'), D); if (OLD) mk(document.getElementById('pc'), OLD.data);
 </script></body></html>"""
     open(OUT_HTML, "w").write(doc)
+    return {"stamp": stamp, "table": {"cols": cols, "rows": trows}, "legend": legend,
+            "data": {"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}}}
 
 
 def write_xlsx(stamp, rows, labels, series):
@@ -621,8 +641,29 @@ def main():
         entry = {"checked_at": now.strftime("%Y-%m-%d %H:%M"), "source": "social_report.py"}
         entry.update({p: {k: v for k, v in snap[p].items() if k != "top_url"} for p in PLAT})
         hist.append(entry)
-    day = day_change(snap, hist[:-1] if complete else hist, now)   # history before this run
-    write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist, stale, day)
+    before = hist[:-1] if complete else hist   # history before this run
+    day = day_change(snap, before, now)
+    old = None
+    if day:   # rebuild the comparison check's table + chart from history
+        key = day["since"].strftime("%Y-%m-%d %H:%M")
+        i = next((n for n, h in enumerate(before) if h["checked_at"] == key), None)
+        if i is not None:
+            bsnap = {p: dict(before[i][p], top_url="") for p in PLAT}
+            bprev = next((h for h in reversed(before[:i]) if all(isinstance(h.get(p), dict) for p in PLAT)), None)
+            bday = day["since"].date()
+            bdays = [bday - dt.timedelta(days=n) for n in range(6, -1, -1)]
+            bser = {p: [None] * 7 for p in PLAT}
+            for h in before[:i + 1]:
+                d = dt.date.fromisoformat(h["checked_at"][:10])
+                if d in bdays:
+                    for p in PLAT:
+                        if isinstance(h.get(p), dict) and h[p].get("views") is not None:
+                            bser[p][bdays.index(d)] = h[p]["views"]
+            blabels = [d.strftime("%b %-d") for d in bdays]
+            blabels[6] += f" ({day['since'].strftime('%-I:%M %p')})"
+            old = write_html(day["since"].strftime("%b %-d, %Y · %-I:%M %p"), build_rows(bsnap, bprev, rd), rd, bsnap, bprev,
+                             blabels, bser, "history file", [], (), None, None, None, dry=True)
+    write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist, stale, day, old)
     if not SITE:
         write_xlsx(stamp, rows, labels, series)
     if complete:

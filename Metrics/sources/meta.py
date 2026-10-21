@@ -71,7 +71,7 @@ def _post_insights(post_id, token):
 
 
 def _media_insights(mid, token):
-    row, mets = {}, (["views", "likes", "comments"] if LITE else IG_MEDIA_METRICS)   # all the website shows
+    row, mets = {}, (["views", "likes", "comments", "ig_reels_avg_watch_time"] if LITE else IG_MEDIA_METRICS)   # all the website shows
     try:
         j = _get(f"{mid}/insights", token, metric=",".join(mets))
         for m in j["data"]:
