@@ -1,0 +1,54 @@
+name: Social Report
+on:
+  schedule:
+    - cron: "0 11 * * *"   # 7 AM EDT / 6 AM EST (GitHub cron is UTC and can run late)
+    - cron: "0 18 * * *"   # 2 PM EDT / 1 PM EST
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: report
+  cancel-in-progress: false
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q -r requirements.txt
+      - name: Keys
+        env:
+          KEYS_TGZ: ${{ secrets.KEYS_TGZ }}
+        run: mkdir -p "Private Keys" && echo "$KEYS_TGZ" | base64 -d | tar xz -C "Private Keys"
+      - name: Report
+        working-directory: Metrics
+        env:
+          REPORT_SITE: "1"
+          TZ: America/New_York
+        run: python social_report.py --no-open
+      - name: Encrypt
+        env:
+          PW: ${{ secrets.REPORT_PASSWORD }}
+        run: |
+          npx -y staticrypt@3 "Metrics/Social Report.html" -p "$PW" --short -d site --salt d33749e38069f5b95adc7158ec6fc89f --config false --template-title "Beaker Lab Social Report"
+          mv "site/Social Report.html" site/index.html
+      - name: Save history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Metrics/social-stats-history.json Metrics/cache/report-last.json
+          git commit -qm "Report $(TZ=America/New_York date '+%Y-%m-%d %H:%M')" || echo "nothing to save"
+          git push
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4
