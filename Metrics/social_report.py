@@ -31,6 +31,7 @@ SITE = os.environ.get("REPORT_SITE") == "1"   # GitHub Actions build for the web
 ACTIONS = "https://github.com/pocketlabgames/social-report/actions/workflows/report.yml"
 PLAT = ["instagram", "facebook", "youtube", "tiktok"]
 NAME = {"instagram": "Instagram", "facebook": "Facebook", "youtube": "YouTube", "tiktok": "TikTok"}
+IG_HANDLE = "beakerlab.game"
 COLOR = {"instagram": "#E87BA4", "facebook": "#2A78D6", "youtube": "#E34948", "tiktok": "#14B8C6"}
 
 
@@ -66,6 +67,9 @@ def fetch():
     ig = posts("IG Media", "likes")
     if ig:
         ig["followers"] = acc.get("ig_followers")
+        c = out.get("IG Comments")   # viewer comments only (not our own beakerlab.game comments/replies)
+        if c is not None and not c.empty:
+            ig["comments"] = int((c.author.astype(str).str.lower() != IG_HANDLE).sum())
         snap["instagram"] = ig
     fb = posts("FB Reels", "reactions")
     if fb:
@@ -80,6 +84,12 @@ def fetch():
         yt.update(public_posts=len(pub), public_views=int(pub.views.fillna(0).sum()))
         ch = out.get("YouTube Channel")
         yt["followers"] = int(ch.subscribers.iloc[-1]) if ch is not None and not ch.empty else None
+        try:   # viewer comments only: the API count includes our own pinned comments, so subtract the channel's own
+            own = yt_own_comments(list(v.video_id))
+            if own is not None and yt.get("comments") is not None:
+                yt["comments"] = max(0, yt["comments"] - own)
+        except Exception as e:
+            errors.append(f"youtube own-comment count: {type(e).__name__}"[:200])
         snap["youtube"] = yt
     tt = posts("TikTok Videos", "likes")
     if tt:
@@ -89,13 +99,38 @@ def fetch():
     return snap, errors
 
 
+def yt_own_comments(video_ids):
+    """How many comments (top-level + replies) on our videos were written by our own channel. Read-only."""
+    from sources import youtube
+    from googleapiclient.discovery import build
+    yt = build("youtube", "v3", credentials=youtube._creds(KEYS), cache_discovery=False)
+    me = yt.channels().list(part="id", mine=True).execute()["items"][0]["id"]
+    n = 0
+    for vid in video_ids:
+        tok = None
+        while True:
+            try:
+                r = yt.commentThreads().list(part="snippet,replies", videoId=vid, maxResults=100, pageToken=tok).execute()
+            except Exception:
+                break   # comments off / not public yet
+            for t in r.get("items", []):
+                top = t["snippet"]["topLevelComment"]["snippet"]
+                n += (top.get("authorChannelId") or {}).get("value") == me
+                n += sum((x["snippet"].get("authorChannelId") or {}).get("value") == me for x in (t.get("replies") or {}).get("comments", []))
+            tok = r.get("nextPageToken")
+            if not tok:
+                break
+    return n
+
+
 def reddit():
     if not os.path.exists(REDDIT):
         return None
     d = pd.read_csv(REDDIT)
     if d.empty:
         return None
-    last = d.sort_values("snapshot_date").groupby("url", dropna=False).tail(1)
+    d["key"] = d.url.where(d.url.notna() & (d.url.astype(str).str.strip() != ""), d.subreddit.astype(str) + "|" + d.title.astype(str))   # posts with no URL yet: tell them apart by sub + title
+    last = d.sort_values("snapshot_date").groupby("key").tail(1)
     removed = last.notes.fillna("").str.contains("REMOVED")
     live = last[~removed]
     views = pd.to_numeric(live.views, errors="coerce")
@@ -310,7 +345,7 @@ h2.ph{{font-size:18px;font-weight:500;margin:48px 0 4px;padding-top:20px;border-
 <span id="tools" hidden><select id="addc"></select><select id="addr"></select><button id="cancel" class="b gray">Cancel</button><button id="reset" class="b gray">Reset Layout</button></span>
 <span id="msg" class="note"></span></div>
 {stale_html}<div class="wrap tw"><table id="t"></table></div><div id="m"></div>
-<p class="note">YouTube average uses public posts only. Facebook comments = viewer comments (the Page's own link comments are left out). YouTube comments include our own pinned comments. Total excludes Reddit. {e(rnote)}</p>
+<p class="note">YouTube average uses public posts only. Facebook comments = viewer comments (the Page's own link comments are left out). Comments = viewer comments only (our own replies and pinned comments are left out). Total excludes Reddit. {e(rnote)}</p>
 <div class="lgs">{legend}</div>
 <div class="chart"><canvas id="c" role="img" aria-label="Running total views per platform, last 7 days"></canvas></div>
 <p class="note">Daily history from the {e(source)}; the last point is this run's live totals.</p>
