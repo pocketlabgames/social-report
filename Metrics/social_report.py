@@ -39,18 +39,23 @@ def fetch():
     from sources import meta, tiktok, youtube
     out, errors = {}, []
     import re, time
-    for m in (youtube, meta, tiktok):
-        for attempt in range(1, 4):   # up to 3 tries (e.g. YouTube Analytics 500s are usually temporary)
+    from concurrent.futures import ThreadPoolExecutor
+
+    def pull(m):   # one site: up to 3 tries (e.g. YouTube Analytics 500s are usually temporary)
+        for attempt in range(1, 4):
             try:
-                for k, (df, _) in m.fetch(KEYS, dt.date.today()).items():
-                    out[k] = df
-                break
+                return {k: df for k, (df, _) in m.fetch(KEYS, dt.date.today()).items()}, None
             except Exception as e:
                 if attempt == 3:
                     msg = re.sub(r"(token|key|secret)=[^&\s'\"]+", r"\1=***", f"{type(e).__name__}: {e}", flags=re.I)   # never show keys
-                    errors.append(f"{m.__name__.split('.')[-1]} (3 tries): {msg}"[:200])
-                else:
-                    time.sleep(10 * attempt)
+                    return {}, f"{m.__name__.split('.')[-1]} (3 tries): {msg}"[:200]
+                time.sleep(10 * attempt)
+
+    with ThreadPoolExecutor(3) as ex:   # the three sites in parallel
+        for got, err in ex.map(pull, (youtube, meta, tiktok)):
+            out.update(got)
+            if err:
+                errors.append(err)
     snap = {}
 
     def posts(name, likes):
