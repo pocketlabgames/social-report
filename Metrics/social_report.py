@@ -218,16 +218,16 @@ def history_html(hist):
         lik = sum(h[p].get("likes") or 0 for p in PLAT)
         when = dt.datetime.strptime(h["checked_at"], "%Y-%m-%d %H:%M").strftime("%a %b %-d · %-I:%M %p")
         pv = prev or {}
-        cells = "".join(f"<td>{f(v[p])}{d(v[p], pv.get('v', {}).get(p))}</td>" for p in PLAT)
+        cells = "".join(f"<td class='hs'>{f(v[p])}{d(v[p], pv.get('v', {}).get(p))}</td>" for p in PLAT)
         out.append(f"<tr><th class='rl'>{when}</th>{cells}<td><b>{f(tot)}</b>{d(tot, pv.get('tot'))}</td>"
-                   f"<td>{f(fol)}{d(fol, pv.get('fol'))}</td><td>{f(lik)}{d(lik, pv.get('lik'))}</td></tr>")
+                   f"<td>{f(fol)}{d(fol, pv.get('fol'))}</td><td class='hs'>{f(lik)}{d(lik, pv.get('lik'))}</td></tr>")
         prev = {"v": v, "tot": tot, "fol": fol, "lik": lik}
     if not rows:
         return ""
-    head = "".join(f"<th>{NAME[p]}</th>" for p in PLAT)
+    head = "".join(f"<th class='hs'>{NAME[p]}</th>" for p in PLAT)
     return (f"<h2 class='ph'>History</h2><p class='sub'>Every check since {html.escape(rows[0]['checked_at'][:10])} "
             f"({len(rows)} checks), newest first. Views per site; changes in brackets are since the check below.</p>"
-            f"<div class='wrap hist'><table><thead><tr><th class='rl'>Checked</th>{head}<th>Total views</th><th>Followers</th><th>Likes</th></tr></thead>"
+            f"<div class='wrap hist'><table><thead><tr><th class='rl'>Checked</th>{head}<th>Total views</th><th>Followers</th><th class='hs'>Likes</th></tr></thead>"
             f"<tbody>{''.join(reversed(out))}</tbody></table></div>")
 
 
@@ -261,7 +261,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
     data = json.dumps({"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}})
     olds = json.dumps(old).replace("</", "<\\/") if old else "null"
     prev_html = (f"""<h2 class="ph">Previous results</h2><p class="sub">{e(old['stamp'])}</p>
-<div class="wrap"><table id="pt"></table></div>
+<div class="wrap ptw"><table id="pt"></table></div>
 <div class="lgs">{old['legend']}</div>
 <div class="chart"><canvas id="pc" role="img" aria-label="Previous report: running total views per platform"></canvas></div>""") if old else ""
     stale = stale or {}
@@ -283,6 +283,13 @@ h1{{font-size:22px;font-weight:500;margin:0 0 4px}} .sub{{color:var(--muted);mar
 .wrap{{overflow-x:auto}} table{{border-collapse:collapse;width:100%;background:var(--card)}}
 th,td{{border-bottom:1px solid var(--line);padding:8px 10px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}}
 th{{font-weight:500;color:var(--ink2)}} th.rl{{text-align:left}} thead th{{border-bottom:1px solid var(--muted)}}
+#m{{display:none}} .mc{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0 0 10px}}
+.mh{{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px}} .ml{{font-weight:600;font-size:16px}}
+.mt{{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}} .mg{{display:grid;grid-template-columns:1fr 1fr;gap:8px}}
+.mp{{display:flex;flex-direction:column;gap:2px;padding:6px 9px;border-radius:8px;background:var(--bg)}} .mp span{{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:5px}}
+.mp i{{width:8px;height:8px;border-radius:50%;display:inline-block}} .mp b{{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}} .mp.best{{box-shadow:inset 3px 0 0 #2A78D6}}
+.mc small,.mp small{{color:var(--muted);font-size:12px;font-weight:400}} .mc small.up{{color:#1E9E55}} .mpick{{font-size:17px}}
+@media (max-width:700px){{main{{padding:16px 14px}} h1{{font-size:24px}} .sub{{font-size:14px}} .tw,.ptw,#edit{{display:none}} #m{{display:block}} .hs{{display:none}} .hist th,.hist td{{padding:8px 6px}} .chart{{height:260px}} .note{{font-size:12px}} .lgs{{gap:10px 16px}} h2.ph{{margin-top:32px}}}}
 tr.pick td{{text-align:left}} .warn{{margin:0 0 10px;padding:8px 12px;border-radius:8px;background:#FFF4CC;color:#5c4a00;font-size:14px}} .hist td,.hist th{{color:var(--ink2);font-size:14px}} .dl{{color:var(--muted);font-size:12px}} b{{font-weight:600}}
 .lgs{{display:flex;flex-wrap:wrap;gap:16px;margin:28px 0 8px;font-size:12px;color:var(--ink2)}} .lg{{display:flex;align-items:center;gap:6px}}
 .chart{{position:relative;height:340px}}
@@ -302,7 +309,7 @@ h2.ph{{font-size:18px;font-weight:500;margin:48px 0 4px;padding-top:20px;border-
 <div class="bar"><button id="refresh" class="b red">Refresh</button><button id="edit" class="b blue">Edit Layout</button>
 <span id="tools" hidden><select id="addc"></select><select id="addr"></select><button id="cancel" class="b gray">Cancel</button><button id="reset" class="b gray">Reset Layout</button></span>
 <span id="msg" class="note"></span></div>
-{stale_html}<div class="wrap"><table id="t"></table></div>
+{stale_html}<div class="wrap tw"><table id="t"></table></div><div id="m"></div>
 <p class="note">YouTube average uses public posts only. Facebook comments = viewer comments (the Page's own link comments are left out). YouTube comments include our own pinned comments. Total excludes Reddit. {e(rnote)}</p>
 <div class="lgs">{legend}</div>
 <div class="chart"><canvas id="c" role="img" aria-label="Running total views per platform, last 7 days"></canvas></div>
@@ -429,7 +436,7 @@ $('t').addEventListener('mousedown', e => {{   // resize: right edge of a header
   addEventListener('mousemove', mv); addEventListener('mouseup', up);
 }});
 $('refresh').onclick = async () => {{
-  if (SITE) {{ window.open(ACT, '_blank'); return msg('On GitHub, tap Run workflow. This page updates about 5 minutes later.'); }}
+  if (SITE) {{ window.open(ACT, '_blank'); return msg('On GitHub, tap Run workflow. This page updates about 10 minutes later.'); }}
   if (!served) return msg('Refresh needs the report helper. Run "Refresh Social Report" once, then use the report it opens.');
   const b = $('refresh'); b.disabled = true; b.textContent = 'Refreshing…'; msg('Pulling Instagram, Facebook, YouTube and TikTok (a few minutes). This page reloads when it’s done.');
   try {{ await fetch('/refresh', {{method: 'POST'}});
@@ -449,9 +456,26 @@ function renderPrev() {{   // previous run's table, in the current layout's orde
       h += `<td>${{(r.cells || {{}})[c.id] ?? ''}}</td>`; }}); h += '</tr>'; }});
   $('pt').innerHTML = h + '</tbody>';
 }}
-L = load(SAVED); render(); renderPrev();
+function renderM() {{   // phone view: one card per metric, sites in a 2x2 grid
+  const m = $('m'); if (!m) return;
+  const PC = {{instagram:'#E87BA4', facebook:'#2A78D6', youtube:'#E34948', tiktok:'#14B8C6', reddit:'#FF6A2A'}};
+  const sp = s => {{ const t = String(s ?? '').replace(/<[^>]+>/g, ''); const i = t.indexOf(' ('); return i < 0 ? [t, ''] : [t.slice(0, i), t.slice(i + 1)]; }};
+  const dl = d => d ? `<small class="${{/^\\(\\+[1-9]/.test(d) ? 'up' : ''}}">${{esc(d)}}</small>` : '';
+  const sites = L.cols.filter(c => !c.custom && PC[c.id] && cid(c.id));
+  let h = '';
+  L.rows.forEach(r => {{ const d = r.custom ? null : rid(r.id); if (!d) return;
+    if (d.full) {{ h += `<div class="mc"><div class="mh"><span class="ml">${{esc(d.label)}}</span></div><div class="mpick">${{d.full}}</div></div>`; return; }}
+    const [tv, td] = sp(d.cells.total);
+    h += `<div class="mc"><div class="mh"><span class="ml">${{esc(d.label)}}</span>${{tv && tv !== '—' ? `<span class="mt">${{esc(tv)}} ${{dl(td)}}</span>` : ''}}</div><div class="mg">`;
+    sites.forEach(c => {{ const raw = d.cells[c.id]; const [v, dd] = sp(raw); if (!v || v === '—' || v === '?') return;
+      h += `<div class="mp${{/<b>/.test(raw || '') ? ' best' : ''}}"><span><i style="background:${{PC[c.id]}}"></i>${{esc(cid(c.id).label.replace(' (manual)', ''))}}</span><div><b>${{esc(v)}}</b> ${{dl(dd)}}</div></div>`; }});
+    h += '</div></div>';
+  }});
+  m.innerHTML = h;
+}}
+L = load(SAVED); render(); renderPrev(); renderM();
 if (SITE) $('edit').hidden = true;
-if (served && !SITE) fetch('/layout').then(r => r.json()).then(l => {{ if (!editing && JSON.stringify(l) !== JSON.stringify(SAVED)) {{ L = load(l); render(); renderPrev(); }} }}).catch(() => {{}});
+if (served && !SITE) fetch('/layout').then(r => r.json()).then(l => {{ if (!editing && JSON.stringify(l) !== JSON.stringify(SAVED)) {{ L = load(l); render(); renderPrev(); renderM(); }} }}).catch(() => {{}});
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
