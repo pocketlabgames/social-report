@@ -332,12 +332,29 @@ def build_rows(snap, prev, rd):
     return rows
 
 
+PICK_CTX = {"hist": [], "now": None}   # set by main() so pick() can use the last 7 days
+
+
 def pick(snap):
-    v = {p: (snap.get(p) or {}).get("views") or 0 for p in PLAT}
-    t = {p: (snap.get(p) or {}).get("top_views") or 0 for p in PLAT}
-    score = {p: sorted(v.values()).index(v[p]) + sorted(t.values()).index(t[p]) for p in PLAT}
-    top2 = sorted(PLAT, key=lambda p: -score[p])[:2]
-    return "Instagram + Facebook (one Meta ad covers both)" if set(top2) == {"instagram", "facebook"} else NAME[top2[0]]
+    """Where to spend ad money: the site with the most views gained in the last 7 days (total views if no history)."""
+    hist, now = PICK_CTX["hist"], PICK_CTX["now"]
+    gain = {}
+    if hist and now:
+        target = now - dt.timedelta(days=7)
+        for p in PLAT:
+            hb = min((h for h in hist if isinstance(h.get(p), dict) and h[p].get("views") is not None),
+                     key=lambda h: abs(dt.datetime.strptime(h["checked_at"], "%Y-%m-%d %H:%M") - target), default=None)
+            if hb and (snap.get(p) or {}).get("views") is not None and abs(dt.datetime.strptime(hb["checked_at"], "%Y-%m-%d %H:%M") - target) <= dt.timedelta(days=3):
+                gain[p] = snap[p]["views"] - hb[p]["views"]
+    basis = "views gained in the last 7 days" if len(gain) == len(PLAT) else "total views"
+    if len(gain) < len(PLAT):
+        gain = {p: (snap.get(p) or {}).get("views") or 0 for p in PLAT}
+    tot = sum(max(v, 0) for v in gain.values()) or 1
+    order = sorted(PLAT, key=lambda p: -gain[p])
+    if set(order[:2]) == {"instagram", "facebook"}:
+        share = (max(gain["instagram"], 0) + max(gain["facebook"], 0)) / tot * 100
+        return f"Instagram + Facebook (one Meta ad covers both; {share:.0f}% of {basis})"
+    return f"{NAME[order[0]]} ({max(gain[order[0]], 0) / tot * 100:.0f}% of {basis})"
 
 
 def today_change(snap, hist, now):
@@ -741,7 +758,8 @@ th{{font-weight:500;color:var(--ink2)}} th.rl{{text-align:left}} thead th{{borde
 .mp{{display:flex;flex-direction:column;gap:2px;padding:6px 9px;border-radius:8px;background:var(--bg)}} .mp span{{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:5px}}
 .mp i{{width:8px;height:8px;border-radius:50%;display:inline-block}} .mp b{{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}} .mp.best{{box-shadow:inset 0 0 0 2px #2A78D6;background:rgba(42,120,214,.14)}} .mp.best span{{color:var(--ink2)}}
 .mc small,.mp small{{color:var(--muted);font-size:12px;font-weight:400}} .mc small.up{{color:#1E9E55}} .mpick{{font-size:17px}}
-@media (max-width:700px){{main{{padding:16px 14px}} h1{{font-size:24px}} .sub{{font-size:14px}} .tw,.ptw,#edit{{display:none}} #m{{display:block}} table.vt th,table.vt td{{padding:5px 3px;font-size:12px}} table.vt .aw{{display:none}} .vch{{flex-wrap:wrap}} .hs{{display:none}} .hist th,.hist td{{padding:8px 6px}} .chart{{height:260px}} .note{{font-size:12px}} .lgs{{gap:10px 16px}} h2.ph{{margin-top:32px}}}}
+@media (max-width:700px){{main{{padding:16px 14px}} h1{{font-size:24px}} .sub{{font-size:14px}} .tw,.ptw,#edit{{display:none}} #m{{display:block}} table.vt th,table.vt td{{padding:5px 3px;font-size:12px}}
+.day{{position:sticky;top:8px;z-index:5;box-shadow:0 4px 14px rgba(0,0,0,.18)}} table.vt .aw{{display:none}} .vch{{flex-wrap:wrap}} .hs{{display:none}} .hist th,.hist td{{padding:8px 6px}} .chart{{height:260px}} .note{{font-size:12px}} .lgs{{gap:10px 16px}} h2.ph{{margin-top:32px}}}}
 .day{{display:grid;grid-template-columns:auto auto;align-items:baseline;column-gap:16px;row-gap:4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:0 0 14px}}
 .dayv .sub2{{display:block;font-size:13px}} .dayl{{color:var(--ink2);font-weight:500}} .dayl small{{color:var(--muted);font-weight:400;font-size:12px}} .dayv{{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;text-align:right}} .dayv small{{font-size:14px;color:var(--muted);font-weight:400}}
 .dayp{{grid-column:1/-1;font-size:13px;color:var(--ink2)}} a.tp{{color:inherit;text-decoration:underline;text-decoration-color:#2A78D6;text-underline-offset:3px}}
@@ -1036,6 +1054,7 @@ def main():
         entry.update({p: {k: v for k, v in snap[p].items() if k != "top_url"} for p in PLAT})
         hist.append(entry)
     before = hist[:-1] if complete else hist   # history before this run
+    PICK_CTX.update(hist=before, now=now)
     day = day_change(snap, before, now)
     today = today_change(snap, before, now)
     old = None
