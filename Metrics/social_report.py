@@ -28,6 +28,7 @@ OUT_XLSX = os.path.join(HERE, "Social Report.xlsx")
 LAYOUT = os.path.join(HERE, "report-layout.json")   # saved from the report's Edit Layout button
 POSTS_HIST = os.path.join(HERE, "posts-history.json")   # per-post views at every complete check (for +24 h per post)
 POSTS = []   # per-post rows from the latest fetch (filled by fetch())
+INSTALLS = {}   # {date: first downloads} from App Store Connect (filled by fetch(); empty if the key is missing)
 LAST = os.path.join(HERE, "cache", "report-last.json")   # the previous run's table + chart, shown at the bottom (one run only, not a history)
 SITE = os.environ.get("REPORT_SITE") == "1"   # GitHub Actions build for the website (no local helper, no xlsx)
 ACTIONS = "https://github.com/pocketlabgames/social-report/actions/workflows/report.yml"
@@ -39,6 +40,10 @@ COLOR = {"instagram": "#E87BA4", "facebook": "#2A78D6", "youtube": "#E34948", "t
 
 def fetch():
     from sources import meta, tiktok, youtube
+    try:
+        from sources import asc_lite
+    except ImportError:
+        asc_lite = None
     out, errors = {}, []
     import re, time
     from concurrent.futures import ThreadPoolExecutor
@@ -53,8 +58,13 @@ def fetch():
                     return {}, f"{m.__name__.split('.')[-1]} (3 tries): {msg}"[:200]
                 time.sleep(10 * attempt)
 
-    with ThreadPoolExecutor(3) as ex:   # the three sites in parallel
-        for got, err in ex.map(pull, (youtube, meta, tiktok)):
+    INSTALLS.clear()
+    srcs = [youtube, meta, tiktok] + ([asc_lite] if asc_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")) else [])
+    with ThreadPoolExecutor(4) as ex:   # the sites (and App Store installs) in parallel
+        for got, err in ex.map(pull, srcs):
+            if "ASC Installs Lite" in got:
+                d = got.pop("ASC Installs Lite")
+                INSTALLS.update({r.date: (None if pd.isna(r.installs) else int(r.installs)) for r in d.itertuples()})
             out.update(got)
             if err:
                 errors.append(err)
@@ -419,6 +429,105 @@ def posts_section(posts, phist, now):
             f"<div id='pcards'>{''.join(cards)}</div>{more}")
 
 
+def level_at(hist, snap, when, now):
+    """Total views (all sites) at the complete check closest to `when`; live `snap` counts as a check at `now`."""
+    best = None
+    for h in hist:
+        if not all(isinstance(h.get(p), dict) and h[p].get("views") is not None for p in PLAT):
+            continue
+        t = dt.datetime.strptime(h["checked_at"], "%Y-%m-%d %H:%M")
+        if best is None or abs(t - when) < abs(best[0] - when):
+            best = (t, sum(h[p]["views"] for p in PLAT))
+    if snap and all((snap.get(p) or {}).get("views") is not None for p in PLAT):
+        t, v = now, sum(snap[p]["views"] for p in PLAT)
+        if best is None or abs(t - when) < abs(best[0] - when):
+            best = (t, v)
+    return best
+
+
+def best_slot(posts, now):
+    """(slot name, posts, views per post per day) for the posting-time slot with the best views/day, or None."""
+    acc = {}
+    for r in posts:
+        try:
+            t = dt.datetime.strptime(r["created"], "%Y-%m-%d %H:%M")
+        except ValueError:
+            continue
+        h = t.hour if t.hour >= 5 else t.hour + 24
+        name = next(n for n, a, b in SLOTS if a <= h < b)
+        acc.setdefault(name, []).append(r["views"] / max((now - t).total_seconds() / 86400, 1.0))
+    if not acc:
+        return None
+    name, v = max(acc.items(), key=lambda kv: sum(kv[1]) / len(kv[1]))
+    return name, len(v), sum(v) / len(v)
+
+
+def week_box(snap, hist, posts, phist, installs, now):
+    """'This week' summary: views and installs vs the week before, best and weakest post, best time, what to try."""
+    e = html.escape
+    lines = []
+    a, b, c = level_at(hist, snap, now, now), level_at(hist, None, now - dt.timedelta(days=7), now), level_at(hist, None, now - dt.timedelta(days=14), now)
+    if a and b and (a[0] - b[0]).days >= 5:
+        this_w = a[1] - b[1]
+        txt = f"<b>{this_w:+,}</b> views in the last 7 days"
+        if c and (b[0] - c[0]).days >= 5 and (b[1] - c[1]) > 0:
+            last_w = b[1] - c[1]
+            txt += f" ({(this_w - last_w) / last_w * 100:+.0f}% vs the 7 days before)"
+        lines.append(txt)
+    if installs:
+        days = sorted(d for d in installs if installs[d] is not None)
+        w1 = [d for d in days if (now.date() - dt.date.fromisoformat(d)).days <= 7]
+        w2 = [d for d in days if 7 < (now.date() - dt.date.fromisoformat(d)).days <= 14]
+        i1, i2 = sum(installs[d] for d in w1), sum(installs[d] for d in w2)
+        txt = f"<b>{i1:,}</b> App Store installs in the last 7 days"
+        if w2:
+            txt += f" ({i1 - i2:+,} vs the 7 days before)"
+        if a and b and (a[0] - b[0]).days >= 5 and i1:
+            txt += f" · about 1 install per {max(a[1] - b[1], 0) / i1:,.0f} views"
+        lines.append(txt)
+    # best post of the week: most views gained over ~7 days (posts history), else the best new post
+    base = None
+    for h in phist:
+        t = dt.datetime.strptime(h["checked_at"], "%Y-%m-%d %H:%M")
+        if (now - t).total_seconds() >= 6.5 * 86400 and (base is None or t > base[0]):
+            base = (t, h["posts"])
+    byid = {r["id"]: r for r in posts}
+    if base:
+        gains = sorted(((r["views"] - base[1].get(r["id"], 0), r) for r in posts), key=lambda x: -x[0])
+        if gains and gains[0][0] > 0:
+            g, r = gains[0]
+            lines.append(f"Best post this week: <a class='tp' href='{e(r['url'])}' target='_blank' rel='noopener'>{e(r['title'][:70])}</a> on {NAME[r['site']]}, <b>+{g:,}</b> views")
+    else:
+        new = [r for r in posts if r["created"] >= (now - dt.timedelta(days=7)).strftime("%Y-%m-%d %H:%M")]
+        if new:
+            r = max(new, key=lambda r: r["views"])
+            lines.append(f"Best new post: <a class='tp' href='{e(r['url'])}' target='_blank' rel='noopener'>{e(r['title'][:70])}</a> on {NAME[r['site']]}, <b>{r['views']:,}</b> views")
+    older = [r for r in posts if (now - dt.timedelta(days=7)).strftime("%Y-%m-%d %H:%M") <= r["created"] <= (now - dt.timedelta(days=1)).strftime("%Y-%m-%d %H:%M")]
+    if older:
+        r = min(older, key=lambda r: r["views"])
+        lines.append(f"Weakest new post (over a day old): <a class='tp' href='{e(r['url'])}' target='_blank' rel='noopener'>{e(r['title'][:70])}</a> on {NAME[r['site']]}, {r['views']:,} views")
+    bs = best_slot(posts, now)
+    tries = []
+    if bs:
+        tries.append(f"post in the <b>{e(bs[0].lower())}</b> slot ({bs[2]:,.0f} views per post per day over {bs[1]} posts)")
+    if a and b and (a[0] - b[0]).days >= 5:
+        per = {}
+        for p in PLAT:
+            hb = min((h for h in hist if isinstance(h.get(p), dict) and h[p].get("views") is not None),
+                     key=lambda h: abs(dt.datetime.strptime(h["checked_at"], "%Y-%m-%d %H:%M") - (now - dt.timedelta(days=7))), default=None)
+            if hb and (snap.get(p) or {}).get("views") is not None:
+                per[p] = snap[p]["views"] - hb[p]["views"]
+        tot = sum(v for v in per.values() if v > 0)
+        if tot > 0:
+            p, v = max(per.items(), key=lambda kv: kv[1])
+            tries.append(f"lead with <b>{NAME[p]}</b>, {v / tot * 100:.0f}% of this week's new views")
+    if tries:
+        lines.append("Try next: " + "; ".join(tries) + ".")
+    if not lines:
+        return ""
+    return "<div class='week'><div class='weekh'>This week</div><ul>" + "".join(f"<li>{x}</li>" for x in lines) + "</ul></div>"
+
+
 SLOTS = [("Morning", 5, 11), ("Midday", 11, 14), ("Afternoon", 14, 17), ("Evening", 17, 21), ("Late night", 21, 29)]   # 21:00-04:59
 
 
@@ -458,7 +567,7 @@ def time_section(posts, now):
             f"<tbody>{trs}</tbody></table></div><p class='note hsn'>Site columns: average views per post (number of posts).</p>")
 
 
-def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None, old=None, dry=False, posts_html=""):
+def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None, old=None, dry=False, posts_html="", week_html="", installs=None):
     e = html.escape
     cols = [{"id": "label", "label": stamp}] + [{"id": p, "label": NAME[p]} for p in PLAT] + [
         {"id": "reddit", "label": "Reddit (manual)"}, {"id": "total", "label": "Total"}, {"id": "best", "label": "Best for ads"}]
@@ -488,7 +597,11 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         f"<span class='lg'><svg width='22' height='10'><line x1='0' y1='5' x2='22' y2='5' stroke='{COLOR[p]}' stroke-width='2'"
         f"{' stroke-dasharray=\"4 3\"' if p == 'instagram' else ''}/></svg>{NAME[p]} {fmt((snap.get(p) or {}).get('views'))}"
         f"{delta((snap.get(p) or {}).get('views'), (prev.get(p) or {}).get('views') if prev else None) or ''}</span>" for p in PLAT)
-    data = json.dumps({"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}})
+    inst_series = None
+    if installs:
+        today = dt.date.today()
+        inst_series = [installs.get((today - dt.timedelta(days=len(labels) - 1 - i)).isoformat()) for i in range(len(labels))]
+    data = json.dumps({"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}, "installs": inst_series})
     if dry:
         return {"stamp": stamp, "table": {"cols": cols, "rows": trows}, "legend": legend,
                 "data": {"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}}}
@@ -503,7 +616,16 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         sign = "+" if day["total"] >= 0 else "−"
         parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> {NAME[p]} {'+' if day['per'][p] >= 0 else '−'}{abs(day['per'][p]):,}" for p in PLAT)
         when = "Last 24 hours" if 21 <= day["hours"] <= 27 else f"Last {day['hours']} hours (closest check to 24 h ago: {day['since'].strftime('%b %-d, %-I:%M %p')})"
-        day_html = f"<div class='day'><div class='dayl'>{e(when)}</div><div class='dayv'>{sign}{abs(day['total']):,} <small>views</small></div><div class='dayp'>{parts}</div></div>"
+        inst = ""
+        if installs:
+            days = sorted(d for d in installs if installs[d] is not None)
+            y = (dt.date.today() - dt.timedelta(days=1)).isoformat()
+            w = sum(installs[d] for d in days if (dt.date.today() - dt.date.fromisoformat(d)).days <= 7)
+            if installs.get(y) is not None:
+                inst = f"<div class='dayp'>App Store installs: <b>{installs[y]:,}</b> yesterday · <b>{w:,}</b> last 7 days</div>"
+            else:
+                inst = f"<div class='dayp'>App Store installs: <b>{w:,}</b> last 7 days (Apple hasn’t posted yesterday yet)</div>"
+        day_html = f"<div class='day'><div class='dayl'>{e(when)}</div><div class='dayv'>{sign}{abs(day['total']):,} <small>views</small></div><div class='dayp'>{parts}</div>{inst}</div>"
     stale_html = "".join(f"<p class='warn'>{NAME[p]} couldn’t be pulled after 3 tries, so its numbers are from the last good check ({e(t)}).</p>" for p, t in stale.items())
     if len(snap) == len(PLAT) and not stale:   # keep the last complete run (Mac report cache)
         os.makedirs(os.path.dirname(LAST), exist_ok=True)
@@ -537,7 +659,8 @@ table.posts td.rl{{text-align:left}} table.posts td.tt{{white-space:normal;min-w
 @media (min-width:701px){{#pcards{{display:none}}}} .pc{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:0 0 10px}} .pct{{font-weight:600;line-height:1.3}}
 .pcm{{color:var(--muted);font-size:12px;margin:3px 0 8px}} .pcg{{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}} .pcg div{{display:flex;flex-direction:column}}
 .pcg b{{font-size:15px;font-variant-numeric:tabular-nums}} .pcg small{{font-size:11px;color:var(--muted)}}
-#more{{margin:4px 0 0}} tr.bestrow th,tr.bestrow td{{background:rgba(42,120,214,.12)}} table.slots small{{color:var(--muted);font-weight:400}}
+#more{{margin:4px 0 0}} .week{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:0 0 14px}}
+.weekh{{color:var(--ink2);font-weight:500;margin-bottom:6px}} .week ul{{margin:0;padding-left:18px;color:var(--ink)}} .week li{{margin:3px 0;line-height:1.4}} tr.bestrow th,tr.bestrow td{{background:rgba(42,120,214,.12)}} table.slots small{{color:var(--muted);font-weight:400}}
 @media (max-width:700px){{.hsn{{display:none}} table.slots th,table.slots td{{padding:8px 5px;font-size:13px}} table.slots small{{display:block;font-size:11px}}}}
 tr.pick td{{text-align:left}} .warn{{margin:0 0 10px;padding:8px 12px;border-radius:8px;background:#FFF4CC;color:#5c4a00;font-size:14px}} .hist td,.hist th{{color:var(--ink2);font-size:14px}} .dl{{color:var(--muted);font-size:12px}} b{{font-weight:600}}
 .lgs{{display:flex;flex-wrap:wrap;gap:16px;margin:28px 0 8px;font-size:12px;color:var(--ink2)}} .lg{{display:flex;align-items:center;gap:6px}}
@@ -558,12 +681,12 @@ h2.ph{{font-size:18px;font-weight:500;margin:48px 0 4px;padding-top:20px;border-
 <div class="bar"><button id="refresh" class="b red">Refresh</button><button id="edit" class="b blue">Edit Layout</button>
 <span id="tools" hidden><select id="addc"></select><select id="addr"></select><button id="cancel" class="b gray">Cancel</button><button id="reset" class="b gray">Reset Layout</button></span>
 <span id="msg" class="note"></span></div>
-{day_html}{stale_html}<div class="wrap tw"><table id="t"></table></div><div id="m"></div>
+{day_html}{week_html}{stale_html}<div class="wrap tw"><table id="t"></table></div><div id="m"></div>
 <p class="note">YouTube average uses public posts only. Facebook comments = viewer comments (the Page's own link comments are left out). Comments = viewer comments only (our own replies and pinned comments are left out). Total excludes Reddit. {e(rnote)}</p>
 <div class="lgs">{legend}</div>
 <h2 class="sh">Views gained per day</h2>
 <div class="chart"><canvas id="c" role="img" aria-label="Views gained per day per platform, last 14 days"></canvas></div>
-<p class="note">Last check of each day vs the day before; the last bar is today so far. Days with no check share the gain evenly.</p>
+<p class="note">Bars: last check of each day vs the day before; the last bar is today so far. Days with no check share the gain evenly. Green line: App Store first downloads per day (right axis; Apple posts each day by the next morning).</p>
 {posts_html}
 <p>{top_line}</p>
 {('<ul>' + err + '</ul>') if err else ''}
@@ -740,12 +863,14 @@ const C = {{Instagram:['#E87BA4','circle',[6,4]], Facebook:['#2A78D6','rect',[]]
 const fmt = v => Math.round(v).toLocaleString(), sg = v => (v < 0 ? '−' : '+') + fmt(Math.abs(v));
 const prevVal = (d, i) => {{ for(let j = i - 1; j >= 0; j--) if(d[j] != null) return [d[j], j]; return [null, -1]; }};
 function mk(canvas, D) {{ if (!canvas) return; const chart = new Chart(canvas, {{type:'bar',
- data:{{labels:D.labels, datasets:Object.entries(D.series).map(([n, d]) => ({{label:n, data:d, backgroundColor:C[n][0], borderRadius:3, maxBarThickness:34}}))}},
+ data:{{labels:D.labels, datasets:Object.entries(D.series).map(([n, d]) => ({{label:n, data:d, backgroundColor:C[n][0], borderRadius:3, maxBarThickness:34, order:2}}))
+   .concat(D.installs ? [{{type:'line', label:'Installs', data:D.installs, borderColor:'#1E9E55', backgroundColor:'#1E9E55', yAxisID:'y2', pointRadius:3, borderWidth:2, tension:0.2, spanGaps:true, order:1}}] : [])}},
  options:{{responsive:true, maintainAspectRatio:false, interaction:{{mode:'index', intersect:false}},
   plugins:{{legend:{{display:false}}, tooltip:{{callbacks:{{
-   title: it => {{ const t = it.reduce((s, c) => s + (c.parsed.y || 0), 0); return it[0].label + ' · ' + sg(t) + ' views'; }},
-   label: c => c.dataset.label + ': ' + sg(c.parsed.y) }}}}}},
-  scales:{{x:{{stacked:true, grid:{{display:false}}, ticks:{{color:muted, maxRotation:0, autoSkip:true}}}}, y:{{stacked:true, beginAtZero:true, grid:{{color:grid}}, ticks:{{color:muted, callback:v => v.toLocaleString()}}, title:{{display:true, text:'Views gained', color:muted}}}}}}}}}}); }}
+   title: it => {{ const t = it.filter(c => c.dataset.type !== 'line').reduce((s, c) => s + (c.parsed.y || 0), 0); return it[0].label + ' · ' + sg(t) + ' views'; }},
+   label: c => c.dataset.type === 'line' ? 'Installs: ' + fmt(c.parsed.y) : c.dataset.label + ': ' + sg(c.parsed.y) }}}}}},
+  scales:{{x:{{stacked:true, grid:{{display:false}}, ticks:{{color:muted, maxRotation:0, autoSkip:true}}}}, y:{{stacked:true, beginAtZero:true, grid:{{color:grid}}, ticks:{{color:muted, callback:v => v.toLocaleString()}}, title:{{display:true, text:'Views gained', color:muted}}}},
+   ...(D.installs ? {{y2:{{position:'right', beginAtZero:true, grid:{{display:false}}, ticks:{{color:'#1E9E55', precision:0}}, title:{{display:true, text:'Installs', color:'#1E9E55'}}}}}} : {{}})}}}}}}); }}
 mk(document.getElementById('c'), D); if (OLD) mk(document.getElementById('pc'), OLD.data);
 </script></body></html>"""
     open(OUT_HTML, "w").write(doc)
@@ -836,7 +961,9 @@ def main():
     if complete and POSTS:
         phist.append({"checked_at": now.strftime("%Y-%m-%d %H:%M"), "posts": {r["id"]: r["views"] for r in POSTS}})
         json.dump(phist, open(POSTS_HIST, "w"))
-    write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist, stale, day, old, posts_html=posts_html)
+    week_html = week_box(snap, before, POSTS, phist[:-1] if (complete and POSTS) else phist, INSTALLS, now)
+    write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist, stale, day, old, posts_html=posts_html,
+               week_html=week_html, installs=dict(INSTALLS) or None)
     if not SITE:
         write_xlsx(stamp, rows, labels, series)
     if complete:
