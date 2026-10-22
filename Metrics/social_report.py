@@ -87,6 +87,12 @@ def fetch():
             return round(float((w.avg_watch_s / w.length_s * 100 * w.views).sum() / w.views.sum()), 1) if len(w) else None
         return None
 
+    def v3(d):   # 3-second views: Facebook post_video_views, YouTube engagedViews; others have none
+        col = "video_views_3s" if "video_views_3s" in d else "engaged_views" if "engaged_views" in d else None
+        if not col or d[col].isna().all():
+            return None
+        return int(d[col].fillna(0).sum())
+
     def posts(name, likes):
         d = out.get(name)
         if d is None or d.empty:
@@ -96,7 +102,8 @@ def fetch():
                 "likes": lk, "comments": int(d.comments.fillna(0).sum()) if "comments" in d else None,
                 "top_url": d.sort_values("views").iloc[-1].get("url", ""),
                 "avg_watch_s": watch(d), "watch_pct": watch_pct(d),
-                "likes_per_k": round(lk / views * 1000, 1) if lk is not None and views else None}
+                "likes_per_k": round(lk / views * 1000, 1) if lk is not None and views else None,
+                "views_3s": v3(d)}
 
     def collect(site, name, likes, title_col, created_col):   # one row per post for the Posts table
         d = out.get(name)
@@ -281,6 +288,7 @@ def delta(v, old):
 
 def build_rows(snap, prev, rd):
     metrics = [("Total views", "views"), ("Avg views per post", "avg"), ("Top post views", "top_views"),
+               ("3-second views", "views_3s"), ("3-s views % of views", "hold_pct"),
                ("Avg watch time (s)", "avg_watch_s"), ("Watched % of video", "watch_pct"), ("Likes per 1K views", "likes_per_k"),
                ("Likes / upvotes", "likes")]
     rows = []
@@ -290,6 +298,10 @@ def build_rows(snap, prev, rd):
             s, o = snap.get(p), prev.get(p) if prev else None
             vals[p] = avg(p, s) if key == "avg" else (s or {}).get(key)
             olds[p] = avg(p, o) if key == "avg" else (o or {}).get(key)
+            if key == "hold_pct":
+                for d, src in ((vals, s), (olds, o)):
+                    if src and src.get("views_3s") is not None and src.get("views"):
+                        d[p] = round(src["views_3s"] / src["views"] * 100, 1)
             if key == "likes_per_k":   # older checks stored only likes + views
                 for d, src in ((vals, s), (olds, o)):
                     if d[p] is None and src and src.get("likes") is not None and src.get("views"):
@@ -319,12 +331,17 @@ def build_rows(snap, prev, rd):
                 pairs = [(src[p]["watch_pct"], src[p]["views"]) for p in PLAT if src.get(p) and src[p].get("watch_pct") is not None and src[p].get("views")]
                 return round(sum(a * v for a, v in pairs) / sum(v for _, v in pairs), 1) if pairs else None
             tot, otot = wavg(snap), (wavg(prev) if prev else None)
+        if key == "hold_pct":
+            def hp(src):
+                pairs = [(src[p]["views_3s"], src[p]["views"]) for p in PLAT if src.get(p) and src[p].get("views_3s") is not None and src[p].get("views")]
+                return round(sum(a for a, _ in pairs) / sum(v for _, v in pairs) * 100, 1) if pairs else None
+            tot, otot = hp(snap), (hp(prev) if prev else None)
         if key == "likes_per_k":
             def lpk(src):
                 tv = sum((src.get(p) or {}).get("views") or 0 for p in PLAT); tl = sum((src.get(p) or {}).get("likes") or 0 for p in PLAT)
                 return round(tl / tv * 1000, 1) if tv else None
             tot, otot = lpk(snap), (lpk(prev) if prev else None)
-        rkey = {"avg": None, "followers": None, "avg_watch_s": None, "watch_pct": None, "likes_per_k": None}.get(key, key)
+        rkey = {"avg": None, "followers": None, "avg_watch_s": None, "watch_pct": None, "likes_per_k": None, "views_3s": None, "hold_pct": None}.get(key, key)
         rv = None if not rd or rkey is None else rd.get(rkey)
         if key == "likes_per_k" and rd and rd.get("views") and rd.get("likes") is not None:
             rv = round(rd["likes"] / rd["views"] * 1000, 1)
@@ -662,7 +679,7 @@ def time_section(posts, now):
             f"<tbody>{trs}</tbody></table></div><p class='note hsn'>Site columns: average views per post (number of posts).</p>")
 
 
-def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None, old=None, dry=False, posts_html="", week_html="", installs=None, today=None):
+def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None, old=None, dry=False, posts_html="", week_html="", installs=None, today=None, day_base=None):
     e = html.escape
     cols = [{"id": "label", "label": stamp}] + [{"id": p, "label": NAME[p]} for p in PLAT] + [
         {"id": "total", "label": "Total"}, {"id": "best", "label": "Best for ads"}]   # Reddit column paused (Guy, Oct 22)
@@ -736,6 +753,11 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         allv = sum((snap.get(p) or {}).get("views") or 0 for p in PLAT)
         tot_dl = sum(v for v in installs.values() if v is not None) if installs else None
         right = f"<div class='dayt'>{allv:,} <small>total views</small></div>" + (f"<div class='dayt'>{tot_dl:,} <small>total downloads</small></div>" if tot_dl is not None else "")
+        v3now = {p: (snap.get(p) or {}).get("views_3s") for p in PLAT}
+        v3b = {p: (day_base.get(p) or {}).get("views_3s") for p in PLAT} if day_base else {}
+        v3parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> {NAME[p]} {v3now[p]:,}" + (f" <small>(+{v3now[p] - v3b[p]:,} 24 h)</small>" if v3b.get(p) is not None and v3now[p] - v3b[p] >= 0 else "") for p in PLAT if v3now[p] is not None)
+        v3line = f"<div class='dayp day3'>3-second views: {v3parts} <small>· Instagram and TikTok don’t report this</small></div>" if v3parts else ""
+        inst = v3line + inst
         day_html = (f"<div class='day'><div class='dayl'>{head}</div><div class='dayv'>{big} <small>views</small> {sub}</div>"
                     f"<div class='dayr'>{right}</div><div class='dayp dayps'>{parts}</div>{inst}</div>")
     stale_html = "".join(f"<p class='warn'>{NAME[p]} couldn’t be pulled after 3 tries, so its numbers are from the last good check ({e(t)}).</p>" for p, t in stale.items())
@@ -765,10 +787,10 @@ th{{font-weight:500;color:var(--ink2)}} th.rl{{text-align:left}} thead th{{borde
 @media (max-width:700px){{main{{padding:16px 14px}} h1{{font-size:24px}} .sub{{font-size:14px}} .tw,.ptw,#edit{{display:none}} #m{{display:block}} table.vt th,table.vt td{{padding:5px 3px;font-size:12px}}
 
  table.vt .aw{{display:none}} .vch{{flex-wrap:wrap}} .hs{{display:none}} .hist th,.hist td{{padding:8px 6px}} .chart{{height:260px}} .note{{font-size:12px}} .lgs{{gap:10px 16px}} h2.ph{{margin-top:32px}}}}
-.day{{display:grid;grid-template-columns:1fr auto;grid-template-areas:"l r" "v r" "p r" "i r";align-items:start;column-gap:16px;row-gap:4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:0 0 14px}}
+.day{{display:grid;grid-template-columns:1fr auto;grid-template-areas:"l r" "v r" "p r" "t r" "i r";align-items:start;column-gap:16px;row-gap:4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:0 0 14px}}
 .dayv .sub2{{display:block;font-size:13px}} .dayt{{font-size:26px;font-weight:600;color:#5f5e5a;font-variant-numeric:tabular-nums;margin-top:6px;text-align:right}} .dayt small{{font-size:14px;color:var(--muted);font-weight:400}}
 @media (prefers-color-scheme: dark){{.dayt{{color:#a9a89f}}}} .day{{position:sticky;top:8px;z-index:5;box-shadow:0 4px 14px rgba(0,0,0,.14)}} .dayl{{color:var(--ink2);font-weight:500}} .dayl small{{color:var(--muted);font-weight:400;font-size:12px}} .dayl{{grid-area:l}} .dayv{{grid-area:v;font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;text-align:left;margin-top:2px;line-height:1.15}}
-.dayr{{grid-area:r;text-align:right;margin-top:2px;align-self:start}} .day .dayp.dayps{{grid-area:p}} .day .dayp.dayi{{grid-area:i}} .dayr .dayt{{margin-top:0;line-height:1.15}} .dayr .dayt small{{display:block;font-size:13px}} .dayr .dayt+.dayt{{margin-top:8px}} .day .dayp{{grid-column:auto}} .dayv small{{font-size:14px;color:var(--muted);font-weight:400}}
+.dayr{{grid-area:r;text-align:right;margin-top:2px;align-self:start}} .day .dayp.dayps{{grid-area:p}} .day .dayp.dayi{{grid-area:i}} .day .dayp.day3{{grid-area:t}} .dayr .dayt{{margin-top:0;line-height:1.15}} .dayr .dayt small{{display:block;font-size:13px}} .dayr .dayt+.dayt{{margin-top:8px}} .day .dayp{{grid-column:auto}} .dayv small{{font-size:14px;color:var(--muted);font-weight:400}}
 .dayp{{grid-column:1/-1;font-size:13px;color:var(--ink2)}} a.tp{{color:inherit;text-decoration:underline;text-decoration-color:#2A78D6;text-underline-offset:3px}}
 h2.sh{{font-size:18px;font-weight:500;margin:36px 0 10px}} .dot{{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}}
 .old{{display:none}} .showold .old{{display:revert}} .vgrid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}} @media (max-width:900px){{.vgrid{{grid-template-columns:1fr}}}}
@@ -780,7 +802,7 @@ table.vt tr.lead td,table.vt tr.lead th{{background:rgba(42,120,214,.10)}} table
 #more{{margin:4px 0 0}} .week{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:0 0 14px}}
 .weekh{{color:var(--ink2);font-weight:500;margin-bottom:6px}} .week ul{{margin:0;padding-left:18px;color:var(--ink)}} .week li{{margin:3px 0;line-height:1.4}} tr.bestrow th,tr.bestrow td{{background:rgba(42,120,214,.12)}} table.slots small{{color:var(--muted);font-weight:400}}
 @media (max-width:700px){{.hsn{{display:none}} table.slots th,table.slots td{{padding:8px 5px;font-size:13px}} table.slots small{{display:block;font-size:11px}}
-.day{{grid-template-columns:1fr;grid-template-areas:"l" "v" "p" "i" "r"}} .day .dayp{{grid-column:1/-1}}
+.day{{grid-template-columns:1fr;grid-template-areas:"l" "v" "p" "t" "i" "r"}} .day .dayp{{grid-column:1/-1}}
 .dayr{{display:flex;justify-content:space-between;align-items:flex-end;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}} .dayr .dayt{{margin:0 !important}} .dayr .dayt:first-child{{text-align:left}} .dayr .dayt:last-child{{text-align:right}}}}
 tr.pick td{{text-align:left}} .warn{{margin:0 0 10px;padding:8px 12px;border-radius:8px;background:#FFF4CC;color:#5c4a00;font-size:14px}} .hist td,.hist th{{color:var(--ink2);font-size:14px}} .dl{{color:var(--muted);font-size:12px}} b{{font-weight:600}}
 .lgs{{display:flex;flex-wrap:wrap;gap:16px;margin:28px 0 8px;font-size:12px;color:var(--ink2)}} .lg{{display:flex;align-items:center;gap:6px}}
@@ -1084,7 +1106,8 @@ def main():
         json.dump(phist, open(POSTS_HIST, "w"))
     week_html = week_box(snap, before, POSTS, phist[:-1] if (complete and POSTS) else phist, INSTALLS, now)
     write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist, stale, day, old, posts_html=posts_html,
-               week_html=week_html, installs=dict(INSTALLS) or None, today=today)
+               week_html=week_html, installs=dict(INSTALLS) or None, today=today,
+               day_base=next((h for h in before if day and h["checked_at"] == day["since"].strftime("%Y-%m-%d %H:%M")), None))
     if not SITE:
         write_xlsx(stamp, rows, labels, series)
     if complete:

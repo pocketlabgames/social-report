@@ -70,6 +70,15 @@ def _post_insights(post_id, token):
     return out
 
 
+def _post_insights_lite(post_id, token):   # website: only the 3-second view count
+    try:
+        data = _get(f"{post_id}/insights", token, metric="post_video_views")["data"]
+        life = [d for d in data if d.get("period") == "lifetime"] or data
+        return {"post_video_views": life[0]["values"][0]["value"]}
+    except (RuntimeError, IndexError, KeyError):
+        return {}
+
+
 def _media_insights(mid, token):
     row, mets = {}, (["views", "likes", "comments", "ig_reels_avg_watch_time"] if LITE else IG_MEDIA_METRICS)   # all the website shows
     try:
@@ -113,7 +122,7 @@ def fetch(keys_dir, today):
         ins = {m["name"]: m["values"][0]["value"] for m in _get(f"{v['id']}/video_insights", pt).get("data", [])}
         social = ins.get("post_video_social_actions") or {}
         reacts = ins.get("post_video_likes_by_reaction_type") or {}
-        post = _post_insights(f"{pid}_{v['post_id']}", pt) if v.get("post_id") and not LITE else {}
+        post = (_post_insights(f"{pid}_{v['post_id']}", pt) if not LITE else _post_insights_lite(f"{pid}_{v['post_id']}", pt)) if v.get("post_id") else {}
         row = {
             "snapshot_date": snap, "video_id": v["id"], "post_id": v.get("post_id"), "type": "Reel",
             "created": _et(v["created_time"]), "caption": (v.get("description") or "").split("\n")[0][:120],
