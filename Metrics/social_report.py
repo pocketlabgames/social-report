@@ -776,7 +776,7 @@ body{{margin:0;background:var(--bg);color:var(--ink);font-family:Aptos,-apple-sy
 main{{max-width:1100px;margin:0 auto;padding:24px 16px}}
 h1{{font-size:22px;font-weight:500;margin:0 0 4px}} .sub{{color:var(--muted);margin:0 0 20px}}
 .wrap{{overflow-x:auto}} table{{border-collapse:collapse;width:100%;background:var(--card)}}
-th,td{{border-bottom:1px solid var(--line);padding:8px 10px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}}
+th,td{{border-bottom:1px solid var(--line);padding:8px 10px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}} #t td:nth-last-child(1),#t th:nth-last-child(1){{border-left:1px solid var(--line);padding-left:16px}} #t td:nth-child(2),#t th:nth-child(2){{padding-right:16px;border-right:1px solid var(--line)}}
 th{{font-weight:500;color:var(--ink2)}} th.rl{{text-align:left}} thead th{{border-bottom:1px solid var(--muted)}}
 #m{{display:none}} .mc{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0 0 10px}}
 .mh{{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px}} .ml{{font-weight:600;font-size:16px}}
