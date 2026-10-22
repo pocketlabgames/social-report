@@ -290,6 +290,10 @@ def build_rows(snap, prev, rd):
             s, o = snap.get(p), prev.get(p) if prev else None
             vals[p] = avg(p, s) if key == "avg" else (s or {}).get(key)
             olds[p] = avg(p, o) if key == "avg" else (o or {}).get(key)
+            if key == "likes_per_k":   # older checks stored only likes + views
+                for d, src in ((vals, s), (olds, o)):
+                    if d[p] is None and src and src.get("likes") is not None and src.get("views"):
+                        d[p] = round(src["likes"] / src["views"] * 1000, 1)
         known = [v for v in vals.values() if v is not None]
         top = max(known) if known else None
         best = [NAME[p] for p in PLAT if vals[p] is not None and vals[p] == top] if top is not None else []
@@ -681,9 +685,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
                 "data": {"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}}}
     olds = json.dumps(old).replace("</", "<\\/") if old else "null"
     prev_html = (f"""<h2 class="ph">24 hours ago</h2><p class="sub">{e(old['stamp'])} · the check the card above compares with</p>
-<div class="wrap ptw"><table id="pt"></table></div>
-<div class="lgs">{old['legend']}</div>
-<div class="chart"><canvas id="pc" role="img" aria-label="24 hours ago: views gained per day per platform"></canvas></div>""") if old else ""
+<div class="wrap ptw"><table id="pt"></table></div>""") if old else ""
     stale = stale or {}
     day_html = ""
     if day:
@@ -954,7 +956,7 @@ function mk(canvas, D) {{ if (!canvas) return; const chart = new Chart(canvas, {
    label: c => c.dataset.type === 'line' ? 'Installs: ' + fmt(c.parsed.y) : c.dataset.label + ': ' + sg(c.parsed.y) }}}}}},
   scales:{{x:{{stacked:true, grid:{{display:false}}, ticks:{{color:muted, maxRotation:0, autoSkip:true}}}}, y:{{stacked:true, beginAtZero:true, grid:{{color:grid}}, ticks:{{color:muted, callback:v => v.toLocaleString()}}, title:{{display:true, text:'Views gained', color:muted}}}},
    ...(D.installs ? {{y2:{{position:'right', beginAtZero:true, grid:{{display:false}}, ticks:{{color:'#1E9E55', precision:0}}, title:{{display:true, text:'Installs', color:'#1E9E55'}}}}}} : {{}})}}}}}}); }}
-mk(document.getElementById('c'), D); if (OLD) mk(document.getElementById('pc'), OLD.data);
+mk(document.getElementById('c'), D);
 </script></body></html>"""
     open(OUT_HTML, "w").write(doc)
     return {"stamp": stamp, "table": {"cols": cols, "rows": trows}, "legend": legend,
