@@ -710,6 +710,10 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
             tsign = "+" if today["total"] >= 0 else "−"
             big = f"{tsign}{abs(today['total']):,}"
             sub = f"<small class='sub2'>({sign}{abs(day['total']):,} past 24 h)</small>"
+            if prev and all(isinstance(prev.get(p), dict) and prev[p].get("views") is not None and (snap.get(p) or {}).get("views") is not None for p in PLAT):
+                mv = sum(snap[p]["views"] - prev[p]["views"] for p in PLAT)
+                since = dt.datetime.strptime(prev["checked_at"], "%Y-%m-%d %H:%M").strftime("%-I:%M %p")
+                sub = f"<small class='sub2'>({'+' if mv >= 0 else '−'}{abs(mv):,} since the {since} refresh)</small>" + sub
             head = "Views today" + (f" <small>since the {today['since'].strftime('%b %-d, %-I:%M %p')} check</small>" if abs(today["off_h"]) > 2 else "")
             parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> {NAME[p]} {'+' if today['per'][p] >= 0 else '−'}{abs(today['per'][p]):,}" for p in PLAT)
         day_html = f"<div class='day'><div class='dayl'>{head}</div><div class='dayv'>{big} <small>views</small> {sub}</div><div class='dayp'>{parts}</div>{inst}</div>"
