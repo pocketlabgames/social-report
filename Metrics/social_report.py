@@ -734,8 +734,10 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
             head = "Views today" + (f" <small>since the {today['since'].strftime('%b %-d, %-I:%M %p')} check</small>" if abs(today["off_h"]) > 2 else "")
             parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> {NAME[p]} {'+' if today['per'][p] >= 0 else '−'}{abs(today['per'][p]):,}" for p in PLAT)
         allv = sum((snap.get(p) or {}).get("views") or 0 for p in PLAT)
-        day_html = (f"<div class='day'><div class='dayl'>{head}</div>"
-                    f"<div class='dayv'>{big} <small>views</small> {sub}<div class='dayt'>{allv:,} <small>total views</small></div></div><div class='dayp'>{parts}</div>{inst}</div>")
+        tot_dl = sum(v for v in installs.values() if v is not None) if installs else None
+        right = f"<div class='dayt'>{allv:,} <small>total views</small></div>" + (f"<div class='dayt'>{tot_dl:,} <small>total downloads</small></div>" if tot_dl is not None else "")
+        day_html = (f"<div class='day'><div class='dayleft'><div class='dayl'>{head}</div><div class='dayv'>{big} <small>views</small> {sub}</div></div>"
+                    f"<div class='dayr'>{right}</div><div class='dayp'>{parts}</div>{inst}</div>")
     stale_html = "".join(f"<p class='warn'>{NAME[p]} couldn’t be pulled after 3 tries, so its numbers are from the last good check ({e(t)}).</p>" for p, t in stale.items())
     if len(snap) == len(PLAT) and not stale:   # keep the last complete run (Mac report cache)
         os.makedirs(os.path.dirname(LAST), exist_ok=True)
@@ -762,9 +764,9 @@ th{{font-weight:500;color:var(--ink2)}} th.rl{{text-align:left}} thead th{{borde
 .mc small,.mp small{{color:var(--muted);font-size:12px;font-weight:400}} .mc small.up{{color:#1E9E55}} .mpick{{font-size:17px}}
 @media (max-width:700px){{main{{padding:16px 14px}} h1{{font-size:24px}} .sub{{font-size:14px}} .tw,.ptw,#edit{{display:none}} #m{{display:block}} table.vt th,table.vt td{{padding:5px 3px;font-size:12px}}
  table.vt .aw{{display:none}} .vch{{flex-wrap:wrap}} .hs{{display:none}} .hist th,.hist td{{padding:8px 6px}} .chart{{height:260px}} .note{{font-size:12px}} .lgs{{gap:10px 16px}} h2.ph{{margin-top:32px}}}}
-.day{{display:grid;grid-template-columns:auto auto;align-items:baseline;column-gap:16px;row-gap:4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:0 0 14px}}
+.day{{display:grid;grid-template-columns:1fr auto;align-items:start;column-gap:16px;row-gap:4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:0 0 14px}}
 .dayv .sub2{{display:block;font-size:13px}} .dayt{{font-size:26px;font-weight:600;color:#5f5e5a;font-variant-numeric:tabular-nums;margin-top:6px;text-align:right}} .dayt small{{font-size:14px;color:var(--muted);font-weight:400}}
-@media (prefers-color-scheme: dark){{.dayt{{color:#a9a89f}}}} .day{{position:sticky;top:8px;z-index:5;box-shadow:0 4px 14px rgba(0,0,0,.14)}} .dayl{{color:var(--ink2);font-weight:500}} .dayl small{{color:var(--muted);font-weight:400;font-size:12px}} .dayv{{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;text-align:right}} .dayv small{{font-size:14px;color:var(--muted);font-weight:400}}
+@media (prefers-color-scheme: dark){{.dayt{{color:#a9a89f}}}} .day{{position:sticky;top:8px;z-index:5;box-shadow:0 4px 14px rgba(0,0,0,.14)}} .dayl{{color:var(--ink2);font-weight:500}} .dayl small{{color:var(--muted);font-weight:400;font-size:12px}} .dayv{{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;text-align:left;margin-top:2px}} .dayr{{text-align:right;padding-top:22px}} .dayr .dayt{{margin-top:0}} .dayr .dayt+.dayt{{margin-top:4px}} .dayv small{{font-size:14px;color:var(--muted);font-weight:400}}
 .dayp{{grid-column:1/-1;font-size:13px;color:var(--ink2)}} a.tp{{color:inherit;text-decoration:underline;text-decoration-color:#2A78D6;text-underline-offset:3px}}
 h2.sh{{font-size:18px;font-weight:500;margin:36px 0 10px}} .dot{{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}}
 .old{{display:none}} .showold .old{{display:revert}} .vgrid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}} @media (max-width:900px){{.vgrid{{grid-template-columns:1fr}}}}
