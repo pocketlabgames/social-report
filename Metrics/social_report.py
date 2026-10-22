@@ -665,7 +665,7 @@ def time_section(posts, now):
 def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None, old=None, dry=False, posts_html="", week_html="", installs=None, today=None):
     e = html.escape
     cols = [{"id": "label", "label": stamp}] + [{"id": p, "label": NAME[p]} for p in PLAT] + [
-        {"id": "reddit", "label": "Reddit (manual)"}, {"id": "total", "label": "Total"}, {"id": "best", "label": "Best for ads"}]
+        {"id": "total", "label": "Total"}, {"id": "best", "label": "Best for ads"}]   # Reddit column paused (Guy, Oct 22)
     trows = []
     for r in rows:
         cells = {}
@@ -797,7 +797,7 @@ h2.ph{{font-size:18px;font-weight:500;margin:48px 0 4px;padding-top:20px;border-
 <div class="chart"><canvas id="c" role="img" aria-label="Views gained per day per platform, last 14 days"></canvas></div>
 <p class="note">Bars: last check of each day vs the day before; the last bar is today so far. Days with no check share the gain evenly. Green line: App Store first downloads per day (right axis; Apple posts each day by the next morning).</p>
 {stale_html}<div class="wrap tw"><table id="t"></table></div><div id="m"></div>
-<p class="note">YouTube average uses public posts only. Facebook comments = viewer comments (the Page's own link comments are left out). Comments = viewer comments only (our own replies and pinned comments are left out). Total excludes Reddit. {e(rnote)}</p>
+<p class="note">YouTube average uses public posts only. Facebook comments = viewer comments (the Page's own link comments are left out). Comments = viewer comments only (our own replies and pinned comments are left out).</p>
 {posts_html}
 <p>{top_line}</p>
 {('<ul>' + err + '</ul>') if err else ''}
@@ -1044,7 +1044,7 @@ def main():
             if last:
                 snap[p] = dict(last[p], top_url="")
                 stale[p] = dt.datetime.strptime(last["checked_at"], "%Y-%m-%d %H:%M").strftime("%b %-d, %-I:%M %p")
-    rd = reddit()
+    rd = None   # Reddit tracking paused (Guy, Oct 22); reddit() still works if we bring it back
     rows = build_rows(snap, prev, rd)
     labels, series = gains(hist, snap, now); source = "history file"
     labels[-1] += " (so far)"
