@@ -26,6 +26,8 @@ REDDIT = os.path.join(HERE, "data", "Reddit_Posts_Manual.csv")
 OUT_HTML = os.path.join(HERE, "Social Report.html")
 OUT_XLSX = os.path.join(HERE, "Social Report.xlsx")
 LAYOUT = os.path.join(HERE, "report-layout.json")   # saved from the report's Edit Layout button
+POSTS_HIST = os.path.join(HERE, "posts-history.json")   # per-post views at every complete check (for +24 h per post)
+POSTS = []   # per-post rows from the latest fetch (filled by fetch())
 LAST = os.path.join(HERE, "cache", "report-last.json")   # the previous run's table + chart, shown at the bottom (one run only, not a history)
 SITE = os.environ.get("REPORT_SITE") == "1"   # GitHub Actions build for the website (no local helper, no xlsx)
 ACTIONS = "https://github.com/pocketlabgames/social-report/actions/workflows/report.yml"
@@ -66,15 +68,51 @@ def fetch():
         w = w[w.views > 0]
         return round(float((w[col] * w.views).sum() / w.views.sum()), 1) if len(w) else None
 
+    def watch_pct(d):   # views-weighted share of the video that is watched (%)
+        if "avg_view_pct" in d:
+            w = d[["avg_view_pct", "views"]].dropna(); w = w[w.views > 0]
+            return round(float((w.avg_view_pct * w.views).sum() / w.views.sum()), 1) if len(w) else None
+        if "avg_watch_s" in d and "length_s" in d:
+            w = d[["avg_watch_s", "length_s", "views"]].dropna(); w = w[(w.views > 0) & (w.length_s > 0)]
+            return round(float((w.avg_watch_s / w.length_s * 100 * w.views).sum() / w.views.sum()), 1) if len(w) else None
+        return None
+
     def posts(name, likes):
         d = out.get(name)
         if d is None or d.empty:
             return None
-        return {"posts": len(d), "views": int(d.views.fillna(0).sum()), "top_views": int(d.views.fillna(0).max()),
-                "likes": int(d[likes].fillna(0).sum()) if likes in d else None,
-                "comments": int(d.comments.fillna(0).sum()) if "comments" in d else None,
+        views, lk = int(d.views.fillna(0).sum()), (int(d[likes].fillna(0).sum()) if likes in d else None)
+        return {"posts": len(d), "views": views, "top_views": int(d.views.fillna(0).max()),
+                "likes": lk, "comments": int(d.comments.fillna(0).sum()) if "comments" in d else None,
                 "top_url": d.sort_values("views").iloc[-1].get("url", ""),
-                "avg_watch_s": watch(d)}
+                "avg_watch_s": watch(d), "watch_pct": watch_pct(d),
+                "likes_per_k": round(lk / views * 1000, 1) if lk is not None and views else None}
+
+    def collect(site, name, likes, title_col, created_col):   # one row per post for the Posts table
+        d = out.get(name)
+        if d is None or d.empty:
+            return
+        for _, r in d.iterrows():
+            if site == "youtube" and str(r.get("privacy", "public")) != "public":
+                continue
+            v = r.get("views"); v = int(v) if pd.notna(v) else 0
+            lk = r.get(likes) if likes in d else None; lk = int(lk) if pd.notna(lk) else None
+            ln = r.get("length_s") if "length_s" in d else None; ln = float(ln) if pd.notna(ln) else None
+            aw = r.get("avg_watch_s") if "avg_watch_s" in d else r.get("avg_view_s") if "avg_view_s" in d else None
+            aw = float(aw) if pd.notna(aw) else None
+            wp = r.get("avg_view_pct") if "avg_view_pct" in d else (aw / ln * 100 if aw is not None and ln else None)
+            wp = float(wp) if wp is not None and pd.notna(wp) else None
+            POSTS.append({"site": site, "id": f"{site}:{r.get('video_id', r.get('media_id', ''))}",
+                          "title": str(r.get(title_col) or "").split("\n")[0][:90], "created": str(r.get(created_col) or "")[:16],
+                          "length_s": ln, "views": v, "likes": lk,
+                          "comments": int(r.comments) if "comments" in d and pd.notna(r.get("comments")) else None,
+                          "avg_watch_s": aw, "watch_pct": wp, "url": str(r.get("url") or "")})
+
+    POSTS.clear()
+    collect("instagram", "IG Media", "likes", "caption", "created")
+    collect("facebook", "FB Reels", "reactions", "caption", "created")
+    collect("youtube", "YouTube Videos", "likes", "title", "published")
+    collect("tiktok", "TikTok Videos", "likes", "caption", "created")
 
     acc = out.get("Meta Accounts")
     acc = acc.iloc[-1].to_dict() if acc is not None and not acc.empty else {}
@@ -152,6 +190,38 @@ def avg(p, s):
     return round(s["views"] / s["posts"]) if s.get("posts") else None
 
 
+def gains(hist, snap, end, ndays=14):
+    """Views gained per day per platform for the ndays ending on `end` (a datetime): last check of each day,
+    the end day = `snap` (live) when given; a gap of several days spreads the gain evenly over the gap."""
+    days = [end.date() - dt.timedelta(days=n) for n in range(ndays, -1, -1)]   # one extra day in front for the first diff
+    level = {p: {} for p in PLAT}
+    for h in hist:
+        t = dt.datetime.strptime(h["checked_at"], "%Y-%m-%d %H:%M")
+        if t > end:
+            continue
+        for p in PLAT:
+            if isinstance(h.get(p), dict) and h[p].get("views") is not None:
+                level[p][t.date()] = h[p]["views"]   # later checks overwrite: last check of the day wins
+    if snap:
+        for p in PLAT:
+            if (snap.get(p) or {}).get("views") is not None:
+                level[p][end.date()] = snap[p]["views"]
+    series = {p: [None] * ndays for p in PLAT}
+    for p in PLAT:
+        known = sorted(d for d in level[p] if d <= end.date())
+        for d in days[1:]:
+            earlier = [k for k in known if k < d]
+            if d in level[p] and earlier:
+                k = earlier[-1]
+                per_day = (level[p][d] - level[p][k]) / (d - k).days
+                for n in range((d - k).days):   # spread over the gap (incl. this day)
+                    dd = d - dt.timedelta(days=n)
+                    if dd in days[1:]:
+                        series[p][days[1:].index(dd)] = round(per_day)
+    labels = [d.strftime("%b %-d") for d in days[1:]]
+    return labels, series
+
+
 def daily(now_label, snap):
     """Running total views per platform for the last 7 days (Eastern)."""
     today = dt.date.today()
@@ -200,8 +270,9 @@ def delta(v, old):
 
 
 def build_rows(snap, prev, rd):
-    metrics = [("Followers", "followers"), ("Posts", "posts"), ("Total views", "views"), ("Avg views per post", "avg"),
-               ("Top post views", "top_views"), ("Avg watch time (s)", "avg_watch_s"), ("Likes / upvotes", "likes"), ("Comments", "comments")]
+    metrics = [("Total views", "views"), ("Avg views per post", "avg"), ("Top post views", "top_views"),
+               ("Avg watch time (s)", "avg_watch_s"), ("Watched % of video", "watch_pct"), ("Likes per 1K views", "likes_per_k"),
+               ("Likes / upvotes", "likes")]
     rows = []
     for label, key in metrics:
         vals, olds = {}, {}
@@ -229,8 +300,20 @@ def build_rows(snap, prev, rd):
                 pairs = [(src[p]["avg_watch_s"], src[p]["views"]) for p in PLAT if src.get(p) and src[p].get("avg_watch_s") is not None and src[p].get("views")]
                 return round(sum(a * v for a, v in pairs) / sum(v for _, v in pairs), 1) if pairs else None
             tot, otot = wavg(snap), (wavg(prev) if prev else None)
-        rkey = {"avg": None, "followers": None, "avg_watch_s": None}.get(key, key)
+        if key == "watch_pct":
+            def wavg(src):
+                pairs = [(src[p]["watch_pct"], src[p]["views"]) for p in PLAT if src.get(p) and src[p].get("watch_pct") is not None and src[p].get("views")]
+                return round(sum(a * v for a, v in pairs) / sum(v for _, v in pairs), 1) if pairs else None
+            tot, otot = wavg(snap), (wavg(prev) if prev else None)
+        if key == "likes_per_k":
+            def lpk(src):
+                tv = sum((src.get(p) or {}).get("views") or 0 for p in PLAT); tl = sum((src.get(p) or {}).get("likes") or 0 for p in PLAT)
+                return round(tl / tv * 1000, 1) if tv else None
+            tot, otot = lpk(snap), (lpk(prev) if prev else None)
+        rkey = {"avg": None, "followers": None, "avg_watch_s": None, "watch_pct": None, "likes_per_k": None}.get(key, key)
         rv = None if not rd or rkey is None else rd.get(rkey)
+        if key == "likes_per_k" and rd and rd.get("views") and rd.get("likes") is not None:
+            rv = round(rd["likes"] / rd["views"] * 1000, 1)
         rows.append({"label": label, "vals": vals, "olds": olds, "top": top, "best": best, "total": tot, "ototal": otot, "reddit": rv})
     return rows
 
@@ -291,7 +374,52 @@ def history_html(hist):
             f"<tbody>{''.join(reversed(out))}</tbody></table></div>")
 
 
-def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None, old=None, dry=False):
+def posts_section(posts, phist, now):
+    """Every public post, newest first (last 10 days open, the rest behind a button): desktop table + phone cards."""
+    if not posts:
+        return ""
+    e = html.escape
+    base = None   # per-post views at the check closest to 24 h ago
+    target = now - dt.timedelta(hours=24)
+    for h in phist:
+        t = dt.datetime.strptime(h["checked_at"], "%Y-%m-%d %H:%M")
+        if base is None or abs(t - target) < abs(dt.datetime.strptime(base["checked_at"], "%Y-%m-%d %H:%M") - target):
+            base = h
+    bviews = base["posts"] if base else {}
+    hrs = round((now - dt.datetime.strptime(base["checked_at"], "%Y-%m-%d %H:%M")).total_seconds() / 3600) if base else None
+    gain_label = "+24 h" if hrs is not None and 20 <= hrs <= 28 else (f"+{hrs} h" if hrs else "+24 h")
+    rows = sorted(posts, key=lambda r: r["created"], reverse=True)
+    cutoff = (now - dt.timedelta(days=10)).strftime("%Y-%m-%d")
+    def num(v, d=0): return "—" if v is None else f"{v:,.{d}f}"
+    def when(c):
+        try: return dt.datetime.strptime(c, "%Y-%m-%d %H:%M").strftime("%b %-d · %-I:%M %p")
+        except ValueError: return c[:10]
+    tr, cards, hidden = [], [], 0
+    for r in rows:
+        old = r["created"] < cutoff
+        hidden += old
+        g = r["views"] - bviews[r["id"]] if r["id"] in bviews else None
+        lpk = round(r["likes"] / r["views"] * 1000, 1) if r["likes"] is not None and r["views"] else None
+        t = e(r["title"]) or "(no title)"
+        link = f"<a class='tp' href='{e(r['url'])}' target='_blank' rel='noopener'>{t}</a>" if r["url"] else t
+        cls = " old" if old else ""
+        tr.append(f"<tr class='pr{cls}'><td class='rl'>{when(r['created'])}</td><td class='rl'><span class='dot' style='background:{COLOR[r['site']]}'></span>{NAME[r['site']]}</td>"
+                  f"<td class='rl tt'>{link}</td><td>{num(r['length_s']) + ' s' if r['length_s'] else '—'}</td><td><b>{num(r['views'])}</b></td>"
+                  f"<td>{('+' if g >= 0 else '−') + f'{abs(g):,}' if g is not None else '—'}</td><td>{num(r['likes'])}</td><td>{num(lpk, 1)}</td>"
+                  f"<td>{num(r['avg_watch_s'], 1) + ' s' if r['avg_watch_s'] is not None else '—'}</td><td>{num(r['watch_pct']) + '%' if r['watch_pct'] is not None else '—'}</td></tr>")
+        cards.append(f"<div class='pc{cls}'><div class='pct'>{link}</div><div class='pcm'><span><i class='dot' style='background:{COLOR[r['site']]}'></i>{NAME[r['site']]} · {when(r['created'])}</span></div>"
+                     f"<div class='pcg'><div><b>{num(r['views'])}</b><small>views{(' (' + ('+' if g >= 0 else '−') + f'{abs(g):,}' + ')') if g is not None else ''}</small></div>"
+                     f"<div><b>{num(lpk, 1)}</b><small>likes / 1K</small></div><div><b>{num(r['watch_pct']) + '%' if r['watch_pct'] is not None else '—'}</b><small>watched</small></div>"
+                     f"<div><b>{num(r['avg_watch_s'], 1) + ' s' if r['avg_watch_s'] is not None else '—'}</b><small>avg watch</small></div></div></div>")
+    more = f"<button id='more' class='b gray' type='button'>Show {hidden} older post(s)</button>" if hidden else ""
+    return (f"<h2 class='sh'>Posts</h2><p class='sub'>Every public post, newest first. {gain_label} = views gained since the check closest to 24 h ago"
+            f"{' (no earlier check yet)' if not base else ''}. Watched = share of the video watched on average; YouTube can pass 100% when Shorts loop.</p>"
+            f"<div class='wrap ptab'><table class='posts'><thead><tr><th class='rl'>Posted</th><th class='rl'>Site</th><th class='rl'>Post</th><th>Length</th><th>Views</th>"
+            f"<th>{gain_label}</th><th>Likes</th><th>Likes / 1K</th><th>Avg watch</th><th>Watched</th></tr></thead><tbody>{''.join(tr)}</tbody></table></div>"
+            f"<div id='pcards'>{''.join(cards)}</div>{more}")
+
+
+def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None, old=None, dry=False, posts_html=""):
     e = html.escape
     cols = [{"id": "label", "label": stamp}] + [{"id": p, "label": NAME[p]} for p in PLAT] + [
         {"id": "reddit", "label": "Reddit (manual)"}, {"id": "total", "label": "Total"}, {"id": "best", "label": "Best for ads"}]
@@ -304,7 +432,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
             cells[p] = "<b>" + txt + "</b>" if v is not None and v == r["top"] and r["top"] else txt
             if r["label"] == "Top post views" and v is not None and (snap.get(p) or {}).get("top_url"):
                 cells[p] = f"<a class='tp' href='{e(snap[p]['top_url'])}' target='_blank' rel='noopener'>{cells[p]}</a>"
-        cells["reddit"] = "—" if r["label"] in ("Followers", "Avg views per post", "Avg watch time (s)") else fmt(r["reddit"])
+        cells["reddit"] = "—" if r["label"] in ("Followers", "Avg views per post", "Avg watch time (s)", "Watched % of video") else fmt(r["reddit"])
         if r["label"] == "Top post views" and rd and rd.get("top_url") and r["reddit"] is not None:
             cells["reddit"] = f"<a class='tp' href='{e(rd['top_url'])}' target='_blank' rel='noopener'>{cells['reddit']}</a>"
         cells["total"] = e(fmt(r["total"]) + delta(r["total"], r["ototal"]))
@@ -329,7 +457,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
     prev_html = (f"""<h2 class="ph">24 hours ago</h2><p class="sub">{e(old['stamp'])} · the check the card above compares with</p>
 <div class="wrap ptw"><table id="pt"></table></div>
 <div class="lgs">{old['legend']}</div>
-<div class="chart"><canvas id="pc" role="img" aria-label="24 hours ago: running total views per platform"></canvas></div>""") if old else ""
+<div class="chart"><canvas id="pc" role="img" aria-label="24 hours ago: views gained per day per platform"></canvas></div>""") if old else ""
     stale = stale or {}
     day_html = ""
     if day:
@@ -361,10 +489,16 @@ th{{font-weight:500;color:var(--ink2)}} th.rl{{text-align:left}} thead th{{borde
 .mp{{display:flex;flex-direction:column;gap:2px;padding:6px 9px;border-radius:8px;background:var(--bg)}} .mp span{{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:5px}}
 .mp i{{width:8px;height:8px;border-radius:50%;display:inline-block}} .mp b{{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}} .mp.best{{box-shadow:inset 0 0 0 2px #2A78D6;background:rgba(42,120,214,.14)}} .mp.best span{{color:var(--ink2)}}
 .mc small,.mp small{{color:var(--muted);font-size:12px;font-weight:400}} .mc small.up{{color:#1E9E55}} .mpick{{font-size:17px}}
-@media (max-width:700px){{main{{padding:16px 14px}} h1{{font-size:24px}} .sub{{font-size:14px}} .tw,.ptw,#edit{{display:none}} #m{{display:block}} .hs{{display:none}} .hist th,.hist td{{padding:8px 6px}} .chart{{height:260px}} .note{{font-size:12px}} .lgs{{gap:10px 16px}} h2.ph{{margin-top:32px}}}}
+@media (max-width:700px){{main{{padding:16px 14px}} h1{{font-size:24px}} .sub{{font-size:14px}} .tw,.ptw,#edit,.ptab{{display:none}} #m,#pcards{{display:block}} .pcg{{grid-template-columns:repeat(2,1fr)}} .hs{{display:none}} .hist th,.hist td{{padding:8px 6px}} .chart{{height:260px}} .note{{font-size:12px}} .lgs{{gap:10px 16px}} h2.ph{{margin-top:32px}}}}
 .day{{display:grid;grid-template-columns:auto auto;align-items:baseline;column-gap:16px;row-gap:4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:0 0 14px}}
 .dayl{{color:var(--ink2);font-weight:500}} .dayv{{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;text-align:right}} .dayv small{{font-size:14px;color:var(--muted);font-weight:400}}
 .dayp{{grid-column:1/-1;font-size:13px;color:var(--ink2)}} a.tp{{color:inherit;text-decoration:underline;text-decoration-color:#2A78D6;text-underline-offset:3px}}
+h2.sh{{font-size:18px;font-weight:500;margin:36px 0 10px}} .dot{{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}}
+table.posts td.rl{{text-align:left}} table.posts td.tt{{white-space:normal;min-width:260px;max-width:520px}} table.posts td,table.posts th{{font-size:14px}} .old{{display:none}} .showold .old{{display:revert}}
+@media (min-width:701px){{#pcards{{display:none}}}} .pc{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:0 0 10px}} .pct{{font-weight:600;line-height:1.3}}
+.pcm{{color:var(--muted);font-size:12px;margin:3px 0 8px}} .pcg{{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}} .pcg div{{display:flex;flex-direction:column}}
+.pcg b{{font-size:15px;font-variant-numeric:tabular-nums}} .pcg small{{font-size:11px;color:var(--muted)}}
+#more{{margin:4px 0 0}}
 tr.pick td{{text-align:left}} .warn{{margin:0 0 10px;padding:8px 12px;border-radius:8px;background:#FFF4CC;color:#5c4a00;font-size:14px}} .hist td,.hist th{{color:var(--ink2);font-size:14px}} .dl{{color:var(--muted);font-size:12px}} b{{font-weight:600}}
 .lgs{{display:flex;flex-wrap:wrap;gap:16px;margin:28px 0 8px;font-size:12px;color:var(--ink2)}} .lg{{display:flex;align-items:center;gap:6px}}
 .chart{{position:relative;height:340px}}
@@ -387,8 +521,10 @@ h2.ph{{font-size:18px;font-weight:500;margin:48px 0 4px;padding-top:20px;border-
 {day_html}{stale_html}<div class="wrap tw"><table id="t"></table></div><div id="m"></div>
 <p class="note">YouTube average uses public posts only. Facebook comments = viewer comments (the Page's own link comments are left out). Comments = viewer comments only (our own replies and pinned comments are left out). Total excludes Reddit. {e(rnote)}</p>
 <div class="lgs">{legend}</div>
-<div class="chart"><canvas id="c" role="img" aria-label="Running total views per platform, last 7 days"></canvas></div>
-<p class="note">Daily history from the {e(source)}; the last point is this run's live totals.</p>
+<h2 class="sh">Views gained per day</h2>
+<div class="chart"><canvas id="c" role="img" aria-label="Views gained per day per platform, last 14 days"></canvas></div>
+<p class="note">Last check of each day vs the day before; the last bar is today so far. Days with no check share the gain evenly.</p>
+{posts_html}
 <p>{top_line}</p>
 {('<ul>' + err + '</ul>') if err else ''}
 {prev_html}
@@ -552,6 +688,7 @@ function renderM() {{   // phone view: one card per metric, sites in a 2x2 grid
   m.innerHTML = h;
 }}
 L = load(SAVED); render(); renderPrev(); renderM();
+const moreBtn = $('more'); if (moreBtn) moreBtn.onclick = () => {{ document.body.classList.toggle('showold'); moreBtn.textContent = document.body.classList.contains('showold') ? 'Hide older posts' : moreBtn.dataset.t; }}; if (moreBtn) moreBtn.dataset.t = moreBtn.textContent;
 if (SITE) $('edit').hidden = true;
 if (served && !SITE) fetch('/layout').then(r => r.json()).then(l => {{ if (!editing && JSON.stringify(l) !== JSON.stringify(SAVED)) {{ L = load(l); render(); renderPrev(); renderM(); }} }}).catch(() => {{}});
 </script>
@@ -562,14 +699,13 @@ const dark = matchMedia('(prefers-color-scheme: dark)').matches, grid = dark ? '
 const C = {{Instagram:['#E87BA4','circle',[6,4]], Facebook:['#2A78D6','rect',[]], YouTube:['#E34948','triangle',[]], TikTok:['#14B8C6','circle',[]]}};
 const fmt = v => Math.round(v).toLocaleString(), sg = v => (v < 0 ? '−' : '+') + fmt(Math.abs(v));
 const prevVal = (d, i) => {{ for(let j = i - 1; j >= 0; j--) if(d[j] != null) return [d[j], j]; return [null, -1]; }};
-function mk(canvas, D) {{ if (!canvas) return; const chart = new Chart(canvas, {{type:'line',
- data:{{labels:D.labels, datasets:Object.entries(D.series).map(([n, d]) => ({{label:n, data:d, borderColor:C[n][0], backgroundColor:C[n][0], pointStyle:C[n][1], borderDash:C[n][2], borderWidth:2, pointRadius:4, pointHoverRadius:6, tension:0, spanGaps:true, borderCapStyle:'round'}}))}},
+function mk(canvas, D) {{ if (!canvas) return; const chart = new Chart(canvas, {{type:'bar',
+ data:{{labels:D.labels, datasets:Object.entries(D.series).map(([n, d]) => ({{label:n, data:d, backgroundColor:C[n][0], borderRadius:3, maxBarThickness:34}}))}},
  options:{{responsive:true, maintainAspectRatio:false, interaction:{{mode:'index', intersect:false}},
   plugins:{{legend:{{display:false}}, tooltip:{{callbacks:{{
-   title: it => {{ const t = it.reduce((s, c) => s + (c.parsed.y || 0), 0); return it[0].label + ' · Total ' + fmt(t) + (it.length < 4 ? ' (missing: ' + Object.keys(D.series).filter(n => !it.some(c => c.dataset.label === n)).join(', ') + ')' : ''); }},
-   beforeBody: it => {{ const i = it[0].dataIndex; if(i === 0) return 'First day shown'; let g = 0, n = 0; chart.data.datasets.forEach(d => {{ const a = d.data[i], b = d.data[i-1]; if(a != null && b != null){{ g += a - b; n++; }} }}); return '(' + sg(g) + ') vs ' + chart.data.labels[i-1] + (n < 4 ? ' (sites with data both days)' : ''); }},
-   label: c => {{ const i = c.dataIndex; let s = c.dataset.label + ': ' + fmt(c.parsed.y); if(i === 0) return s; const [p, j] = prevVal(c.dataset.data, i); if(p == null) return s; return s + ' (' + sg(c.parsed.y - p) + ')' + (j < i - 1 ? ' since ' + chart.data.labels[j] : ''); }} }}}}}},
-  scales:{{x:{{grid:{{display:false}}, ticks:{{color:muted}}}}, y:{{beginAtZero:true, grid:{{color:grid}}, ticks:{{color:muted, callback:v => v.toLocaleString()}}, title:{{display:true, text:'Total views', color:muted}}}}}}}}}}); }}
+   title: it => {{ const t = it.reduce((s, c) => s + (c.parsed.y || 0), 0); return it[0].label + ' · ' + sg(t) + ' views'; }},
+   label: c => c.dataset.label + ': ' + sg(c.parsed.y) }}}}}},
+  scales:{{x:{{stacked:true, grid:{{display:false}}, ticks:{{color:muted, maxRotation:0, autoSkip:true}}}}, y:{{stacked:true, beginAtZero:true, grid:{{color:grid}}, ticks:{{color:muted, callback:v => v.toLocaleString()}}, title:{{display:true, text:'Views gained', color:muted}}}}}}}}}}); }}
 mk(document.getElementById('c'), D); if (OLD) mk(document.getElementById('pc'), OLD.data);
 </script></body></html>"""
     open(OUT_HTML, "w").write(doc)
@@ -635,7 +771,8 @@ def main():
                 stale[p] = dt.datetime.strptime(last["checked_at"], "%Y-%m-%d %H:%M").strftime("%b %-d, %-I:%M %p")
     rd = reddit()
     rows = build_rows(snap, prev, rd)
-    labels, series, source = daily(now.strftime("%-I:%M %p"), snap)
+    labels, series = gains(hist, snap, now); source = "history file"
+    labels[-1] += " (so far)"
     complete = len(snap) == len(PLAT) and not stale   # only record complete checks, so the next deltas stay honest
     if complete:
         entry = {"checked_at": now.strftime("%Y-%m-%d %H:%M"), "source": "social_report.py"}
@@ -650,20 +787,16 @@ def main():
         if i is not None:
             bsnap = {p: dict(before[i][p], top_url="") for p in PLAT}
             bprev = next((h for h in reversed(before[:i]) if all(isinstance(h.get(p), dict) for p in PLAT)), None)
-            bday = day["since"].date()
-            bdays = [bday - dt.timedelta(days=n) for n in range(6, -1, -1)]
-            bser = {p: [None] * 7 for p in PLAT}
-            for h in before[:i + 1]:
-                d = dt.date.fromisoformat(h["checked_at"][:10])
-                if d in bdays:
-                    for p in PLAT:
-                        if isinstance(h.get(p), dict) and h[p].get("views") is not None:
-                            bser[p][bdays.index(d)] = h[p]["views"]
-            blabels = [d.strftime("%b %-d") for d in bdays]
-            blabels[6] += f" ({day['since'].strftime('%-I:%M %p')})"
+            blabels, bser = gains(before[:i + 1], None, day["since"])
+            blabels[-1] += f" (to {day['since'].strftime('%-I:%M %p')})"
             old = write_html(day["since"].strftime("%b %-d, %Y · %-I:%M %p"), build_rows(bsnap, bprev, rd), rd, bsnap, bprev,
                              blabels, bser, "history file", [], (), None, None, None, dry=True)
-    write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist, stale, day, old)
+    phist = json.load(open(POSTS_HIST)) if os.path.exists(POSTS_HIST) else []
+    posts_html = posts_section(POSTS, phist, now)
+    if complete and POSTS:
+        phist.append({"checked_at": now.strftime("%Y-%m-%d %H:%M"), "posts": {r["id"]: r["views"] for r in POSTS}})
+        json.dump(phist, open(POSTS_HIST, "w"))
+    write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist, stale, day, old, posts_html=posts_html)
     if not SITE:
         write_xlsx(stamp, rows, labels, series)
     if complete:
