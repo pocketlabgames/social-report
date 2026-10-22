@@ -779,7 +779,6 @@ h2.ph{{font-size:18px;font-weight:500;margin:48px 0 4px;padding-top:20px;border-
 {posts_html}
 <p>{top_line}</p>
 {('<ul>' + err + '</ul>') if err else ''}
-{prev_html}
 {history_html(hist)}
 </main>
 <script>
