@@ -697,10 +697,14 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
             days = sorted(d for d in installs if installs[d] is not None)
             y = (dt.date.today() - dt.timedelta(days=1)).isoformat()
             w = sum(installs[d] for d in days if (dt.date.today() - dt.date.fromisoformat(d)).days <= 7)
+            m = sum(installs[d] for d in days if d[:7] == dt.date.today().strftime("%Y-%m"))
+            month = dt.date.today().strftime("%B")
+            tot = sum(installs[d] for d in days)
+            tail = f" · <b>{w:,}</b> last 7 days · <b>{m:,}</b> in {month} · <b>{tot:,}</b> total since launch</div>"
             if installs.get(y) is not None:
-                inst = f"<div class='dayp'>App Store installs: <b>{installs[y]:,}</b> yesterday · <b>{w:,}</b> last 7 days</div>"
+                inst = f"<div class='dayp'>App Store installs: <b>{installs[y]:,}</b> yesterday" + tail
             else:
-                inst = f"<div class='dayp'>App Store installs: <b>{w:,}</b> last 7 days (Apple hasn’t posted yesterday yet)</div>"
+                inst = f"<div class='dayp'>App Store installs: yesterday not posted by Apple yet" + tail
         big, sub, head = f"{sign}{abs(day['total']):,}", "", e(when)
         if today:
             tsign = "+" if today["total"] >= 0 else "−"
