@@ -770,12 +770,12 @@ h2.ph{{font-size:18px;font-weight:500;margin:48px 0 4px;padding-top:20px;border-
 <div class="bar"><button id="refresh" class="b red">Refresh</button><button id="edit" class="b blue">Edit Layout</button>
 <span id="tools" hidden><select id="addc"></select><select id="addr"></select><button id="cancel" class="b gray">Cancel</button><button id="reset" class="b gray">Reset Layout</button></span>
 <span id="msg" class="note"></span></div>
-{day_html}{week_html}{stale_html}<div class="wrap tw"><table id="t"></table></div><div id="m"></div>
-<p class="note">YouTube average uses public posts only. Facebook comments = viewer comments (the Page's own link comments are left out). Comments = viewer comments only (our own replies and pinned comments are left out). Total excludes Reddit. {e(rnote)}</p>
-<div class="lgs">{legend}</div>
-<h2 class="sh">Views gained per day</h2>
+{day_html}{week_html}<h2 class="sh" style="margin-top:4px">Views gained per day</h2>
+<div class="lgs" style="margin-top:0">{legend}</div>
 <div class="chart"><canvas id="c" role="img" aria-label="Views gained per day per platform, last 14 days"></canvas></div>
 <p class="note">Bars: last check of each day vs the day before; the last bar is today so far. Days with no check share the gain evenly. Green line: App Store first downloads per day (right axis; Apple posts each day by the next morning).</p>
+{stale_html}<div class="wrap tw"><table id="t"></table></div><div id="m"></div>
+<p class="note">YouTube average uses public posts only. Facebook comments = viewer comments (the Page's own link comments are left out). Comments = viewer comments only (our own replies and pinned comments are left out). Total excludes Reddit. {e(rnote)}</p>
 {posts_html}
 <p>{top_line}</p>
 {('<ul>' + err + '</ul>') if err else ''}
