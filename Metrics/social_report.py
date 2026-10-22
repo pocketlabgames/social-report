@@ -336,6 +336,26 @@ def pick(snap):
     return "Instagram + Facebook (one Meta ad covers both)" if set(top2) == {"instagram", "facebook"} else NAME[top2[0]]
 
 
+def today_change(snap, hist, now):
+    """Views gained since midnight (Eastern): current totals minus the complete check closest to today's midnight."""
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    cur = {p: (snap.get(p) or {}).get("views") for p in PLAT}
+    if any(v is None for v in cur.values()):
+        return None
+    base = None
+    for h in hist:
+        if not all(isinstance(h.get(p), dict) and h[p].get("views") is not None for p in PLAT):
+            continue
+        t = dt.datetime.strptime(h["checked_at"], "%Y-%m-%d %H:%M")
+        if base is None or abs(t - midnight) < abs(dt.datetime.strptime(base["checked_at"], "%Y-%m-%d %H:%M") - midnight):
+            base = h
+    if base is None:
+        return None
+    t = dt.datetime.strptime(base["checked_at"], "%Y-%m-%d %H:%M")
+    per = {p: cur[p] - base[p]["views"] for p in PLAT}
+    return {"total": sum(per.values()), "per": per, "since": t, "off_h": round((t - midnight).total_seconds() / 3600, 1)}
+
+
 def day_change(snap, hist, now):
     """Views gained in the last 24 hours: current totals minus the newest complete check at least 24 h old."""
     cur = {p: (snap.get(p) or {}).get("views") for p in PLAT}
@@ -384,8 +404,59 @@ def history_html(hist):
             f"<tbody>{''.join(reversed(out))}</tbody></table></div>")
 
 
+VIDEO_MAP = os.path.join(HERE, "video-map.csv")
+
+
+def group_videos(posts):
+    """One group per video: video-map.csv names first, then posts on different sites that went up within 90 minutes."""
+    name_of = {}
+    if os.path.exists(VIDEO_MAP):
+        try:
+            vm = pd.read_csv(VIDEO_MAP, dtype=str).fillna("")
+            for _, r in vm.iterrows():
+                name_of[f"{r.platform.strip().lower()}:{r.post_id.strip()}"] = r.video.strip()
+        except Exception:
+            pass
+    groups, by_name, loose = [], {}, []
+    for r in sorted(posts, key=lambda r: r["created"]):
+        n = name_of.get(r["id"])
+        if n:
+            g = by_name.get(n)
+            if g is None:
+                g = by_name[n] = {"name": n, "mapped": True, "posts": []}
+                groups.append(g)
+            g["posts"].append(r)
+        else:
+            loose.append(r)
+    for r in loose:   # time clustering for unmapped posts
+        try:
+            t = dt.datetime.strptime(r["created"], "%Y-%m-%d %H:%M")
+        except ValueError:
+            groups.append({"name": "", "mapped": False, "posts": [r]}); continue
+        placed = False
+        for g in groups:
+            if g["mapped"] or any(x["site"] == r["site"] for x in g["posts"]):
+                continue
+            try:
+                t0 = dt.datetime.strptime(g["posts"][0]["created"], "%Y-%m-%d %H:%M")
+            except ValueError:
+                continue
+            if abs((t - t0).total_seconds()) <= 90 * 60:
+                g["posts"].append(r); placed = True; break
+        if not placed:
+            groups.append({"name": "", "mapped": False, "posts": [r]})
+    for g in groups:
+        if not g["name"]:
+            yt = next((x for x in g["posts"] if x["site"] == "youtube" and x["title"]), None)
+            src = yt["title"] if yt else max((x["title"] for x in g["posts"]), key=len, default="")
+            g["name"] = src.replace("#shorts", "").strip() or "(no title)"
+        g["created"] = min(x["created"] for x in g["posts"])
+        g["posts"].sort(key=lambda x: PLAT.index(x["site"]) if x["site"] in PLAT else 9)
+    return sorted(groups, key=lambda g: g["created"], reverse=True)
+
+
 def posts_section(posts, phist, now):
-    """Every public post, newest first (last 10 days open, the rest behind a button): desktop table + phone cards."""
+    """One card per video with how it did on each site; last 10 days open, older behind a button."""
     if not posts:
         return ""
     e = html.escape
@@ -398,35 +469,38 @@ def posts_section(posts, phist, now):
     bviews = base["posts"] if base else {}
     hrs = round((now - dt.datetime.strptime(base["checked_at"], "%Y-%m-%d %H:%M")).total_seconds() / 3600) if base else None
     gain_label = "+24 h" if hrs is not None and 20 <= hrs <= 28 else (f"+{hrs} h" if hrs else "+24 h")
-    rows = sorted(posts, key=lambda r: r["created"], reverse=True)
     cutoff = (now - dt.timedelta(days=10)).strftime("%Y-%m-%d")
     def num(v, d=0): return "—" if v is None else f"{v:,.{d}f}"
+    def sg(g): return "—" if g is None else ("+" if g >= 0 else "−") + f"{abs(g):,}"
     def when(c):
-        try: return dt.datetime.strptime(c, "%Y-%m-%d %H:%M").strftime("%b %-d · %-I:%M %p")
+        try: return dt.datetime.strptime(c, "%Y-%m-%d %H:%M").strftime("%a %b %-d · %-I:%M %p")
         except ValueError: return c[:10]
-    tr, cards, hidden = [], [], 0
-    for r in rows:
-        old = r["created"] < cutoff
+    cards, hidden = [], 0
+    for g in group_videos(posts):
+        old = g["created"] < cutoff
         hidden += old
-        g = r["views"] - bviews[r["id"]] if r["id"] in bviews else None
-        lpk = round(r["likes"] / r["views"] * 1000, 1) if r["likes"] is not None and r["views"] else None
-        t = e(r["title"]) or "(no title)"
-        link = f"<a class='tp' href='{e(r['url'])}' target='_blank' rel='noopener'>{t}</a>" if r["url"] else t
-        cls = " old" if old else ""
-        tr.append(f"<tr class='pr{cls}'><td class='rl'>{when(r['created'])}</td><td class='rl'><span class='dot' style='background:{COLOR[r['site']]}'></span>{NAME[r['site']]}</td>"
-                  f"<td class='rl tt'>{link}</td><td>{num(r['length_s']) + ' s' if r['length_s'] else '—'}</td><td><b>{num(r['views'])}</b></td>"
-                  f"<td>{('+' if g >= 0 else '−') + f'{abs(g):,}' if g is not None else '—'}</td><td>{num(r['likes'])}</td><td>{num(lpk, 1)}</td>"
-                  f"<td>{num(r['avg_watch_s'], 1) + ' s' if r['avg_watch_s'] is not None else '—'}</td><td>{num(r['watch_pct']) + '%' if r['watch_pct'] is not None else '—'}</td></tr>")
-        cards.append(f"<div class='pc{cls}'><div class='pct'>{link}</div><div class='pcm'><span><i class='dot' style='background:{COLOR[r['site']]}'></i>{NAME[r['site']]} · {when(r['created'])}</span></div>"
-                     f"<div class='pcg'><div><b>{num(r['views'])}</b><small>views{(' (' + ('+' if g >= 0 else '−') + f'{abs(g):,}' + ')') if g is not None else ''}</small></div>"
-                     f"<div><b>{num(lpk, 1)}</b><small>likes / 1K</small></div><div><b>{num(r['watch_pct']) + '%' if r['watch_pct'] is not None else '—'}</b><small>watched</small></div>"
-                     f"<div><b>{num(r['avg_watch_s'], 1) + ' s' if r['avg_watch_s'] is not None else '—'}</b><small>avg watch</small></div></div></div>")
-    more = f"<button id='more' class='b gray' type='button'>Show {hidden} older post(s)</button>" if hidden else ""
-    return (f"<h2 class='sh'>Posts</h2><p class='sub'>Every public post, newest first. {gain_label} = views gained since the check closest to 24 h ago"
+        tv = sum(x["views"] for x in g["posts"])
+        gains = [x["views"] - bviews[x["id"]] for x in g["posts"] if x["id"] in bviews]
+        tg = sum(gains) if gains else None
+        ln = next((x["length_s"] for x in g["posts"] if x["length_s"]), None)
+        top = max(g["posts"], key=lambda x: x["views"])
+        rows = ""
+        for x in g["posts"]:
+            gx = x["views"] - bviews[x["id"]] if x["id"] in bviews else None
+            lpk = round(x["likes"] / x["views"] * 1000, 1) if x["likes"] is not None and x["views"] else None
+            link = f"<a class='tp' href='{e(x['url'])}' target='_blank' rel='noopener'>{NAME[x['site']]}</a>" if x["url"] else NAME[x["site"]]
+            rows += (f"<tr class='{'lead' if x is top and len(g['posts']) > 1 else ''}'><th class='rl'><span class='dot' style='background:{COLOR[x['site']]}'></span>{link}</th>"
+                     f"<td><b>{num(x['views'])}</b></td><td>{sg(gx)}</td><td>{num(lpk, 1)}</td>"
+                     f"<td class='aw'>{num(x['avg_watch_s'], 1) + ' s' if x['avg_watch_s'] is not None else '—'}</td><td>{num(x['watch_pct']) + '%' if x['watch_pct'] is not None else '—'}</td></tr>")
+        missing = [NAME[p] for p in PLAT if not any(x["site"] == p for x in g["posts"])]
+        cards.append(f"<div class='vc{' old' if old else ''}'><div class='vch'><div class='vct'>{e(g['name'][:90])}</div>"
+                     f"<div class='vcn'><b>{num(tv)}</b> <small>views{(' (' + sg(tg) + ')') if tg is not None else ''}</small></div></div>"
+                     f"<div class='vcm'>{when(g['created'])}{(' · ' + num(ln) + ' s') if ln else ''}{(' · not on ' + ', '.join(missing)) if missing and len(missing) < 4 else ''}</div>"
+                     f"<table class='vt'><thead><tr><th class='rl'>Site</th><th>Views</th><th>{gain_label}</th><th>Likes / 1K</th><th class='aw'>Avg watch</th><th>Watched</th></tr></thead><tbody>{rows}</tbody></table></div>")
+    more = f"<button id='more' class='b gray' type='button'>Show {hidden} older video(s)</button>" if hidden else ""
+    return (f"<h2 class='sh'>Videos</h2><p class='sub'>One card per video, newest first, with its numbers on each site. {gain_label} = views gained since the check closest to 24 h ago"
             f"{' (no earlier check yet)' if not base else ''}. Watched = share of the video watched on average; YouTube can pass 100% when Shorts loop.</p>"
-            f"<div class='wrap ptab'><table class='posts'><thead><tr><th class='rl'>Posted</th><th class='rl'>Site</th><th class='rl'>Post</th><th>Length</th><th>Views</th>"
-            f"<th>{gain_label}</th><th>Likes</th><th>Likes / 1K</th><th>Avg watch</th><th>Watched</th></tr></thead><tbody>{''.join(tr)}</tbody></table></div>"
-            f"<div id='pcards'>{''.join(cards)}</div>{more}")
+            f"<div class='vgrid'>{''.join(cards)}</div>{more}")
 
 
 def level_at(hist, snap, when, now):
@@ -567,7 +641,7 @@ def time_section(posts, now):
             f"<tbody>{trs}</tbody></table></div><p class='note hsn'>Site columns: average views per post (number of posts).</p>")
 
 
-def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None, old=None, dry=False, posts_html="", week_html="", installs=None):
+def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None, old=None, dry=False, posts_html="", week_html="", installs=None, today=None):
     e = html.escape
     cols = [{"id": "label", "label": stamp}] + [{"id": p, "label": NAME[p]} for p in PLAT] + [
         {"id": "reddit", "label": "Reddit (manual)"}, {"id": "total", "label": "Total"}, {"id": "best", "label": "Best for ads"}]
@@ -599,8 +673,8 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         f"{delta((snap.get(p) or {}).get('views'), (prev.get(p) or {}).get('views') if prev else None) or ''}</span>" for p in PLAT)
     inst_series = None
     if installs:
-        today = dt.date.today()
-        inst_series = [installs.get((today - dt.timedelta(days=len(labels) - 1 - i)).isoformat()) for i in range(len(labels))]
+        td = dt.date.today()
+        inst_series = [installs.get((td - dt.timedelta(days=len(labels) - 1 - i)).isoformat()) for i in range(len(labels))]
     data = json.dumps({"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}, "installs": inst_series})
     if dry:
         return {"stamp": stamp, "table": {"cols": cols, "rows": trows}, "legend": legend,
@@ -625,7 +699,14 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
                 inst = f"<div class='dayp'>App Store installs: <b>{installs[y]:,}</b> yesterday · <b>{w:,}</b> last 7 days</div>"
             else:
                 inst = f"<div class='dayp'>App Store installs: <b>{w:,}</b> last 7 days (Apple hasn’t posted yesterday yet)</div>"
-        day_html = f"<div class='day'><div class='dayl'>{e(when)}</div><div class='dayv'>{sign}{abs(day['total']):,} <small>views</small></div><div class='dayp'>{parts}</div>{inst}</div>"
+        big, sub, head = f"{sign}{abs(day['total']):,}", "", e(when)
+        if today:
+            tsign = "+" if today["total"] >= 0 else "−"
+            big = f"{tsign}{abs(today['total']):,}"
+            sub = f"<small class='sub2'>({sign}{abs(day['total']):,} past 24 h)</small>"
+            head = "Views today" + (f" <small>since the {today['since'].strftime('%b %-d, %-I:%M %p')} check</small>" if abs(today["off_h"]) > 2 else "")
+            parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> {NAME[p]} {'+' if today['per'][p] >= 0 else '−'}{abs(today['per'][p]):,}" for p in PLAT)
+        day_html = f"<div class='day'><div class='dayl'>{head}</div><div class='dayv'>{big} <small>views</small> {sub}</div><div class='dayp'>{parts}</div>{inst}</div>"
     stale_html = "".join(f"<p class='warn'>{NAME[p]} couldn’t be pulled after 3 tries, so its numbers are from the last good check ({e(t)}).</p>" for p, t in stale.items())
     if len(snap) == len(PLAT) and not stale:   # keep the last complete run (Mac report cache)
         os.makedirs(os.path.dirname(LAST), exist_ok=True)
@@ -650,15 +731,17 @@ th{{font-weight:500;color:var(--ink2)}} th.rl{{text-align:left}} thead th{{borde
 .mp{{display:flex;flex-direction:column;gap:2px;padding:6px 9px;border-radius:8px;background:var(--bg)}} .mp span{{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:5px}}
 .mp i{{width:8px;height:8px;border-radius:50%;display:inline-block}} .mp b{{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}} .mp.best{{box-shadow:inset 0 0 0 2px #2A78D6;background:rgba(42,120,214,.14)}} .mp.best span{{color:var(--ink2)}}
 .mc small,.mp small{{color:var(--muted);font-size:12px;font-weight:400}} .mc small.up{{color:#1E9E55}} .mpick{{font-size:17px}}
-@media (max-width:700px){{main{{padding:16px 14px}} h1{{font-size:24px}} .sub{{font-size:14px}} .tw,.ptw,#edit,.ptab{{display:none}} #m,#pcards{{display:block}} .pcg{{grid-template-columns:repeat(2,1fr)}} .hs{{display:none}} .hist th,.hist td{{padding:8px 6px}} .chart{{height:260px}} .note{{font-size:12px}} .lgs{{gap:10px 16px}} h2.ph{{margin-top:32px}}}}
+@media (max-width:700px){{main{{padding:16px 14px}} h1{{font-size:24px}} .sub{{font-size:14px}} .tw,.ptw,#edit{{display:none}} #m{{display:block}} table.vt th,table.vt td{{padding:5px 3px;font-size:12px}} table.vt .aw{{display:none}} .vch{{flex-wrap:wrap}} .hs{{display:none}} .hist th,.hist td{{padding:8px 6px}} .chart{{height:260px}} .note{{font-size:12px}} .lgs{{gap:10px 16px}} h2.ph{{margin-top:32px}}}}
 .day{{display:grid;grid-template-columns:auto auto;align-items:baseline;column-gap:16px;row-gap:4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:0 0 14px}}
-.dayl{{color:var(--ink2);font-weight:500}} .dayv{{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;text-align:right}} .dayv small{{font-size:14px;color:var(--muted);font-weight:400}}
+.dayv .sub2{{display:block;font-size:13px}} .dayl{{color:var(--ink2);font-weight:500}} .dayl small{{color:var(--muted);font-weight:400;font-size:12px}} .dayv{{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;text-align:right}} .dayv small{{font-size:14px;color:var(--muted);font-weight:400}}
 .dayp{{grid-column:1/-1;font-size:13px;color:var(--ink2)}} a.tp{{color:inherit;text-decoration:underline;text-decoration-color:#2A78D6;text-underline-offset:3px}}
 h2.sh{{font-size:18px;font-weight:500;margin:36px 0 10px}} .dot{{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}}
-table.posts td.rl{{text-align:left}} table.posts td.tt{{white-space:normal;min-width:260px;max-width:520px}} table.posts td,table.posts th{{font-size:14px}} .old{{display:none}} .showold .old{{display:revert}}
-@media (min-width:701px){{#pcards{{display:none}}}} .pc{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:0 0 10px}} .pct{{font-weight:600;line-height:1.3}}
-.pcm{{color:var(--muted);font-size:12px;margin:3px 0 8px}} .pcg{{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}} .pcg div{{display:flex;flex-direction:column}}
-.pcg b{{font-size:15px;font-variant-numeric:tabular-nums}} .pcg small{{font-size:11px;color:var(--muted)}}
+.old{{display:none}} .showold .old{{display:revert}} .vgrid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}} @media (max-width:900px){{.vgrid{{grid-template-columns:1fr}}}}
+.vc{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}} .vch{{display:flex;justify-content:space-between;gap:10px;align-items:baseline}}
+.vct{{font-weight:600;line-height:1.3}} .vcn{{white-space:nowrap;font-size:18px;font-variant-numeric:tabular-nums}} .vcn small{{font-size:12px;color:var(--muted);font-weight:400}}
+.vcm{{color:var(--muted);font-size:12px;margin:2px 0 8px}} table.vt{{width:100%;background:transparent}} table.vt th,table.vt td{{padding:5px 6px;font-size:13px;border-bottom:1px solid var(--line)}}
+table.vt thead th{{color:var(--muted);font-weight:500;border-bottom:1px solid var(--line)}} table.vt tbody tr:last-child th,table.vt tbody tr:last-child td{{border-bottom:0}}
+table.vt tr.lead td,table.vt tr.lead th{{background:rgba(42,120,214,.10)}} table.vt a.tp{{text-decoration:none;color:inherit;border-bottom:1px solid #2A78D6}}
 #more{{margin:4px 0 0}} .week{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:0 0 14px}}
 .weekh{{color:var(--ink2);font-weight:500;margin-bottom:6px}} .week ul{{margin:0;padding-left:18px;color:var(--ink)}} .week li{{margin:3px 0;line-height:1.4}} tr.bestrow th,tr.bestrow td{{background:rgba(42,120,214,.12)}} table.slots small{{color:var(--muted);font-weight:400}}
 @media (max-width:700px){{.hsn{{display:none}} table.slots th,table.slots td{{padding:8px 5px;font-size:13px}} table.slots small{{display:block;font-size:11px}}}}
@@ -851,7 +934,7 @@ function renderM() {{   // phone view: one card per metric, sites in a 2x2 grid
   m.innerHTML = h;
 }}
 L = load(SAVED); render(); renderPrev(); renderM();
-const moreBtn = $('more'); if (moreBtn) moreBtn.onclick = () => {{ document.body.classList.toggle('showold'); moreBtn.textContent = document.body.classList.contains('showold') ? 'Hide older posts' : moreBtn.dataset.t; }}; if (moreBtn) moreBtn.dataset.t = moreBtn.textContent;
+const moreBtn = $('more'); if (moreBtn) moreBtn.onclick = () => {{ document.body.classList.toggle('showold'); moreBtn.textContent = document.body.classList.contains('showold') ? 'Hide older videos' : moreBtn.dataset.t; }}; if (moreBtn) moreBtn.dataset.t = moreBtn.textContent;
 if (SITE) $('edit').hidden = true;
 if (served && !SITE) fetch('/layout').then(r => r.json()).then(l => {{ if (!editing && JSON.stringify(l) !== JSON.stringify(SAVED)) {{ L = load(l); render(); renderPrev(); renderM(); }} }}).catch(() => {{}});
 </script>
@@ -945,6 +1028,7 @@ def main():
         hist.append(entry)
     before = hist[:-1] if complete else hist   # history before this run
     day = day_change(snap, before, now)
+    today = today_change(snap, before, now)
     old = None
     if day:   # rebuild the comparison check's table + chart from history
         key = day["since"].strftime("%Y-%m-%d %H:%M")
@@ -963,7 +1047,7 @@ def main():
         json.dump(phist, open(POSTS_HIST, "w"))
     week_html = week_box(snap, before, POSTS, phist[:-1] if (complete and POSTS) else phist, INSTALLS, now)
     write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist, stale, day, old, posts_html=posts_html,
-               week_html=week_html, installs=dict(INSTALLS) or None)
+               week_html=week_html, installs=dict(INSTALLS) or None, today=today)
     if not SITE:
         write_xlsx(stamp, rows, labels, series)
     if complete:
