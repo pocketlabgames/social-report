@@ -419,6 +419,45 @@ def posts_section(posts, phist, now):
             f"<div id='pcards'>{''.join(cards)}</div>{more}")
 
 
+SLOTS = [("Morning", 5, 11), ("Midday", 11, 14), ("Afternoon", 14, 17), ("Evening", 17, 21), ("Late night", 21, 29)]   # 21:00-04:59
+
+
+def time_section(posts, now):
+    """Which posting time gets the most views: public posts grouped by the hour they went up (Eastern)."""
+    rows = []
+    for r in posts:
+        try:
+            t = dt.datetime.strptime(r["created"], "%Y-%m-%d %H:%M")
+        except ValueError:
+            continue
+        age = max((now - t).total_seconds() / 86400, 1.0)   # days live, at least 1
+        h = t.hour if t.hour >= 5 else t.hour + 24
+        slot = next(n for n, a, b in SLOTS if a <= h < b)
+        rows.append((slot, r["site"], r["views"], r["views"] / age))
+    if not rows:
+        return ""
+    e = html.escape
+    out, best = [], None
+    for name, a, b in SLOTS:
+        rs = [x for x in rows if x[0] == name]
+        if not rs:
+            continue
+        n, avg_v, per_day = len(rs), sum(x[2] for x in rs) / len(rs), sum(x[3] for x in rs) / len(rs)
+        by_site = {p: [x for x in rs if x[1] == p] for p in PLAT}
+        site_cells = "".join(f"<td class='hs'>{(sum(x[2] for x in v) / len(v)):,.0f} <small>({len(v)})</small></td>" if v else "<td class='hs'>—</td>" for p, v in by_site.items())
+        label = f"{name} <small>{(a % 24):d}:00–{((b - 1) % 24):d}:59</small>"
+        out.append([name, n, avg_v, per_day, f"<tr data-slot='{name}'><th class='rl'>{label}</th><td>{n}</td><td>{avg_v:,.0f}</td><td>{per_day:,.0f}</td>{site_cells}</tr>"])
+        if best is None or per_day > best[3]:
+            best = out[-1]
+    trs = "".join(x[4].replace("<tr ", "<tr class='bestrow' ") if x is best else x[4] for x in out)
+    heads = "".join(f"<th class='hs'>{NAME[p]}</th>" for p in PLAT)
+    return (f"<h2 class='sh'>Best posting time</h2><p class='sub'>Public posts grouped by the hour they went up (Eastern). "
+            f"Views per day = views divided by days since posting, so new posts compare fairly with old ones. Best so far: <b>{e(best[0])}</b> "
+            f"({best[1]} post(s), {best[3]:,.0f} views per post per day). Small numbers; treat as a hint until there are more posts.</p>"
+            f"<div class='wrap'><table class='slots'><thead><tr><th class='rl'>Posted</th><th>Posts</th><th>Avg views</th><th>Views / day</th>{heads}</tr></thead>"
+            f"<tbody>{trs}</tbody></table></div><p class='note hsn'>Site columns: average views per post (number of posts).</p>")
+
+
 def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None, old=None, dry=False, posts_html=""):
     e = html.escape
     cols = [{"id": "label", "label": stamp}] + [{"id": p, "label": NAME[p]} for p in PLAT] + [
@@ -498,7 +537,8 @@ table.posts td.rl{{text-align:left}} table.posts td.tt{{white-space:normal;min-w
 @media (min-width:701px){{#pcards{{display:none}}}} .pc{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:0 0 10px}} .pct{{font-weight:600;line-height:1.3}}
 .pcm{{color:var(--muted);font-size:12px;margin:3px 0 8px}} .pcg{{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}} .pcg div{{display:flex;flex-direction:column}}
 .pcg b{{font-size:15px;font-variant-numeric:tabular-nums}} .pcg small{{font-size:11px;color:var(--muted)}}
-#more{{margin:4px 0 0}}
+#more{{margin:4px 0 0}} tr.bestrow th,tr.bestrow td{{background:rgba(42,120,214,.12)}} table.slots small{{color:var(--muted);font-weight:400}}
+@media (max-width:700px){{.hsn{{display:none}} table.slots th,table.slots td{{padding:8px 5px;font-size:13px}} table.slots small{{display:block;font-size:11px}}}}
 tr.pick td{{text-align:left}} .warn{{margin:0 0 10px;padding:8px 12px;border-radius:8px;background:#FFF4CC;color:#5c4a00;font-size:14px}} .hist td,.hist th{{color:var(--ink2);font-size:14px}} .dl{{color:var(--muted);font-size:12px}} b{{font-weight:600}}
 .lgs{{display:flex;flex-wrap:wrap;gap:16px;margin:28px 0 8px;font-size:12px;color:var(--ink2)}} .lg{{display:flex;align-items:center;gap:6px}}
 .chart{{position:relative;height:340px}}
@@ -792,7 +832,7 @@ def main():
             old = write_html(day["since"].strftime("%b %-d, %Y · %-I:%M %p"), build_rows(bsnap, bprev, rd), rd, bsnap, bprev,
                              blabels, bser, "history file", [], (), None, None, None, dry=True)
     phist = json.load(open(POSTS_HIST)) if os.path.exists(POSTS_HIST) else []
-    posts_html = posts_section(POSTS, phist, now)
+    posts_html = time_section(POSTS, now) + posts_section(POSTS, phist, now)
     if complete and POSTS:
         phist.append({"checked_at": now.strftime("%Y-%m-%d %H:%M"), "posts": {r["id"]: r["views"] for r in POSTS}})
         json.dump(phist, open(POSTS_HIST, "w"))
