@@ -710,7 +710,7 @@ def time_section(posts, now):
             f"<tbody>{trs}</tbody></table></div><p class='note hsn'>Site columns: average views per post (number of posts).</p>")
 
 
-def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None, old=None, dry=False, posts_html="", week_html="", installs=None, today=None, day_base=None, money=None):
+def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None, old=None, dry=False, posts_html="", week_html="", installs=None, today=None, day_base=None, money=None, money_daily=None):
     e = html.escape
     cols = [{"id": "label", "label": stamp}] + [{"id": p, "label": NAME[p]} for p in PLAT] + [
         {"id": "total", "label": "Total"}, {"id": "best", "label": "Best for ads"}]   # Reddit column paused (Guy, Oct 22)
@@ -744,7 +744,15 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
     if installs:
         td = dt.date.today()
         inst_series = [installs.get((td - dt.timedelta(days=len(labels) - 1 - i)).isoformat()) for i in range(len(labels))]
-    data = json.dumps({"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}, "installs": inst_series})
+    earn_series = None
+    if money_daily:
+        td = dt.date.today()
+        def day_total(d):
+            m = money_daily.get(d) or {}
+            vals = [m.get("ads"), m.get("iap")]
+            return None if all(v is None for v in vals) else round(sum(v or 0 for v in vals), 2)
+        earn_series = [day_total((td - dt.timedelta(days=len(labels) - 1 - i)).isoformat()) for i in range(len(labels))]
+    data = json.dumps({"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}, "installs": inst_series, "earned": earn_series})
     if dry:
         return {"stamp": stamp, "table": {"cols": cols, "rows": trows}, "legend": legend,
                 "data": {"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}}}
@@ -862,7 +870,7 @@ h2.ph{{font-size:18px;font-weight:500;margin:48px 0 4px;padding-top:20px;border-
 {day_html}{week_html}<h2 class="sh" style="margin-top:4px">Views gained per day</h2>
 <div class="lgs" style="margin-top:0">{legend}</div>
 <div class="chart"><canvas id="c" role="img" aria-label="Views gained per day per platform, last 14 days"></canvas></div>
-<p class="note">Bars: last check of each day vs the day before; the last bar is today so far. Days with no check share the gain evenly. Green line: App Store first downloads per day (right axis; Apple posts each day by the next morning).</p>
+<p class="note">Bars: last check of each day vs the day before; the last bar is today so far. Days with no check share the gain evenly. Green line: App Store first downloads per day (right axis; Apple posts each day by the next morning). Gold dashed line: money earned that day, ads + App Store proceeds (outer right axis; today's App Store part arrives tomorrow).</p>
 {stale_html}<div class="wrap tw"><table id="t"></table></div><div id="m"></div>
 <p class="note">YouTube average uses public posts only. Facebook comments = viewer comments (the Page's own link comments are left out). Comments = viewer comments only (our own replies and pinned comments are left out).</p>
 {posts_html}
@@ -1041,13 +1049,15 @@ const fmt = v => Math.round(v).toLocaleString(), sg = v => (v < 0 ? '−' : '+')
 const prevVal = (d, i) => {{ for(let j = i - 1; j >= 0; j--) if(d[j] != null) return [d[j], j]; return [null, -1]; }};
 function mk(canvas, D) {{ if (!canvas) return; const chart = new Chart(canvas, {{type:'bar',
  data:{{labels:D.labels, datasets:Object.entries(D.series).map(([n, d]) => ({{label:n, data:d, backgroundColor:C[n][0], borderRadius:3, maxBarThickness:34, order:2}}))
-   .concat(D.installs ? [{{type:'line', label:'Installs', data:D.installs, borderColor:'#1E9E55', backgroundColor:'#1E9E55', yAxisID:'y2', pointRadius:3, borderWidth:2, tension:0.2, spanGaps:true, order:1}}] : [])}},
+   .concat(D.installs ? [{{type:'line', label:'Installs', data:D.installs, borderColor:'#1E9E55', backgroundColor:'#1E9E55', yAxisID:'y2', pointRadius:3, borderWidth:2, tension:0.2, spanGaps:true, order:1}}] : [])
+   .concat(D.earned ? [{{type:'line', label:'Earned', data:D.earned, borderColor:'#D9A21B', backgroundColor:'#D9A21B', yAxisID:'y3', pointRadius:3, pointStyle:'rectRot', borderWidth:2, borderDash:[5,4], tension:0.2, spanGaps:true, order:0}}] : [])}},
  options:{{responsive:true, maintainAspectRatio:false, interaction:{{mode:'index', intersect:false}},
   plugins:{{legend:{{display:false}}, tooltip:{{callbacks:{{
    title: it => {{ const t = it.filter(c => c.dataset.type !== 'line').reduce((s, c) => s + (c.parsed.y || 0), 0); return it[0].label + ' · ' + sg(t) + ' views'; }},
-   label: c => c.dataset.type === 'line' ? 'Installs: ' + fmt(c.parsed.y) : c.dataset.label + ': ' + sg(c.parsed.y) }}}}}},
+   label: c => c.dataset.label === 'Earned' ? 'Earned: $' + c.parsed.y.toFixed(2) : c.dataset.type === 'line' ? 'Installs: ' + fmt(c.parsed.y) : c.dataset.label + ': ' + sg(c.parsed.y) }}}}}},
   scales:{{x:{{stacked:true, grid:{{display:false}}, ticks:{{color:muted, maxRotation:0, autoSkip:true}}}}, y:{{stacked:true, beginAtZero:true, grid:{{color:grid}}, ticks:{{color:muted, callback:v => v.toLocaleString()}}, title:{{display:true, text:'Views gained', color:muted}}}},
-   ...(D.installs ? {{y2:{{position:'right', beginAtZero:true, grid:{{display:false}}, ticks:{{color:'#1E9E55', precision:0}}, title:{{display:true, text:'Installs', color:'#1E9E55'}}}}}} : {{}})}}}}}}); }}
+   ...(D.installs ? {{y2:{{position:'right', beginAtZero:true, grid:{{display:false}}, ticks:{{color:'#1E9E55', precision:0}}, title:{{display:true, text:'Installs', color:'#1E9E55'}}}}}} : {{}}),
+   ...(D.earned ? {{y3:{{position:'right', beginAtZero:true, grid:{{display:false}}, ticks:{{color:'#B8860B', callback:v => '$' + v.toFixed(2)}}, title:{{display:true, text:'Earned', color:'#B8860B'}}}}}} : {{}})}}}}}}); }}
 mk(document.getElementById('c'), D);
 </script></body></html>"""
     open(OUT_HTML, "w").write(doc)
@@ -1144,7 +1154,7 @@ def main():
     write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist, stale, day, old, posts_html=posts_html,
                week_html=week_html, installs=dict(INSTALLS) or None, today=today,
                day_base=next((h for h in before if day and h["checked_at"] == day["since"].strftime("%Y-%m-%d %H:%M")), None),
-               money=money_bits(dict(MONEY), now))
+               money=money_bits(dict(MONEY), now), money_daily=dict(MONEY))
     if not SITE:
         write_xlsx(stamp, rows, labels, series)
     if complete:
