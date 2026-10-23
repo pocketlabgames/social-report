@@ -30,6 +30,7 @@ POSTS_HIST = os.path.join(HERE, "posts-history.json")   # per-post views at ever
 POSTS = []   # per-post rows from the latest fetch (filled by fetch())
 INSTALLS = {}   # {date: first downloads} from App Store Connect (filled by fetch(); empty if the key is missing)
 MONEY = {}      # {date: {"ads": usd, "iap": usd}} (filled by fetch(); empty if keys are missing)
+RCNEW = {}      # {date: RevenueCat new customers (first opens)} for the same-day download estimate
 LAST = os.path.join(HERE, "cache", "report-last.json")   # the previous run's table + chart, shown at the bottom (one run only, not a history)
 SITE = os.environ.get("REPORT_SITE") == "1"   # GitHub Actions build for the website (no local helper, no xlsx)
 ACTIONS = "https://github.com/pocketlabgames/social-report/actions/workflows/report.yml"
@@ -49,6 +50,10 @@ def fetch():
         from sources import money_lite
     except ImportError:
         money_lite = None
+    try:
+        from sources import rc_lite
+    except ImportError:
+        rc_lite = None
     out, errors = {}, []
     import re, time
     from concurrent.futures import ThreadPoolExecutor
@@ -63,15 +68,20 @@ def fetch():
                     return {}, f"{m.__name__.split('.')[-1]} (3 tries): {msg}"[:200]
                 time.sleep(10 * attempt)
 
-    INSTALLS.clear(); MONEY.clear()
+    INSTALLS.clear(); MONEY.clear(); RCNEW.clear()
     srcs = [youtube, meta, tiktok] + ([asc_lite] if asc_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")) else [])
     if money_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")) and os.path.exists(os.path.join(KEYS, "admob-token.json")):
         srcs.append(money_lite)
-    with ThreadPoolExecutor(5) as ex:   # the sites, App Store installs and money in parallel
+    if rc_lite and os.path.exists(os.path.join(KEYS, "revenuecat-key.txt")):
+        srcs.append(rc_lite)
+    with ThreadPoolExecutor(6) as ex:   # the sites, App Store installs and money in parallel
         for got, err in ex.map(pull, srcs):
             if "ASC Installs Lite" in got:
                 d = got.pop("ASC Installs Lite")
                 INSTALLS.update({r.date: (None if pd.isna(r.installs) else int(r.installs)) for r in d.itertuples()})
+            if "RC New Lite" in got:
+                d = got.pop("RC New Lite")
+                RCNEW.update({r.date: int(r.new) for r in d.itertuples() if pd.notna(r.new)})
             if "Money Lite" in got:
                 d = got.pop("Money Lite")
                 MONEY.update({r.date: {"ads": None if pd.isna(r.ads) else float(r.ads), "iap": None if pd.isna(r.iap) else float(r.iap)} for r in d.itertuples()})
@@ -584,6 +594,30 @@ def best_slot(posts, now):
     return name, len(v), sum(v) / len(v)
 
 
+def dl_estimate(installs, rcnew, now):
+    """Conservative download estimates from RevenueCat first opens for days Apple hasn't posted yet (today, maybe
+    yesterday). Ratio = Apple first downloads / RevenueCat new customers, the lower of the last 7 and 14 complete
+    days (capped at 1), times RevenueCat's count, rounded down. Returns {date: estimate}, or {} without data."""
+    if not installs or not rcnew:
+        return {}
+    td = now.date()
+    def ratio(n):
+        days = [(td - dt.timedelta(days=k)).isoformat() for k in range(2, n + 2)]
+        a = sum(installs[d] for d in days if installs.get(d) is not None and rcnew.get(d))
+        b = sum(rcnew[d] for d in days if installs.get(d) is not None and rcnew.get(d))
+        return a / b if b else None
+    rs = [r for r in (ratio(7), ratio(14)) if r is not None]
+    if not rs:
+        return {}
+    r = min(min(rs), 1.0)
+    out = {}
+    for k in (0, 1):
+        d = (td - dt.timedelta(days=k)).isoformat()
+        if installs.get(d) is None and rcnew.get(d) is not None:
+            out[d] = int(rcnew[d] * r)
+    return out
+
+
 def money_bits(money, now):
     """(all-time total, yesterday, last 7 days, this month, ads total, iap total, yesterday_missing) in USD; None if no data."""
     if not money:
@@ -710,7 +744,7 @@ def time_section(posts, now):
             f"<tbody>{trs}</tbody></table></div><p class='note hsn'>Site columns: average views per post (number of posts).</p>")
 
 
-def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None, old=None, dry=False, posts_html="", week_html="", installs=None, today=None, day_base=None, money=None, money_daily=None):
+def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None, old=None, dry=False, posts_html="", week_html="", installs=None, today=None, day_base=None, money=None, money_daily=None, est=None):
     e = html.escape
     cols = [{"id": "label", "label": stamp}] + [{"id": p, "label": NAME[p]} for p in PLAT] + [
         {"id": "total", "label": "Total"}, {"id": "best", "label": "Best for ads"}]   # Reddit column paused (Guy, Oct 22)
@@ -744,6 +778,8 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
     if installs:
         td = dt.date.today()
         inst_series = [installs.get((td - dt.timedelta(days=len(labels) - 1 - i)).isoformat()) for i in range(len(labels))]
+        inst_est = [(est or {}).get((td - dt.timedelta(days=len(labels) - 1 - i)).isoformat()) for i in range(len(labels))]
+        inst_series = [v if v is not None else e for v, e in zip(inst_series, inst_est)]
     earn_series = None
     if money_daily:
         td = dt.date.today()
@@ -752,7 +788,8 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
             vals = [m.get("ads"), m.get("iap")]
             return None if all(v is None for v in vals) else round(sum(v or 0 for v in vals), 2)
         earn_series = [day_total((td - dt.timedelta(days=len(labels) - 1 - i)).isoformat()) for i in range(len(labels))]
-    data = json.dumps({"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}, "installs": inst_series, "earned": earn_series})
+    data = json.dumps({"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}, "installs": inst_series, "earned": earn_series,
+                       "est": [i for i in range(len(labels)) if (est or {}).get((dt.date.today() - dt.timedelta(days=len(labels) - 1 - i)).isoformat()) is not None] if installs else []})
     if dry:
         return {"stamp": stamp, "table": {"cols": cols, "rows": trows}, "legend": legend,
                 "data": {"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}}}
@@ -770,14 +807,19 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
             days = sorted(d for d in installs if installs[d] is not None)
             y = (dt.date.today() - dt.timedelta(days=1)).isoformat()
             w = sum(installs[d] for d in days if (dt.date.today() - dt.date.fromisoformat(d)).days <= 7)
+            est = est or {}
+            td_s = dt.date.today().isoformat()
             m = sum(installs[d] for d in days if d[:7] == dt.date.today().strftime("%Y-%m"))
             month = dt.date.today().strftime("%B")
             tot = sum(installs[d] for d in days)
             tail = f" · <b>{w:,}</b> last 7 days · <b>{m:,}</b> in {month} · <b>{tot:,}</b> total since launch</div>"
+            today_est = f"<b>~{est[td_s]:,}</b> today so far <small>(estimate)</small> · " if td_s in est else ""
             if installs.get(y) is not None:
-                inst = f"<div class='dayp dayi'>App Store installs: <b>{installs[y]:,}</b> yesterday" + tail
+                inst = f"<div class='dayp dayi'>App Store installs: {today_est}<b>{installs[y]:,}</b> yesterday" + tail
+            elif y in est:
+                inst = f"<div class='dayp dayi'>App Store installs: {today_est}<b>~{est[y]:,}</b> yesterday <small>(estimate; Apple posts it this morning)</small>" + tail
             else:
-                inst = f"<div class='dayp dayi'>App Store installs: yesterday not posted by Apple yet" + tail
+                inst = f"<div class='dayp dayi'>App Store installs: {today_est}yesterday not posted by Apple yet" + tail
         big, sub, head = f"{sign}{abs(day['total']):,}", "", e(when)
         if today:
             tsign = "+" if today["total"] >= 0 else "−"
@@ -870,7 +912,7 @@ h2.ph{{font-size:18px;font-weight:500;margin:48px 0 4px;padding-top:20px;border-
 {day_html}{week_html}<h2 class="sh" style="margin-top:4px">Views gained per day</h2>
 <div class="lgs" style="margin-top:0">{legend}</div>
 <div class="chart"><canvas id="c" role="img" aria-label="Views gained per day per platform, last 14 days"></canvas></div>
-<p class="note">Bars: last check of each day vs the day before; the last bar is today so far. Days with no check share the gain evenly. Purple line: App Store first downloads per day (right axis; Apple posts each day by the next morning). Green dashed line: money earned that day, ads + App Store proceeds (outer right axis; today's App Store part arrives tomorrow).</p>
+<p class="note">Bars: last check of each day vs the day before; the last bar is today so far. Days with no check share the gain evenly. Purple line: App Store first downloads per day (right axis; Apple posts each day by the next morning; a hollow point is a conservative estimate from RevenueCat first opens until Apple posts). Green dashed line: money earned that day, ads + App Store proceeds (outer right axis; today's App Store part arrives tomorrow).</p>
 {stale_html}<div class="wrap tw"><table id="t"></table></div><div id="m"></div>
 <p class="note">YouTube average uses public posts only. Facebook comments = viewer comments (the Page's own link comments are left out). Comments = viewer comments only (our own replies and pinned comments are left out).</p>
 {posts_html}
@@ -1047,14 +1089,20 @@ const dark = matchMedia('(prefers-color-scheme: dark)').matches, grid = dark ? '
 const C = {{Instagram:['#E87BA4','circle',[6,4]], Facebook:['#2A78D6','rect',[]], YouTube:['#E34948','triangle',[]], TikTok:['#14B8C6','circle',[]]}};
 const fmt = v => Math.round(v).toLocaleString(), sg = v => (v < 0 ? '−' : '+') + fmt(Math.abs(v));
 const prevVal = (d, i) => {{ for(let j = i - 1; j >= 0; j--) if(d[j] != null) return [d[j], j]; return [null, -1]; }};
-function mk(canvas, D) {{ if (!canvas) return; const chart = new Chart(canvas, {{type:'bar',
+function mk(canvas, D) {{ if (!canvas) return;
+ if (matchMedia('(max-width:700px)').matches && D.labels.length > 8) {{   // phones: previous 7 days + today
+   const k = D.labels.length - 8, cut = a => a ? a.slice(k) : a;
+   D = Object.assign({{}}, D, {{labels: cut(D.labels), installs: cut(D.installs), earned: cut(D.earned), est: (D.est || []).map(i => i - k).filter(i => i >= 0),
+     series: Object.fromEntries(Object.entries(D.series).map(([n, s]) => [n, cut(s)]))}}); }}
+ const EST = new Set(D.est || []);
+ const chart = new Chart(canvas, {{type:'bar',
  data:{{labels:D.labels, datasets:Object.entries(D.series).map(([n, d]) => ({{label:n, data:d, backgroundColor:C[n][0], borderRadius:3, maxBarThickness:34, order:2}}))
-   .concat(D.installs ? [{{type:'line', label:'Installs', data:D.installs, borderColor:'#7B4FD6', backgroundColor:'#7B4FD6', yAxisID:'y2', pointRadius:3, borderWidth:2, tension:0.2, spanGaps:true, order:1}}] : [])
+   .concat(D.installs ? [{{type:'line', label:'Installs', data:D.installs, borderColor:'#7B4FD6', backgroundColor:c => EST.has(c.dataIndex) ? '#fff' : '#7B4FD6', pointBorderWidth:2, yAxisID:'y2', pointRadius:c => EST.has(c.dataIndex) ? 4 : 3, segment:{{borderDash:c => EST.has(c.p1DataIndex) ? [4,3] : undefined}}, borderWidth:2, tension:0.2, spanGaps:true, order:1}}] : [])
    .concat(D.earned ? [{{type:'line', label:'Earned', data:D.earned, borderColor:'#1E9E55', backgroundColor:'#1E9E55', yAxisID:'y3', pointRadius:3, pointStyle:'rectRot', borderWidth:2, borderDash:[5,4], tension:0.2, spanGaps:true, order:0}}] : [])}},
  options:{{responsive:true, maintainAspectRatio:false, interaction:{{mode:'index', intersect:false}},
   plugins:{{legend:{{display:false}}, tooltip:{{callbacks:{{
    title: it => {{ const t = it.filter(c => c.dataset.type !== 'line').reduce((s, c) => s + (c.parsed.y || 0), 0); return it[0].label + ' · ' + sg(t) + ' views'; }},
-   label: c => c.dataset.label === 'Earned' ? 'Earned: $' + c.parsed.y.toFixed(2) : c.dataset.type === 'line' ? 'Installs: ' + fmt(c.parsed.y) : c.dataset.label + ': ' + sg(c.parsed.y) }}}}}},
+   label: c => c.dataset.label === 'Earned' ? 'Earned: $' + c.parsed.y.toFixed(2) : c.dataset.type === 'line' ? 'Installs: ' + (EST.has(c.dataIndex) ? '~' : '') + fmt(c.parsed.y) + (EST.has(c.dataIndex) ? ' (estimate)' : '') : c.dataset.label + ': ' + sg(c.parsed.y) }}}}}},
   scales:{{x:{{stacked:true, grid:{{display:false}}, ticks:{{color:muted, maxRotation:0, autoSkip:true}}}}, y:{{stacked:true, beginAtZero:true, grid:{{color:grid}}, ticks:{{color:muted, callback:v => v.toLocaleString()}}, title:{{display:true, text:'Views gained', color:muted}}}},
    ...(D.installs ? {{y2:{{position:'right', beginAtZero:true, grid:{{display:false}}, ticks:{{color:'#7B4FD6', precision:0}}, title:{{display:true, text:'Installs', color:'#7B4FD6'}}}}}} : {{}}),
    ...(D.earned ? {{y3:{{position:'right', beginAtZero:true, grid:{{display:false}}, ticks:{{color:'#1E9E55', callback:v => '$' + v.toFixed(2)}}, title:{{display:true, text:'Earned', color:'#1E9E55'}}}}}} : {{}})}}}}}}); }}
@@ -1154,7 +1202,7 @@ def main():
     write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist, stale, day, old, posts_html=posts_html,
                week_html=week_html, installs=dict(INSTALLS) or None, today=today,
                day_base=next((h for h in before if day and h["checked_at"] == day["since"].strftime("%Y-%m-%d %H:%M")), None),
-               money=money_bits(dict(MONEY), now), money_daily=dict(MONEY))
+               money=money_bits(dict(MONEY), now), money_daily=dict(MONEY), est=dl_estimate(dict(INSTALLS), dict(RCNEW), now))
     if not SITE:
         write_xlsx(stamp, rows, labels, series)
     if complete:
