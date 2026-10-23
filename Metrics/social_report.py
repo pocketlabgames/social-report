@@ -390,12 +390,12 @@ def today_change(snap, hist, now):
     cur = {p: (snap.get(p) or {}).get("views") for p in PLAT}
     if any(v is None for v in cur.values()):
         return None
-    base = None
+    base = None   # the last complete check before midnight (same baseline as today's bar in the chart)
     for h in hist:
         if not all(isinstance(h.get(p), dict) and h[p].get("views") is not None for p in PLAT):
             continue
         t = dt.datetime.strptime(h["checked_at"], "%Y-%m-%d %H:%M")
-        if base is None or abs(t - midnight) < abs(dt.datetime.strptime(base["checked_at"], "%Y-%m-%d %H:%M") - midnight):
+        if t < midnight and (base is None or t > dt.datetime.strptime(base["checked_at"], "%Y-%m-%d %H:%M")):
             base = h
     if base is None:
         return None
