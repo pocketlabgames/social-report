@@ -780,7 +780,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         inst_series = [installs.get((td - dt.timedelta(days=len(labels) - 1 - i)).isoformat()) for i in range(len(labels))]
         inst_est = [(est or {}).get((td - dt.timedelta(days=len(labels) - 1 - i)).isoformat()) for i in range(len(labels))]
         inst_series = [v if v is not None else e for v, e in zip(inst_series, inst_est)]
-    earn_series = None
+    earn_series, earn_partial = None, []
     if money_daily:
         td = dt.date.today()
         def day_total(d):
@@ -788,7 +788,8 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
             vals = [m.get("ads"), m.get("iap")]
             return None if all(v is None for v in vals) else round(sum(v or 0 for v in vals), 2)
         earn_series = [day_total((td - dt.timedelta(days=len(labels) - 1 - i)).isoformat()) for i in range(len(labels))]
-    data = json.dumps({"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}, "installs": inst_series, "earned": earn_series,
+        earn_partial = [i for i in range(len(labels)) if earn_series[i] is not None and (money_daily.get((td - dt.timedelta(days=len(labels) - 1 - i)).isoformat()) or {}).get("iap") is None]
+    data = json.dumps({"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}, "installs": inst_series, "earned": earn_series, "earnPart": earn_partial,
                        "est": [i for i in range(len(labels)) if (est or {}).get((dt.date.today() - dt.timedelta(days=len(labels) - 1 - i)).isoformat()) is not None] if installs else []})
     if dry:
         return {"stamp": stamp, "table": {"cols": cols, "rows": trows}, "legend": legend,
@@ -912,7 +913,7 @@ h2.ph{{font-size:18px;font-weight:500;margin:48px 0 4px;padding-top:20px;border-
 {day_html}{week_html}<h2 class="sh" style="margin-top:4px">Views gained per day</h2>
 <div class="lgs" style="margin-top:0">{legend}</div>
 <div class="chart"><canvas id="c" role="img" aria-label="Views gained per day per platform, last 14 days"></canvas></div>
-<p class="note">Bars: last check of each day vs the day before; the last bar is today so far. Days with no check share the gain evenly. Purple line: App Store first downloads per day (right axis; Apple posts each day by the next morning; a hollow point is a conservative estimate from RevenueCat first opens until Apple posts). Green dashed line: money earned that day, ads + App Store proceeds (outer right axis; today's App Store part arrives tomorrow).</p>
+<p class="note">Bars: last check of each day vs the day before; the last bar is today so far. Days with no check share the gain evenly. Purple line: App Store first downloads per day (right axis; Apple posts each day by the next morning; a hollow point is a conservative estimate from RevenueCat first opens until Apple posts). Green line: money earned that day, ads + App Store proceeds (outer right axis). Dotted with hollow points until Apple posts that day's App Store proceeds; it turns solid once Apple's numbers are in.</p>
 {stale_html}<div class="wrap tw"><table id="t"></table></div><div id="m"></div>
 <p class="note">YouTube average uses public posts only. Facebook comments = viewer comments (the Page's own link comments are left out). Comments = viewer comments only (our own replies and pinned comments are left out).</p>
 {posts_html}
@@ -1092,17 +1093,17 @@ const prevVal = (d, i) => {{ for(let j = i - 1; j >= 0; j--) if(d[j] != null) re
 function mk(canvas, D) {{ if (!canvas) return;
  if (matchMedia('(max-width:700px)').matches && D.labels.length > 8) {{   // phones: previous 7 days + today
    const k = D.labels.length - 8, cut = a => a ? a.slice(k) : a;
-   D = Object.assign({{}}, D, {{labels: cut(D.labels), installs: cut(D.installs), earned: cut(D.earned), est: (D.est || []).map(i => i - k).filter(i => i >= 0),
+   D = Object.assign({{}}, D, {{labels: cut(D.labels), installs: cut(D.installs), earned: cut(D.earned), est: (D.est || []).map(i => i - k).filter(i => i >= 0), earnPart: (D.earnPart || []).map(i => i - k).filter(i => i >= 0),
      series: Object.fromEntries(Object.entries(D.series).map(([n, s]) => [n, cut(s)]))}}); }}
- const EST = new Set(D.est || []);
+ const EST = new Set(D.est || []), EP = new Set(D.earnPart || []);
  const chart = new Chart(canvas, {{type:'bar',
  data:{{labels:D.labels, datasets:Object.entries(D.series).map(([n, d]) => ({{label:n, data:d, backgroundColor:C[n][0], borderRadius:3, maxBarThickness:34, order:2}}))
    .concat(D.installs ? [{{type:'line', label:'Installs', data:D.installs, borderColor:'#7B4FD6', backgroundColor:c => EST.has(c.dataIndex) ? '#fff' : '#7B4FD6', pointBorderWidth:2, yAxisID:'y2', pointRadius:c => EST.has(c.dataIndex) ? 4 : 3, segment:{{borderDash:c => EST.has(c.p1DataIndex) ? [4,3] : undefined}}, borderWidth:2, tension:0.2, spanGaps:true, order:1}}] : [])
-   .concat(D.earned ? [{{type:'line', label:'Earned', data:D.earned, borderColor:'#1E9E55', backgroundColor:'#1E9E55', yAxisID:'y3', pointRadius:3, pointStyle:'rectRot', borderWidth:2, borderDash:[5,4], tension:0.2, spanGaps:true, order:0}}] : [])}},
+   .concat(D.earned ? [{{type:'line', label:'Earned', data:D.earned, borderColor:'#1E9E55', backgroundColor:c => EP.has(c.dataIndex) ? '#fff' : '#1E9E55', pointBorderWidth:2, yAxisID:'y3', pointRadius:c => EP.has(c.dataIndex) ? 4 : 3, pointStyle:'rectRot', borderWidth:2, segment:{{borderDash:c => EP.has(c.p1DataIndex) ? [4,3] : undefined}}, tension:0.2, spanGaps:true, order:0}}] : [])}},
  options:{{responsive:true, maintainAspectRatio:false, interaction:{{mode:'index', intersect:false}},
   plugins:{{legend:{{display:false}}, tooltip:{{callbacks:{{
    title: it => {{ const t = it.filter(c => c.dataset.type !== 'line').reduce((s, c) => s + (c.parsed.y || 0), 0); return it[0].label + ' · ' + sg(t) + ' views'; }},
-   label: c => c.dataset.label === 'Earned' ? 'Earned: $' + c.parsed.y.toFixed(2) : c.dataset.type === 'line' ? 'Installs: ' + (EST.has(c.dataIndex) ? '~' : '') + fmt(c.parsed.y) + (EST.has(c.dataIndex) ? ' (estimate)' : '') : c.dataset.label + ': ' + sg(c.parsed.y) }}}}}},
+   label: c => c.dataset.label === 'Earned' ? 'Earned: $' + c.parsed.y.toFixed(2) + (EP.has(c.dataIndex) ? ' (ads only so far; App Store not posted yet)' : '') : c.dataset.type === 'line' ? 'Installs: ' + (EST.has(c.dataIndex) ? '~' : '') + fmt(c.parsed.y) + (EST.has(c.dataIndex) ? ' (estimate)' : '') : c.dataset.label + ': ' + sg(c.parsed.y) }}}}}},
   scales:{{x:{{stacked:true, grid:{{display:false}}, ticks:{{color:muted, maxRotation:0, autoSkip:true}}}}, y:{{stacked:true, beginAtZero:true, grid:{{color:grid}}, ticks:{{color:muted, callback:v => v.toLocaleString()}}, title:{{display:true, text:'Views gained', color:muted}}}},
    ...(D.installs ? {{y2:{{position:'right', beginAtZero:true, grid:{{display:false}}, ticks:{{color:'#7B4FD6', precision:0}}, title:{{display:true, text:'Installs', color:'#7B4FD6'}}}}}} : {{}}),
    ...(D.earned ? {{y3:{{position:'right', beginAtZero:true, grid:{{display:false}}, ticks:{{color:'#1E9E55', callback:v => '$' + v.toFixed(2)}}, title:{{display:true, text:'Earned', color:'#1E9E55'}}}}}} : {{}})}}}}}}); }}
