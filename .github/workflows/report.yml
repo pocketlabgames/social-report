@@ -1,9 +1,9 @@
 name: Social Report
 on:
   schedule:
-    # Eastern 7:23 AM, 11:23 AM, 2:23 PM, 4:23 PM, 7:23 PM, 9:23 PM. GitHub cron is UTC and can run late.
-    # EDT (Mar-Nov): UTC-4. When clocks fall back (EST, UTC-5) change these to 12,16,19,21,0,2.
-    - cron: "23 11,15,18,20,23,1 * * *"
+    # Every 2 hours, 6:23 AM to 10:23 PM Eastern plus 12:23 AM (Guy, Oct 23). GitHub cron is UTC and can run late.
+    # EDT (Mar-Nov): UTC-4. When clocks fall back Nov 1 (EST, UTC-5) change to "23 11,13,15,17,19,21,23,1,3,5 * * *".
+    - cron: "23 10,12,14,16,18,20,22,0,2,4 * * *"
   workflow_dispatch:
 permissions:
   contents: write
@@ -46,7 +46,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Metrics/social-stats-history.json Metrics/posts-history.json Metrics/installs-cache.json Metrics/cache/report-last.json
+          git add Metrics/social-stats-history.json Metrics/posts-history.json Metrics/installs-cache.json Metrics/money-cache.json Metrics/cache/report-last.json
           git commit -qm "Report $(TZ=America/New_York date '+%Y-%m-%d %H:%M')" || echo "nothing to save"
           git pull -q --rebase -X theirs || true
           git push

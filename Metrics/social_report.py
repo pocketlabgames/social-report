@@ -29,6 +29,7 @@ LAYOUT = os.path.join(HERE, "report-layout.json")   # saved from the report's Ed
 POSTS_HIST = os.path.join(HERE, "posts-history.json")   # per-post views at every complete check (for +24 h per post)
 POSTS = []   # per-post rows from the latest fetch (filled by fetch())
 INSTALLS = {}   # {date: first downloads} from App Store Connect (filled by fetch(); empty if the key is missing)
+MONEY = {}      # {date: {"ads": usd, "iap": usd}} (filled by fetch(); empty if keys are missing)
 LAST = os.path.join(HERE, "cache", "report-last.json")   # the previous run's table + chart, shown at the bottom (one run only, not a history)
 SITE = os.environ.get("REPORT_SITE") == "1"   # GitHub Actions build for the website (no local helper, no xlsx)
 ACTIONS = "https://github.com/pocketlabgames/social-report/actions/workflows/report.yml"
@@ -44,6 +45,10 @@ def fetch():
         from sources import asc_lite
     except ImportError:
         asc_lite = None
+    try:
+        from sources import money_lite
+    except ImportError:
+        money_lite = None
     out, errors = {}, []
     import re, time
     from concurrent.futures import ThreadPoolExecutor
@@ -58,13 +63,18 @@ def fetch():
                     return {}, f"{m.__name__.split('.')[-1]} (3 tries): {msg}"[:200]
                 time.sleep(10 * attempt)
 
-    INSTALLS.clear()
+    INSTALLS.clear(); MONEY.clear()
     srcs = [youtube, meta, tiktok] + ([asc_lite] if asc_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")) else [])
-    with ThreadPoolExecutor(4) as ex:   # the sites (and App Store installs) in parallel
+    if money_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")) and os.path.exists(os.path.join(KEYS, "admob-token.json")):
+        srcs.append(money_lite)
+    with ThreadPoolExecutor(5) as ex:   # the sites, App Store installs and money in parallel
         for got, err in ex.map(pull, srcs):
             if "ASC Installs Lite" in got:
                 d = got.pop("ASC Installs Lite")
                 INSTALLS.update({r.date: (None if pd.isna(r.installs) else int(r.installs)) for r in d.itertuples()})
+            if "Money Lite" in got:
+                d = got.pop("Money Lite")
+                MONEY.update({r.date: {"ads": None if pd.isna(r.ads) else float(r.ads), "iap": None if pd.isna(r.iap) else float(r.iap)} for r in d.itertuples()})
             out.update(got)
             if err:
                 errors.append(err)
@@ -574,6 +584,27 @@ def best_slot(posts, now):
     return name, len(v), sum(v) / len(v)
 
 
+def money_bits(money, now):
+    """(all-time total, yesterday, last 7 days, this month, ads total, iap total, yesterday_missing) in USD; None if no data."""
+    if not money:
+        return None
+    td = now.date()
+    def tot(days, k=None):
+        v = 0.0
+        for d in days:
+            m = money.get(d) or {}
+            for kk in ([k] if k else ("ads", "iap")):
+                if m.get(kk) is not None:
+                    v += m[kk]
+        return v
+    allk = sorted(money)
+    y = (td - dt.timedelta(days=1)).isoformat()
+    w = [d for d in allk if (td - dt.date.fromisoformat(d)).days <= 7]
+    mo = [d for d in allk if d[:7] == td.strftime("%Y-%m")]
+    return {"all": tot(allk), "y": tot([y]), "w": tot(w), "m": tot(mo), "ads": tot(allk, "ads"), "iap": tot(allk, "iap"),
+            "y_missing": (money.get(y) or {}).get("iap") is None, "month": td.strftime("%B")}
+
+
 def week_box(snap, hist, posts, phist, installs, now):
     """'This week' summary: views and installs vs the week before, best and weakest post, best time, what to try."""
     e = html.escape
@@ -679,7 +710,7 @@ def time_section(posts, now):
             f"<tbody>{trs}</tbody></table></div><p class='note hsn'>Site columns: average views per post (number of posts).</p>")
 
 
-def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None, old=None, dry=False, posts_html="", week_html="", installs=None, today=None, day_base=None):
+def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None, old=None, dry=False, posts_html="", week_html="", installs=None, today=None, day_base=None, money=None):
     e = html.escape
     cols = [{"id": "label", "label": stamp}] + [{"id": p, "label": NAME[p]} for p in PLAT] + [
         {"id": "total", "label": "Total"}, {"id": "best", "label": "Best for ads"}]   # Reddit column paused (Guy, Oct 22)
@@ -753,6 +784,10 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         allv = sum((snap.get(p) or {}).get("views") or 0 for p in PLAT)
         tot_dl = sum(v for v in installs.values() if v is not None) if installs else None
         right = f"<div class='dayt'>{allv:,} <small>total views</small></div>" + (f"<div class='dayt'>{tot_dl:,} <small>total downloads</small></div>" if tot_dl is not None else "")
+        if money:
+            right += f"<div class='dayt'>${money['all']:,.2f} <small>total earned</small></div>"
+            inst += (f"<div class='dayp daym'>Earned: <b>${money['y']:,.2f}</b> yesterday · <b>${money['w']:,.2f}</b> last 7 days · <b>${money['m']:,.2f}</b> in {money['month']}"
+                     f" · ads ${money['ads']:,.2f} + App Store ${money['iap']:,.2f} since launch <small>(AdMob estimates; App Store after Apple’s cut{'; Apple hasn’t posted yesterday yet' if money['y_missing'] else ''})</small></div>")
         v3now = {p: (snap.get(p) or {}).get("views_3s") for p in PLAT}
         v3b = {p: (day_base.get(p) or {}).get("views_3s") for p in PLAT} if day_base else {}
         v3parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> {NAME[p]} {v3now[p]:,}" + (f" <small>(+{v3now[p] - v3b[p]:,} 24 h)</small>" if v3b.get(p) is not None and v3now[p] - v3b[p] >= 0 else "") for p in PLAT if v3now[p] is not None)
@@ -787,10 +822,10 @@ th{{font-weight:500;color:var(--ink2)}} th.rl{{text-align:left}} thead th{{borde
 @media (max-width:700px){{main{{padding:16px 14px}} h1{{font-size:24px}} .sub{{font-size:14px}} .tw,.ptw,#edit{{display:none}} #m{{display:block}} table.vt th,table.vt td{{padding:5px 3px;font-size:12px}}
 
  table.vt .aw{{display:none}} .vch{{flex-wrap:wrap}} .hs{{display:none}} .hist th,.hist td{{padding:8px 6px}} .chart{{height:260px}} .note{{font-size:12px}} .lgs{{gap:10px 16px}} h2.ph{{margin-top:32px}}}}
-.day{{display:grid;grid-template-columns:1fr auto;grid-template-areas:"l r" "v r" "p r" "t r" "i r";align-items:start;column-gap:16px;row-gap:4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:0 0 14px}}
+.day{{display:grid;grid-template-columns:1fr auto;grid-template-areas:"l r" "v r" "p r" "t r" "i r" "m r";align-items:start;column-gap:16px;row-gap:4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:0 0 14px}}
 .dayv .sub2{{display:block;font-size:13px}} .dayt{{font-size:26px;font-weight:600;color:#5f5e5a;font-variant-numeric:tabular-nums;margin-top:6px;text-align:right}} .dayt small{{font-size:14px;color:var(--muted);font-weight:400}}
 @media (prefers-color-scheme: dark){{.dayt{{color:#a9a89f}}}} .day{{position:sticky;top:8px;z-index:5;box-shadow:0 4px 14px rgba(0,0,0,.14)}} .dayl{{color:var(--ink2);font-weight:500}} .dayl small{{color:var(--muted);font-weight:400;font-size:12px}} .dayl{{grid-area:l}} .dayv{{grid-area:v;font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;text-align:left;margin-top:2px;line-height:1.15}}
-.dayr{{grid-area:r;text-align:right;margin-top:2px;align-self:start}} .day .dayp.dayps{{grid-area:p}} .day .dayp.dayi{{grid-area:i}} .day .dayp.day3{{grid-area:t}} .dayr .dayt{{margin-top:0;line-height:1.15}} .dayr .dayt small{{display:block;font-size:13px}} .dayr .dayt+.dayt{{margin-top:8px}} .day .dayp{{grid-column:auto}} .dayv small{{font-size:14px;color:var(--muted);font-weight:400}}
+.dayr{{grid-area:r;text-align:right;margin-top:2px;align-self:start}} .day .dayp.dayps{{grid-area:p}} .day .dayp.dayi{{grid-area:i}} .day .dayp.day3{{grid-area:t}} .day .dayp.daym{{grid-area:m}} .dayr .dayt{{margin-top:0;line-height:1.15}} .dayr .dayt small{{display:block;font-size:13px}} .dayr .dayt+.dayt{{margin-top:8px}} .day .dayp{{grid-column:auto}} .dayv small{{font-size:14px;color:var(--muted);font-weight:400}}
 .dayp{{grid-column:1/-1;font-size:13px;color:var(--ink2)}} a.tp{{color:inherit;text-decoration:underline;text-decoration-color:#2A78D6;text-underline-offset:3px}}
 h2.sh{{font-size:18px;font-weight:500;margin:36px 0 10px}} .dot{{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}}
 .old{{display:none}} .showold .old{{display:revert}} .vgrid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}} @media (max-width:900px){{.vgrid{{grid-template-columns:1fr}}}}
@@ -800,10 +835,11 @@ h2.sh{{font-size:18px;font-weight:500;margin:36px 0 10px}} .dot{{display:inline-
 table.vt thead th{{color:var(--muted);font-weight:500;border-bottom:1px solid var(--line)}} table.vt tbody tr:last-child th,table.vt tbody tr:last-child td{{border-bottom:0}}
 table.vt tr.lead td,table.vt tr.lead th{{background:rgba(42,120,214,.10)}} table.vt a.tp{{text-decoration:none;color:inherit;border-bottom:1px solid #2A78D6}}
 #more{{margin:4px 0 0}} .week{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:0 0 14px}}
-.weekh{{color:var(--ink2);font-weight:500;margin-bottom:6px}} .week ul{{margin:0;padding-left:18px;color:var(--ink)}} .week li{{margin:3px 0;line-height:1.4}} tr.bestrow th,tr.bestrow td{{background:rgba(42,120,214,.12)}} table.slots small{{color:var(--muted);font-weight:400}}
+.weekh{{color:var(--ink2);font-weight:500;margin-bottom:6px}} .weekh small{{color:var(--muted);font-weight:400;font-size:12px;margin-left:6px}}
+ .week ul{{margin:0;padding-left:18px;color:var(--ink)}} .week li{{margin:3px 0;line-height:1.4}} tr.bestrow th,tr.bestrow td{{background:rgba(42,120,214,.12)}} table.slots small{{color:var(--muted);font-weight:400}}
 @media (max-width:700px){{.hsn{{display:none}} table.slots th,table.slots td{{padding:8px 5px;font-size:13px}} table.slots small{{display:block;font-size:11px}}
-.day{{grid-template-columns:1fr;grid-template-areas:"l" "v" "p" "t" "i" "r"}} .day .dayp{{grid-column:1/-1}}
-.dayr{{display:flex;justify-content:space-between;align-items:flex-end;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}} .dayr .dayt{{margin:0 !important}} .dayr .dayt:first-child{{text-align:left}} .dayr .dayt:last-child{{text-align:right}}}}
+.day{{grid-template-columns:1fr;grid-template-areas:"l" "v" "p" "t" "i" "m" "r"}} .day .dayp{{grid-column:1/-1}}
+.dayr{{display:flex;justify-content:space-between;align-items:flex-end;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}} .dayr .dayt{{font-size:22px}} .dayr .dayt{{margin:0 !important}} .dayr .dayt:first-child{{text-align:left}} .dayr .dayt:last-child{{text-align:right}}}}
 tr.pick td{{text-align:left}} .warn{{margin:0 0 10px;padding:8px 12px;border-radius:8px;background:#FFF4CC;color:#5c4a00;font-size:14px}} .hist td,.hist th{{color:var(--ink2);font-size:14px}} .dl{{color:var(--muted);font-size:12px}} b{{font-weight:600}}
 .lgs{{display:flex;flex-wrap:wrap;gap:16px;margin:28px 0 8px;font-size:12px;color:var(--ink2)}} .lg{{display:flex;align-items:center;gap:6px}}
 .chart{{position:relative;height:340px}}
@@ -1107,7 +1143,8 @@ def main():
     week_html = week_box(snap, before, POSTS, phist[:-1] if (complete and POSTS) else phist, INSTALLS, now)
     write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist, stale, day, old, posts_html=posts_html,
                week_html=week_html, installs=dict(INSTALLS) or None, today=today,
-               day_base=next((h for h in before if day and h["checked_at"] == day["since"].strftime("%Y-%m-%d %H:%M")), None))
+               day_base=next((h for h in before if day and h["checked_at"] == day["since"].strftime("%Y-%m-%d %H:%M")), None),
+               money=money_bits(dict(MONEY), now))
     if not SITE:
         write_xlsx(stamp, rows, labels, series)
     if complete:
