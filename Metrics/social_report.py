@@ -1200,9 +1200,16 @@ def main():
     yo = {q: (series.get(q) or [None, None, None])[-3] if len(series.get(q) or []) >= 3 else None for q in PLAT}   # the day before
     if all(v is not None for v in yv.values()):   # Guy, Oct 23: views gained yesterday, (+/-) vs the day before
         ytop = max(yv.values())
-        rows.insert(1, {"label": "Views yesterday", "vals": yv, "olds": yo, "top": ytop,
+        rows.insert(1, {"label": "Yesterday's views", "vals": yv, "olds": yo, "top": ytop,
                         "best": [NAME[q] for q in PLAT if yv[q] == ytop], "total": sum(yv.values()),
                         "ototal": sum(yo.values()) if all(v is not None for v in yo.values()) else None, "reddit": None})
+    tv = {q: (series.get(q) or [None])[-1] for q in PLAT}   # today's bar in the chart (so far); (+N) = since the last check
+    if all(v is not None for v in tv.values()):   # Guy, Oct 24
+        to = {q: (tv[q] - ((snap.get(q) or {}).get("views", 0) - ((prev or {}).get(q) or {}).get("views", (snap.get(q) or {}).get("views", 0)))) if prev else None for q in PLAT}
+        ttop = max(tv.values())
+        rows.insert(1, {"label": "Today's views", "vals": tv, "olds": to, "top": ttop,
+                        "best": [NAME[q] for q in PLAT if tv[q] == ttop], "total": sum(tv.values()),
+                        "ototal": sum(to.values()) if all(v is not None for v in to.values()) else None, "reddit": None})
     labels[-1] += " (so far)"
     complete = len(snap) == len(PLAT) and not stale   # only record complete checks, so the next deltas stay honest
     if complete:
