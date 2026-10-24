@@ -825,7 +825,12 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         if today:
             tsign = "+" if today["total"] >= 0 else "−"
             big = f"{tsign}{abs(today['total']):,}"
-            sub = f"<small class='sub2'>({sign}{abs(day['total']):,} past 24 h)</small>"
+            yv = [series[q][-2] for q in PLAT] if series and all(len(series.get(q) or []) >= 2 for q in PLAT) else None
+            if yv and all(v is not None for v in yv):   # yesterday = the chart's yesterday bar (same baseline)
+                ytot = sum(yv)
+                sub = f"<small class='sub2'>({'+' if ytot >= 0 else '−'}{abs(ytot):,} yesterday)</small>"
+            else:
+                sub = f"<small class='sub2'>({sign}{abs(day['total']):,} past 24 h)</small>"
             if prev and all(isinstance(prev.get(p), dict) and prev[p].get("views") is not None and (snap.get(p) or {}).get("views") is not None for p in PLAT):
                 mv = sum(snap[p]["views"] - prev[p]["views"] for p in PLAT)
                 since = dt.datetime.strptime(prev["checked_at"], "%Y-%m-%d %H:%M").strftime("%-I:%M %p")
@@ -1173,6 +1178,13 @@ def main():
     rd = None   # Reddit tracking paused (Guy, Oct 22); reddit() still works if we bring it back
     rows = build_rows(snap, prev, rd)
     labels, series = gains(hist, snap, now); source = "history file"
+    yv = {q: (series.get(q) or [None, None])[-2] for q in PLAT}      # yesterday's bar in the chart
+    yo = {q: (series.get(q) or [None, None, None])[-3] if len(series.get(q) or []) >= 3 else None for q in PLAT}   # the day before
+    if all(v is not None for v in yv.values()):   # Guy, Oct 23: views gained yesterday, (+/-) vs the day before
+        ytop = max(yv.values())
+        rows.insert(1, {"label": "Views yesterday", "vals": yv, "olds": yo, "top": ytop,
+                        "best": [NAME[q] for q in PLAT if yv[q] == ytop], "total": sum(yv.values()),
+                        "ototal": sum(yo.values()) if all(v is not None for v in yo.values()) else None, "reddit": None})
     labels[-1] += " (so far)"
     complete = len(snap) == len(PLAT) and not stale   # only record complete checks, so the next deltas stay honest
     if complete:
