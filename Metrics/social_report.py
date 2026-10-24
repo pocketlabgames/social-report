@@ -1132,11 +1132,12 @@ function mk(canvas, D) {{ if (!canvas) return;
    D = Object.assign({{}}, D, {{labels: cut(D.labels), installs: cut(D.installs), earned: cut(D.earned), spend: cut(D.spend), est: (D.est || []).map(i => i - k).filter(i => i >= 0), earnPart: (D.earnPart || []).map(i => i - k).filter(i => i >= 0),
      series: Object.fromEntries(Object.entries(D.series).map(([n, s]) => [n, cut(s)]))}}); }}
  const EST = new Set(D.est || []), EP = new Set(D.earnPart || []);
+ const LASTV = Object.keys(D.series).length - 1;   // index of the last view dataset (views are added first)
  const TTR = c => c.dataset.stack === 'v' ? c.datasetIndex : ({{Installs:100, Earned:101}}[c.dataset.label] ?? 102);   // tooltip: views first, then installs, earned, ad spend
  const SEP = {{id:'ttsep', afterTooltipDraw(ch, args) {{ const t = args.tooltip; if (!t.opacity) return; const o = t.options, H = Chart.helpers, pad = H.toPadding(o.padding);
    const k = t.dataPoints.filter(p => p.dataset.stack === 'v').length; if (!k || k === t.dataPoints.length) return;
    const tf = H.toFont(o.titleFont), bf = H.toFont(o.bodyFont), nt = t.title.length;
-   let y = t.y + pad.top + nt*tf.lineHeight + Math.max(0, nt - 1)*o.titleSpacing + o.titleMarginBottom + k*(Math.max(bf.lineHeight, o.boxHeight || bf.size) + o.bodySpacing) - o.bodySpacing/2;
+   let y = t.y + pad.top + nt*tf.lineHeight + Math.max(0, nt - 1)*o.titleSpacing + o.titleMarginBottom + k*(Math.max(bf.lineHeight, o.boxHeight || bf.size) + o.bodySpacing) - o.bodySpacing + bf.lineHeight/2;
    const x = ch.ctx; x.save(); x.strokeStyle = 'rgba(255,255,255,.75)'; x.lineWidth = 1; x.beginPath(); x.moveTo(t.x + pad.left, Math.round(y) + .5); x.lineTo(t.x + t.width - pad.right, Math.round(y) + .5); x.stroke(); x.restore(); }}}};
  const chart = new Chart(canvas, {{type:'bar', plugins:[SEP],
  data:{{labels:D.labels, datasets:Object.entries(D.series).map(([n, d]) => ({{label:n, data:d.map(v => v == null ? v : Math.max(0, v)), backgroundColor:C[n][0], borderRadius:3, maxBarThickness:34, stack:'v', barPercentage:0.95, order:2}}))
@@ -1144,7 +1145,9 @@ function mk(canvas, D) {{ if (!canvas) return;
    .concat(D.installs ? [{{type:'line', label:'Installs', data:D.installs, borderColor:'#7B4FD6', backgroundColor:c => EST.has(c.dataIndex) ? '#fff' : '#7B4FD6', pointBorderWidth:2, yAxisID:'y2', pointRadius:c => EST.has(c.dataIndex) ? 4 : 3, segment:{{borderDash:c => EST.has(c.p1DataIndex) ? [4,3] : undefined}}, borderWidth:2, tension:0.2, spanGaps:true, order:1}}] : [])
    .concat(D.earned ? [{{type:'line', label:'Earned', data:D.earned, borderColor:'#1E9E55', backgroundColor:c => EP.has(c.dataIndex) ? '#fff' : '#1E9E55', pointBorderWidth:2, yAxisID:'y3', pointRadius:c => EP.has(c.dataIndex) ? 4 : 3, pointStyle:'rectRot', borderWidth:2, segment:{{borderDash:c => EP.has(c.p1DataIndex) ? [4,3] : undefined}}, tension:0.2, spanGaps:true, order:0}}] : [])}},
  options:{{responsive:true, maintainAspectRatio:false, interaction:{{mode:'index', intersect:false}},
-  plugins:{{legend:{{display:false}}, tooltip:{{bodySpacing:4, itemSort:(a, b) => TTR(a) - TTR(b), callbacks:{{
+  plugins:{{legend:{{display:false}}, tooltip:{{bodySpacing:4, multiKeyBackground:'rgba(0,0,0,0)', itemSort:(a, b) => TTR(a) - TTR(b), callbacks:{{
+   afterLabel: c => c.datasetIndex === LASTV ? ' ' : '',   // blank line before the installs / earned / spend group
+   labelColor: c => ({{borderColor:'rgba(0,0,0,0)', backgroundColor: c.dataset.type === 'line' ? c.dataset.borderColor : c.dataset.backgroundColor, borderWidth:1, borderRadius:2}}),
    title: it => {{ const t = it.filter(c => c.dataset.type !== 'line' && c.dataset.stack !== 's').reduce((s, c) => s + (c.parsed.y || 0), 0); return it[0].label + ' · ' + sg(t) + ' views'; }},
    label: c => c.dataset.stack === 's' ? 'Google Ads spend: $' + (c.parsed.y || 0).toFixed(2) : c.dataset.label === 'Earned' ? 'Earned: $' + c.parsed.y.toFixed(2) + (EP.has(c.dataIndex) ? ' (ads only so far; App Store not posted yet)' : '') : c.dataset.type === 'line' ? 'Installs: ' + (EST.has(c.dataIndex) ? '~' : '') + fmt(c.parsed.y) + (EST.has(c.dataIndex) ? ' (estimate)' : '') : c.dataset.label + ': ' + sg(c.parsed.y) }}}}}},
   scales:{{x:{{stacked:true, grid:{{display:false}}, ticks:{{color:muted, maxRotation:0, autoSkip:true}}}}, y:{{stacked:true, beginAtZero:true, min:0, grid:{{color:grid}}, ticks:{{color:muted, callback:v => v.toLocaleString()}}, title:{{display:true, text:'Views gained', color:muted}}}},
