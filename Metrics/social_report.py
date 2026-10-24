@@ -843,11 +843,11 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         if money:
             right += f"<div class='dayt'>${money['all']:,.2f} <small>total earned</small></div>"
             inst += (f"<div class='dayp daym'>Earned: <b>${money['y']:,.2f}</b> yesterday · <b>${money['w']:,.2f}</b> last 7 days · <b>${money['m']:,.2f}</b> in {money['month']}"
-                     f" · ads ${money['ads']:,.2f} + App Store ${money['iap']:,.2f} since launch <small>(AdMob estimates; App Store after Apple’s cut{'; Apple hasn’t posted yesterday yet' if money['y_missing'] else ''})</small></div>")
+                     f" · ads ${money['ads']:,.2f} + App Store ${money['iap']:,.2f} since launch {' <small>(Apple hasn’t posted yesterday yet)</small>' if money['y_missing'] else ''}</div>")
         v3now = {p: (snap.get(p) or {}).get("views_3s") for p in PLAT}
         v3b = {p: (day_base.get(p) or {}).get("views_3s") for p in PLAT} if day_base else {}
         v3parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> {NAME[p]} {v3now[p]:,}" + (f" <small>(+{v3now[p] - v3b[p]:,} 24 h)</small>" if v3b.get(p) is not None and v3now[p] - v3b[p] >= 0 else "") for p in PLAT if v3now[p] is not None)
-        v3line = f"<div class='dayp day3'>3-second views: {v3parts} <small>· Instagram and TikTok don’t report this</small></div>" if v3parts else ""
+        v3line = f"<div class='dayp day3'>3-second views: {v3parts}</div>" if v3parts else ""
         inst = v3line + inst
         day_html = (f"<div class='day'><div class='dayl'>{head}</div><div class='dayv'>{big} <small>views</small> {sub}</div>"
                     f"<div class='dayr'>{right}</div><div class='dayp dayps'>{parts}</div>{inst}</div>")
