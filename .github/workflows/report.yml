@@ -1,9 +1,9 @@
 name: Social Report
 on:
   schedule:
-    # Every 2 hours, 6:23 AM to 10:23 PM Eastern plus 12:23 AM (Guy, Oct 23). GitHub cron is UTC and can run late.
-    # EDT (Mar-Nov): UTC-4. When clocks fall back Nov 1 (EST, UTC-5) change to "23 11,13,15,17,19,21,23,1,3,5 * * *".
-    - cron: "23 10,12,14,16,18,20,22,0,2,4 * * *"
+    # Every hour, 6:23 AM to 3:23 AM Eastern (Guy, Oct 24); the Mac launchd job is the main trigger. GitHub cron is UTC (EDT +4; shift +1 h after Nov 1) and can run late.
+    # EDT (Mar-Nov): UTC-4. When clocks fall back Nov 1 (EST, UTC-5) change to "23 11-23,0-8 * * *".
+    - cron: "23 10-23,0-7 * * *"
   workflow_dispatch:
 permissions:
   contents: write
