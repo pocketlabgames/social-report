@@ -9,6 +9,7 @@ check, and writes Social Report.html (table + interactive chart) and Social Repo
 Daily history for the chart: Azure view metrics.v_views_7d; if the database can't be reached, the last
 snapshot per day from social-stats-history.json. Chart style = memory note social-chart-style.
 """
+import math
 import datetime as dt
 import html
 import json
@@ -534,7 +535,23 @@ def posts_section(posts, phist, now):
         try: return dt.datetime.strptime(c, "%Y-%m-%d %H:%M").strftime("%a %b %-d · %-I:%M %p")
         except ValueError: return c[:10]
     cards, hidden = [], 0
-    for g in group_videos(posts):
+    groups = group_videos(posts)
+    def age_h(g):
+        try: return (now - dt.datetime.strptime(g["created"], "%Y-%m-%d %H:%M")).total_seconds() / 3600
+        except ValueError: return 999
+    tot = lambda g: sum(x["views"] for x in g["posts"])
+    mature = sorted((g for g in groups if age_h(g) >= 48), key=lambda g: g["created"], reverse=True)[:15]
+    typ = sorted(tot(g) for g in mature)
+    M = (typ[len(typ) // 2] if len(typ) % 2 else (typ[len(typ) // 2 - 1] + typ[len(typ) // 2]) / 2) if typ else None
+    def perf(g):   # Guy, Oct 24: views vs a typical video at the same age (median of the last 15 videos 2+ days old; most views come in the first 2 days)
+        h = age_h(g)
+        if h < 6 or not M: return "#B8B8B8", "Too early to judge (first 6 hours)"
+        exp = M * (1 - math.exp(-h / 18)); sc = tot(g) / exp if exp else 0
+        tip = f"{sc:.1f}x a typical video at this age (typical final views: {M:,.0f})"
+        if sc >= 1.5: return "#1E9E55", tip
+        if sc >= 0.5: return "#F5B400", tip
+        return "#E5484D", tip
+    for g in groups:
         old = g["created"] < cutoff
         hidden += old
         tv = sum(x["views"] for x in g["posts"])
@@ -551,13 +568,14 @@ def posts_section(posts, phist, now):
                      f"<td><b>{num(x['views'])}</b></td><td>{sg(gx)}</td><td>{num(lpk, 1)}</td>"
                      f"<td class='aw'>{num(x['avg_watch_s'], 1) + ' s' if x['avg_watch_s'] is not None else '—'}</td><td>{num(x['watch_pct']) + '%' if x['watch_pct'] is not None else '—'}</td></tr>")
         missing = [NAME[p] for p in PLAT if not any(x["site"] == p for x in g["posts"])]
-        cards.append(f"<div class='vc{' old' if old else ''}'><div class='vch'><div class='vct'>{e(g['name'][:90])}</div>"
-                     f"<div class='vcn'><b>{num(tv)}</b> <small>views{(' (' + sg(tg) + ')') if tg is not None else ''}</small></div></div>"
+        pc, pt = perf(g)
+        cards.append(f"<div class='vc{' old' if old else ''}'><div class='vch'><div class='vcn'><b>{num(tv)}</b> <small>views{(' (' + sg(tg) + ')') if tg is not None else ''}</small></div>"
+                     f"<span class='pdot' style='background:{pc}' title='{pt}'></span></div><div class='vct'>{e(g['name'][:90])}</div>"
                      f"<div class='vcm'>{when(g['created'])}{(' · ' + num(ln) + ' s') if ln else ''}{(' · not on ' + ', '.join(missing)) if missing and len(missing) < 4 else ''}</div>"
                      f"<table class='vt'><thead><tr><th class='rl'>Site</th><th>Views</th><th>{gain_label}</th><th>Likes / 1K</th><th class='aw'>Avg watch</th><th>Watched</th></tr></thead><tbody>{rows}</tbody></table></div>")
     more = f"<button id='more' class='b gray' type='button'>Show {hidden} older video(s)</button>" if hidden else ""
     return (f"<h2 class='sh'>Videos</h2><p class='sub'>One card per video, newest first, with its numbers on each site. {gain_label} = views gained since the check closest to 24 h ago"
-            f"{' (no earlier check yet)' if not base else ''}. Watched = share of the video watched on average; YouTube can pass 100% when Shorts loop.</p>"
+            f"{' (no earlier check yet)' if not base else ''}. Watched = share of the video watched on average; YouTube can pass 100% when Shorts loop. Dot = views vs a typical video at the same age: <span style='color:#1E9E55'>●</span> 1.5× or more, <span style='color:#F5B400'>●</span> 0.5–1.5×, <span style='color:#E5484D'>●</span> under 0.5×, <span style='color:#B8B8B8'>●</span> first 6 hours.</p>"
             f"<div class='vgrid'>{''.join(cards)}</div>{more}")
 
 
@@ -635,7 +653,7 @@ def money_bits(money, now):
     y = (td - dt.timedelta(days=1)).isoformat()
     w = [d for d in allk if (td - dt.date.fromisoformat(d)).days <= 7]
     mo = [d for d in allk if d[:7] == td.strftime("%Y-%m")]
-    return {"all": tot(allk), "y": tot([y]), "w": tot(w), "m": tot(mo), "ads": tot(allk, "ads"), "iap": tot(allk, "iap"),
+    return {"all": tot(allk), "t": tot([td.isoformat()]), "y": tot([y]), "w": tot(w), "m": tot(mo), "ads": tot(allk, "ads"), "iap": tot(allk, "iap"),
             "y_missing": (money.get(y) or {}).get("iap") is None, "month": td.strftime("%B")}
 
 
@@ -842,7 +860,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         right = f"<div class='dayt'>{allv:,} <small>total views</small></div>" + (f"<div class='dayt'>{tot_dl:,} <small>total downloads</small></div>" if tot_dl is not None else "")
         if money:
             right += f"<div class='dayt'>${money['all']:,.2f} <small>total earned</small></div>"
-            inst += (f"<div class='dayp daym'>Earned: <b>${money['y']:,.2f}</b> yesterday · <b>${money['w']:,.2f}</b> last 7 days · <b>${money['m']:,.2f}</b> in {money['month']}"
+            inst += (f"<div class='dayp daym'>Earned: <b>${money['t']:,.2f}</b> today so far · <b>${money['y']:,.2f}</b> yesterday · <b>${money['w']:,.2f}</b> last 7 days · <b>${money['m']:,.2f}</b> in {money['month']}"
                      f" · ads ${money['ads']:,.2f} + App Store ${money['iap']:,.2f} since launch {' <small>(Apple hasn’t posted yesterday yet)</small>' if money['y_missing'] else ''}</div>")
         v3now = {p: (snap.get(p) or {}).get("views_3s") for p in PLAT}
         v3b = {p: (day_base.get(p) or {}).get("views_3s") for p in PLAT} if day_base else {}
@@ -858,7 +876,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
                    "data": {"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}}}, open(LAST, "w"))
     err = "".join(f"<li>{e(x)}</li>" for x in errors)
     doc = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Beaker Lab Social Report</title>
+<title>Beaker Lab - Social Report</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%232A78D6'/><g fill='%23fff' opacity='.35'><rect x='12' y='40' width='8' height='12' rx='2'/><rect x='25' y='32' width='8' height='20' rx='2'/><rect x='38' y='26' width='8' height='26' rx='2'/></g><polyline points='12,42 25,34 36,38 51,18' fill='none' stroke='%23fff' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/><polyline points='42,17 52,16 51,26' fill='none' stroke='%23fff' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/></svg>">
 <style>
 :root{{--bg:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--line:#e1e0d9;--card:#fff}}
@@ -886,7 +904,7 @@ th{{font-weight:500;color:var(--ink2)}} th.rl{{text-align:left}} thead th{{borde
 h2.sh{{font-size:18px;font-weight:500;margin:36px 0 10px}} .dot{{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}}
 .old{{display:none}} .showold .old{{display:revert}} .vgrid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}} @media (max-width:900px){{.vgrid{{grid-template-columns:1fr}}}}
 .vc{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}} .vch{{display:flex;justify-content:space-between;gap:10px;align-items:baseline}}
-.vct{{font-weight:600;line-height:1.3}} .vcn{{white-space:nowrap;font-size:18px;font-variant-numeric:tabular-nums}} .vcn small{{font-size:12px;color:var(--muted);font-weight:400}}
+.vct{{font-weight:600;line-height:1.3;margin-top:2px}} .pdot{{width:14px;height:14px;border-radius:50%;flex:none;align-self:center;box-shadow:0 0 0 3px var(--card),0 0 0 4px var(--line)}} .vcn{{white-space:nowrap;font-size:18px;font-variant-numeric:tabular-nums}} .vcn small{{font-size:12px;color:var(--muted);font-weight:400}}
 .vcm{{color:var(--muted);font-size:12px;margin:2px 0 8px}} table.vt{{width:100%;background:transparent}} table.vt th,table.vt td{{padding:5px 6px;font-size:13px;border-bottom:1px solid var(--line)}}
 table.vt thead th{{color:var(--muted);font-weight:500;border-bottom:1px solid var(--line)}} table.vt tbody tr:last-child th,table.vt tbody tr:last-child td{{border-bottom:0}}
 table.vt tr.lead td,table.vt tr.lead th{{background:rgba(42,120,214,.10)}} table.vt a.tp{{text-decoration:none;color:inherit;border-bottom:1px solid #2A78D6}}
@@ -911,7 +929,7 @@ table.edit th,table.edit td{{position:relative;outline:1px dashed var(--line)}}
 h2.ph{{font-size:18px;font-weight:500;margin:48px 0 4px;padding-top:20px;border-top:1px solid var(--line)}} #pt th,#pt td{{color:var(--ink2)}}
 .dropL{{box-shadow:inset 3px 0 0 #2A78D6}} .dropR{{box-shadow:inset -3px 0 0 #2A78D6}} .dropT{{box-shadow:inset 0 3px 0 #2A78D6}} .dropB{{box-shadow:inset 0 -3px 0 #2A78D6}} ul{{color:var(--ink2)}} .note{{color:var(--muted);font-size:13px}} a{{color:#2A78D6}}
 </style></head><body><main>
-<h1>Beaker Lab social report</h1><p class="sub">{e(stamp)} · changes in brackets are since the last check ({e(prev.get('checked_at', 'none') if prev else 'none')})</p>
+<h1>Beaker Lab - Social Report</h1><p class="sub">{e(stamp)} · changes in brackets are since the last check ({e(prev.get('checked_at', 'none') if prev else 'none')})</p>
 <div class="bar"><button id="refresh" class="b red">Refresh</button><button id="edit" class="b blue">Edit Layout</button>
 <span id="tools" hidden><select id="addc"></select><select id="addr"></select><button id="cancel" class="b gray">Cancel</button><button id="reset" class="b gray">Reset Layout</button></span>
 <span id="msg" class="note"></span></div>

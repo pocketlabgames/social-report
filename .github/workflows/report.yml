@@ -40,7 +40,7 @@ jobs:
         env:
           PW: ${{ secrets.REPORT_PASSWORD }}
         run: |
-          npx -y staticrypt@3 "Metrics/Social Report.html" -p "$PW" --short -d site --salt d33749e38069f5b95adc7158ec6fc89f --config false --template-title "Beaker Lab Social Report"
+          npx -y staticrypt@3 "Metrics/Social Report.html" -p "$PW" --short -d site --salt d33749e38069f5b95adc7158ec6fc89f --config false --template-title "Beaker Lab - Social Report"
           mv "site/Social Report.html" site/index.html
       - name: Save history
         run: |
