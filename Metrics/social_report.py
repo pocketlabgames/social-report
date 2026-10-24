@@ -31,6 +31,7 @@ POSTS_HIST = os.path.join(HERE, "posts-history.json")   # per-post views at ever
 POSTS = []   # per-post rows from the latest fetch (filled by fetch())
 INSTALLS = {}   # {date: first downloads} from App Store Connect (filled by fetch(); empty if the key is missing)
 MONEY = {}      # {date: {"ads": usd, "iap": usd}} (filled by fetch(); empty if keys are missing)
+GADS = {}       # {date: Google Ads spend in USD} (gads_lite; empty if keys are missing)
 RCNEW = {}      # {date: RevenueCat new customers (first opens)} for the same-day download estimate
 LAST = os.path.join(HERE, "cache", "report-last.json")   # the previous run's table + chart, shown at the bottom (one run only, not a history)
 SITE = os.environ.get("REPORT_SITE") == "1"   # GitHub Actions build for the website (no local helper, no xlsx)
@@ -55,6 +56,10 @@ def fetch():
         from sources import rc_lite
     except ImportError:
         rc_lite = None
+    try:
+        from sources import gads_lite
+    except ImportError:
+        gads_lite = None
     out, errors = {}, []
     import re, time
     from concurrent.futures import ThreadPoolExecutor
@@ -69,17 +74,24 @@ def fetch():
                     return {}, f"{m.__name__.split('.')[-1]} (3 tries): {msg}"[:200]
                 time.sleep(10 * attempt)
 
-    INSTALLS.clear(); MONEY.clear(); RCNEW.clear()
+    INSTALLS.clear(); MONEY.clear(); RCNEW.clear(); GADS.clear()
     srcs = [youtube, meta, tiktok] + ([asc_lite] if asc_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")) else [])
     if money_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")) and os.path.exists(os.path.join(KEYS, "admob-token.json")):
         srcs.append(money_lite)
     if rc_lite and os.path.exists(os.path.join(KEYS, "revenuecat-key.txt")):
         srcs.append(rc_lite)
+    if gads_lite and os.path.exists(os.path.join(KEYS, "googleads-token.json")) and os.path.exists(os.path.join(KEYS, "googleads-developer-token.txt")):
+        srcs.append(gads_lite)
+    elif gads_lite and os.path.exists(gads_lite.CACHE):   # no keys here: still show the spend we already have
+        GADS.update(json.load(open(gads_lite.CACHE)))
     with ThreadPoolExecutor(6) as ex:   # the sites, App Store installs and money in parallel
         for got, err in ex.map(pull, srcs):
             if "ASC Installs Lite" in got:
                 d = got.pop("ASC Installs Lite")
                 INSTALLS.update({r.date: (None if pd.isna(r.installs) else int(r.installs)) for r in d.itertuples()})
+            if "GAds Spend Lite" in got:
+                d = got.pop("GAds Spend Lite")
+                GADS.update({r.date: float(r.spend) for r in d.itertuples() if pd.notna(r.spend)})
             if "RC New Lite" in got:
                 d = got.pop("RC New Lite")
                 RCNEW.update({r.date: int(r.new) for r in d.itertuples() if pd.notna(r.new)})
@@ -807,7 +819,8 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
             return None if all(v is None for v in vals) else round(sum(v or 0 for v in vals), 2)
         earn_series = [day_total((td - dt.timedelta(days=len(labels) - 1 - i)).isoformat()) for i in range(len(labels))]
         earn_partial = [i for i in range(len(labels)) if earn_series[i] is not None and (money_daily.get((td - dt.timedelta(days=len(labels) - 1 - i)).isoformat()) or {}).get("iap") is None]
-    data = json.dumps({"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}, "installs": inst_series, "earned": earn_series, "earnPart": earn_partial,
+    spend_series = [GADS.get((dt.date.today() - dt.timedelta(days=len(labels) - 1 - i)).isoformat()) for i in range(len(labels))] if GADS else None
+    data = json.dumps({"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}, "installs": inst_series, "earned": earn_series, "earnPart": earn_partial, "spend": spend_series,
                        "est": [i for i in range(len(labels)) if (est or {}).get((dt.date.today() - dt.timedelta(days=len(labels) - 1 - i)).isoformat()) is not None] if installs else []})
     if dry:
         return {"stamp": stamp, "table": {"cols": cols, "rows": trows}, "legend": legend,
@@ -936,7 +949,7 @@ h2.ph{{font-size:18px;font-weight:500;margin:48px 0 4px;padding-top:20px;border-
 {day_html}{week_html}<h2 class="sh" style="margin-top:4px">Views gained per day</h2>
 <div class="lgs" style="margin-top:0">{legend}</div>
 <div class="chart"><canvas id="c" role="img" aria-label="Views gained per day per platform, last 14 days"></canvas></div>
-<p class="note">Bars: last check of each day vs the day before; the last bar is today so far. Days with no check share the gain evenly. Purple line: App Store first downloads per day (right axis; Apple posts each day by the next morning; a hollow point is a conservative estimate from RevenueCat first opens until Apple posts). Green line: money earned that day, ads + App Store proceeds (outer right axis). Dotted with hollow points until Apple posts that day's App Store proceeds; it turns solid once Apple's numbers are in.</p>
+<p class="note">Bars: last check of each day vs the day before; the last bar is today so far. Days with no check share the gain evenly. Purple line: App Store first downloads per day (right axis; Apple posts each day by the next morning; a hollow point is a conservative estimate from RevenueCat first opens until Apple posts). Green line: money earned that day, ads + App Store proceeds (hover for $). Dotted with hollow points until Apple posts that day's App Store proceeds; it turns solid once Apple's numbers are in. Gold bar (narrow, next to each day's views): Google Ads spend that day, on the Installs scale ($1 = 1 install), so a gold bar taller than that day's purple point means installs cost more than $1 each.</p>
 {stale_html}<div class="wrap tw"><table id="t"></table></div><div id="m"></div>
 <p class="note">YouTube average uses public posts only. Facebook comments = viewer comments (the Page's own link comments are left out). Comments = viewer comments only (our own replies and pinned comments are left out).</p>
 {posts_html}
@@ -1116,20 +1129,22 @@ const prevVal = (d, i) => {{ for(let j = i - 1; j >= 0; j--) if(d[j] != null) re
 function mk(canvas, D) {{ if (!canvas) return;
  if (matchMedia('(max-width:700px)').matches && D.labels.length > 8) {{   // phones: previous 7 days + today
    const k = D.labels.length - 8, cut = a => a ? a.slice(k) : a;
-   D = Object.assign({{}}, D, {{labels: cut(D.labels), installs: cut(D.installs), earned: cut(D.earned), est: (D.est || []).map(i => i - k).filter(i => i >= 0), earnPart: (D.earnPart || []).map(i => i - k).filter(i => i >= 0),
+   D = Object.assign({{}}, D, {{labels: cut(D.labels), installs: cut(D.installs), earned: cut(D.earned), spend: cut(D.spend), est: (D.est || []).map(i => i - k).filter(i => i >= 0), earnPart: (D.earnPart || []).map(i => i - k).filter(i => i >= 0),
      series: Object.fromEntries(Object.entries(D.series).map(([n, s]) => [n, cut(s)]))}}); }}
  const EST = new Set(D.est || []), EP = new Set(D.earnPart || []);
  const chart = new Chart(canvas, {{type:'bar',
- data:{{labels:D.labels, datasets:Object.entries(D.series).map(([n, d]) => ({{label:n, data:d, backgroundColor:C[n][0], borderRadius:3, maxBarThickness:34, order:2}}))
+ data:{{labels:D.labels, datasets:Object.entries(D.series).map(([n, d]) => ({{label:n, data:d.map(v => v == null ? v : Math.max(0, v)), backgroundColor:C[n][0], borderRadius:3, maxBarThickness:34, stack:'v', barPercentage:0.95, order:2}}))
+   .concat(D.spend ? [{{label:'Google Ads', data:D.spend, backgroundColor:'#C9A227', borderRadius:3, maxBarThickness:17, stack:'s', barPercentage:0.475, yAxisID:D.installs ? 'y2' : 'y4', order:3}}] : [])
    .concat(D.installs ? [{{type:'line', label:'Installs', data:D.installs, borderColor:'#7B4FD6', backgroundColor:c => EST.has(c.dataIndex) ? '#fff' : '#7B4FD6', pointBorderWidth:2, yAxisID:'y2', pointRadius:c => EST.has(c.dataIndex) ? 4 : 3, segment:{{borderDash:c => EST.has(c.p1DataIndex) ? [4,3] : undefined}}, borderWidth:2, tension:0.2, spanGaps:true, order:1}}] : [])
    .concat(D.earned ? [{{type:'line', label:'Earned', data:D.earned, borderColor:'#1E9E55', backgroundColor:c => EP.has(c.dataIndex) ? '#fff' : '#1E9E55', pointBorderWidth:2, yAxisID:'y3', pointRadius:c => EP.has(c.dataIndex) ? 4 : 3, pointStyle:'rectRot', borderWidth:2, segment:{{borderDash:c => EP.has(c.p1DataIndex) ? [4,3] : undefined}}, tension:0.2, spanGaps:true, order:0}}] : [])}},
  options:{{responsive:true, maintainAspectRatio:false, interaction:{{mode:'index', intersect:false}},
   plugins:{{legend:{{display:false}}, tooltip:{{callbacks:{{
-   title: it => {{ const t = it.filter(c => c.dataset.type !== 'line').reduce((s, c) => s + (c.parsed.y || 0), 0); return it[0].label + ' · ' + sg(t) + ' views'; }},
-   label: c => c.dataset.label === 'Earned' ? 'Earned: $' + c.parsed.y.toFixed(2) + (EP.has(c.dataIndex) ? ' (ads only so far; App Store not posted yet)' : '') : c.dataset.type === 'line' ? 'Installs: ' + (EST.has(c.dataIndex) ? '~' : '') + fmt(c.parsed.y) + (EST.has(c.dataIndex) ? ' (estimate)' : '') : c.dataset.label + ': ' + sg(c.parsed.y) }}}}}},
-  scales:{{x:{{stacked:true, grid:{{display:false}}, ticks:{{color:muted, maxRotation:0, autoSkip:true}}}}, y:{{stacked:true, beginAtZero:true, grid:{{color:grid}}, ticks:{{color:muted, callback:v => v.toLocaleString()}}, title:{{display:true, text:'Views gained', color:muted}}}},
+   title: it => {{ const t = it.filter(c => c.dataset.type !== 'line' && c.dataset.stack !== 's').reduce((s, c) => s + (c.parsed.y || 0), 0); return it[0].label + ' · ' + sg(t) + ' views'; }},
+   label: c => c.dataset.stack === 's' ? 'Google Ads spend: $' + (c.parsed.y || 0).toFixed(2) : c.dataset.label === 'Earned' ? 'Earned: $' + c.parsed.y.toFixed(2) + (EP.has(c.dataIndex) ? ' (ads only so far; App Store not posted yet)' : '') : c.dataset.type === 'line' ? 'Installs: ' + (EST.has(c.dataIndex) ? '~' : '') + fmt(c.parsed.y) + (EST.has(c.dataIndex) ? ' (estimate)' : '') : c.dataset.label + ': ' + sg(c.parsed.y) }}}}}},
+  scales:{{x:{{stacked:true, grid:{{display:false}}, ticks:{{color:muted, maxRotation:0, autoSkip:true}}}}, y:{{stacked:true, beginAtZero:true, min:0, grid:{{color:grid}}, ticks:{{color:muted, callback:v => v.toLocaleString()}}, title:{{display:true, text:'Views gained', color:muted}}}},
    ...(D.installs ? {{y2:{{position:'right', beginAtZero:true, grid:{{display:false}}, ticks:{{color:'#7B4FD6', precision:0}}, title:{{display:true, text:'Installs', color:'#7B4FD6'}}}}}} : {{}}),
-   ...(D.earned ? {{y3:{{position:'right', beginAtZero:true, grid:{{display:false}}, ticks:{{color:'#1E9E55', callback:v => '$' + v.toFixed(2)}}, title:{{display:true, text:'Earned', color:'#1E9E55'}}}}}} : {{}})}}}}}}); }}
+   ...(D.earned ? {{y3:{{display:false, beginAtZero:true}}}} : {{}}),
+   ...(D.spend && !D.installs ? {{y4:{{display:false, beginAtZero:true, stacked:false}}}} : {{}})}}}}}}); }}
 mk(document.getElementById('c'), D);
 </script></body></html>"""
     open(OUT_HTML, "w").write(doc)
