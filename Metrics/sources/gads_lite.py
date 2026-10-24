@@ -1,5 +1,5 @@
 """Google Ads spend per day (all campaigns), for the social report chart. Cached in Metrics/gads-cache.json.
-Keys (Private Keys, also in the KEYS_TGZ secret): googleads-token.json (OAuth token incl. refresh token) + googleads-developer-token.txt."""
+Keys (Private Keys, also in the KEYS_TGZ secret): googleads-token.json (OAuth token incl. refresh token); no developer token needed (Cloud-managed access)."""
 import datetime as dt
 import json
 import os
@@ -20,7 +20,9 @@ def fetch(keys_dir, today):
     if not creds.valid:
         creds.refresh(Request())
     s = AuthorizedSession(creds)
-    s.headers.update({"developer-token": open(os.path.join(keys_dir, "googleads-developer-token.txt")).read().strip()})
+    dev = os.path.join(keys_dir, "googleads-developer-token.txt")   # not needed: API access is managed in Google Cloud (Oct 10)
+    if os.path.exists(dev):
+        s.headers.update({"developer-token": open(dev).read().strip()})
     cache = json.load(open(CACHE)) if os.path.exists(CACHE) else {}
     start = START if not cache else min(dt.date.fromisoformat(max(cache)) - dt.timedelta(days=3), today)
     q = f"SELECT segments.date, metrics.cost_micros FROM campaign WHERE segments.date BETWEEN '{start}' AND '{today}'"

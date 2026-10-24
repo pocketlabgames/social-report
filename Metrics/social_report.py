@@ -80,7 +80,7 @@ def fetch():
         srcs.append(money_lite)
     if rc_lite and os.path.exists(os.path.join(KEYS, "revenuecat-key.txt")):
         srcs.append(rc_lite)
-    if gads_lite and os.path.exists(os.path.join(KEYS, "googleads-token.json")) and os.path.exists(os.path.join(KEYS, "googleads-developer-token.txt")):
+    if gads_lite and os.path.exists(os.path.join(KEYS, "googleads-token.json")):
         srcs.append(gads_lite)
     elif gads_lite and os.path.exists(gads_lite.CACHE):   # no keys here: still show the spend we already have
         GADS.update(json.load(open(gads_lite.CACHE)))
