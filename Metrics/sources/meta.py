@@ -40,6 +40,11 @@ def _et(ts):
     return pd.Timestamp(ts).tz_convert("America/New_York").strftime("%Y-%m-%d %H:%M")
 
 
+def _day(end_time):
+    # period=day end_time is the start of the NEXT day; the value belongs to the day before
+    return (dt.date.fromisoformat(end_time[:10]) - dt.timedelta(days=1)).isoformat()
+
+
 def _get(path, token, **params):
     params["access_token"] = token
     j = requests.get(G + path, params=params, timeout=60).json()
@@ -269,7 +274,7 @@ def fetch(keys_dir, today):
         try:
             for d in _get(f"{pid}/insights", pt, metric=met, period="day", since=since, until=until)["data"]:
                 for v in d["values"]:
-                    days.setdefault(v["end_time"][:10], {})[met] = v["value"]
+                    days.setdefault(_day(v["end_time"]), {})[met] = v["value"]
         except RuntimeError:
             pass
     page_daily = pd.DataFrame([{"date": k, **v} for k, v in sorted(days.items())])
@@ -279,7 +284,7 @@ def fetch(keys_dir, today):
     try:
         s = int(dt.datetime.combine(today - dt.timedelta(days=IG_DAYS), dt.time()).timestamp())
         for v in [] if LITE else _get(f"{ig}/insights", token, metric="reach", period="day", since=s, until=until)["data"][0]["values"]:
-            igd.setdefault(v["end_time"][:10], {})["reach"] = v["value"]
+            igd.setdefault(_day(v["end_time"]), {})["reach"] = v["value"]
     except (RuntimeError, IndexError):
         pass
     ig_bd = []
