@@ -774,6 +774,9 @@ def time_section(posts, now):
             f"<tbody>{trs}</tbody></table></div><p class='note hsn'>Site columns: average views per post (number of posts).</p>")
 
 
+SHORT = {"instagram": "IG", "facebook": "FB", "youtube": "YT", "tiktok": "TT"}   # phone labels (Guy, Oct 25)
+
+
 def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None, old=None, dry=False, posts_html="", week_html="", installs=None, today=None, day_base=None, money=None, money_daily=None, est=None):
     e = html.escape
     cols = [{"id": "label", "label": stamp}] + [{"id": p, "label": NAME[p]} for p in PLAT] + [
@@ -832,7 +835,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
     day_html = ""
     if day:
         sign = "+" if day["total"] >= 0 else "−"
-        parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> {NAME[p]} {'+' if day['per'][p] >= 0 else '−'}{abs(day['per'][p]):,}" for p in PLAT)
+        parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> <span class='nf'>{NAME[p]}</span><span class='ns'>{SHORT[p]}</span> {'+' if day['per'][p] >= 0 else '−'}{abs(day['per'][p]):,}" for p in PLAT)
         when = "Last 24 hours" if 21 <= day["hours"] <= 27 else f"Last {day['hours']} hours (closest check to 24 h ago: {day['since'].strftime('%b %-d, %-I:%M %p')})"
         inst = ""
         if installs:
@@ -867,7 +870,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
                 since = dt.datetime.strptime(prev["checked_at"], "%Y-%m-%d %H:%M").strftime("%-I:%M %p")
                 sub = f"<small class='sub2'>({'+' if mv >= 0 else '−'}{abs(mv):,} since the {since} refresh)</small>" + sub
             head = "Views today" + (f" <small>since the {today['since'].strftime('%b %-d, %-I:%M %p')} check</small>" if abs(today["off_h"]) > 2 else "")
-            parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> {NAME[p]} {'+' if today['per'][p] >= 0 else '−'}{abs(today['per'][p]):,}" for p in PLAT)
+            parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> <span class='nf'>{NAME[p]}</span><span class='ns'>{SHORT[p]}</span> {'+' if today['per'][p] >= 0 else '−'}{abs(today['per'][p]):,}" for p in PLAT)
         allv = sum((snap.get(p) or {}).get("views") or 0 for p in PLAT)
         tot_dl = sum(v for v in installs.values() if v is not None) if installs else None
         right = f"<div class='dayt'>{allv:,} <small>total views</small></div>" + (f"<div class='dayt'>{tot_dl:,} <small>total downloads</small></div>" if tot_dl is not None else "")
@@ -877,7 +880,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
                      f" · ads ${money['ads']:,.2f} + App Store ${money['iap']:,.2f} since launch {' <small>(Apple hasn’t posted yesterday yet)</small>' if money['y_missing'] else ''}</div>")
         v3now = {p: (snap.get(p) or {}).get("views_3s") for p in PLAT}
         v3b = {p: (day_base.get(p) or {}).get("views_3s") for p in PLAT} if day_base else {}
-        v3parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> {NAME[p]} {v3now[p]:,}" + (f" <small>(+{v3now[p] - v3b[p]:,} 24 h)</small>" if v3b.get(p) is not None and v3now[p] - v3b[p] >= 0 else "") for p in PLAT if v3now[p] is not None)
+        v3parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> <span class='nf'>{NAME[p]}</span><span class='ns'>{SHORT[p]}</span> {v3now[p]:,}" + (f" <small>(+{v3now[p] - v3b[p]:,} 24 h)</small>" if v3b.get(p) is not None and v3now[p] - v3b[p] >= 0 else "") for p in PLAT if v3now[p] is not None)
         v3line = f"<div class='dayp day3'>3-second views: {v3parts}</div>" if v3parts else ""
         inst = v3line + inst
         day_html = (f"<div class='day'><div class='dayl'>{head}</div><div class='dayv'>{big} <small>views</small> {sub}</div>"
@@ -917,7 +920,7 @@ th{{font-weight:500;color:var(--ink2)}} th.rl{{text-align:left}} thead th{{borde
 h2.sh{{font-size:18px;font-weight:500;margin:36px 0 10px}} .dot{{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}}
 .old{{display:none}} .showold .old{{display:revert}} .vgrid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}} @media (max-width:900px){{.vgrid{{grid-template-columns:1fr}}}}
 .vc{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}} .vch{{display:flex;justify-content:space-between;gap:10px;align-items:baseline}}
-.ctt{{position:absolute;pointer-events:none;z-index:5;opacity:0;transition:opacity .15s,left .12s ease-out,top .12s ease-out;background:rgba(18,18,20,.62);-webkit-backdrop-filter:blur(12px) saturate(140%);backdrop-filter:blur(12px) saturate(140%);color:#fff;border-radius:12px;padding:12px 16px 13px;box-shadow:0 8px 28px rgba(0,0,0,.28);font-size:16px;line-height:1.5;white-space:nowrap}} .ctt-h{{font-size:19px;font-weight:700;margin-bottom:6px}} .ctt-r{{display:flex;align-items:center;gap:9px}} .ctt-r i{{width:13px;height:13px;border-radius:3px;flex:none}} .ctt-sep{{height:1px;background:rgba(255,255,255,.7);margin:10px 0}} @media (max-width:700px){{.ctt{{font-size:14px;padding:10px 12px}} .ctt-h{{font-size:16px}}}} .vct{{font-weight:600;line-height:1.3;margin-top:2px}} .pdot{{width:14px;height:14px;border-radius:50%;flex:none;align-self:center;box-shadow:0 0 0 3px var(--card),0 0 0 4px var(--line)}} .vcn{{white-space:nowrap;font-size:18px;font-variant-numeric:tabular-nums}} .vcn small{{font-size:12px;color:var(--muted);font-weight:400}}
+.ctt{{position:absolute;pointer-events:none;z-index:5;opacity:0;transition:opacity .15s,left .12s ease-out,top .12s ease-out;background:rgba(18,18,20,.62);-webkit-backdrop-filter:blur(12px) saturate(140%);backdrop-filter:blur(12px) saturate(140%);color:#fff;border-radius:12px;padding:12px 16px 13px;box-shadow:0 8px 28px rgba(0,0,0,.28);font-size:16px;line-height:1.5;white-space:nowrap}} .ctt-h{{font-size:19px;font-weight:700;margin-bottom:6px}} .ctt-r{{display:flex;align-items:center;gap:9px}} .ctt-r i{{width:13px;height:13px;border-radius:3px;flex:none}} .ctt-sep{{height:1px;background:rgba(255,255,255,.7);margin:10px 0}} @media (max-width:700px){{.ctt{{font-size:14px;padding:10px 12px}} .ctt-h{{font-size:16px}}}} .ns{{display:none}} @media (max-width:700px){{.nf{{display:none}} .ns{{display:inline}}}} .vct{{font-weight:600;line-height:1.3;margin-top:2px}} .pdot{{width:14px;height:14px;border-radius:50%;flex:none;align-self:center;box-shadow:0 0 0 3px var(--card),0 0 0 4px var(--line)}} .vcn{{white-space:nowrap;font-size:18px;font-variant-numeric:tabular-nums}} .vcn small{{font-size:12px;color:var(--muted);font-weight:400}}
 .vcm{{color:var(--muted);font-size:12px;margin:2px 0 8px}} table.vt{{width:100%;background:transparent}} table.vt th,table.vt td{{padding:5px 6px;font-size:13px;border-bottom:1px solid var(--line)}}
 table.vt thead th{{color:var(--muted);font-weight:500;border-bottom:1px solid var(--line)}} table.vt tbody tr:last-child th,table.vt tbody tr:last-child td{{border-bottom:0}}
 table.vt tr.lead td,table.vt tr.lead th{{background:rgba(42,120,214,.10)}} table.vt a.tp{{text-decoration:none;color:inherit;border-bottom:1px solid #2A78D6}}
