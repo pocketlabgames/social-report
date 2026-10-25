@@ -917,7 +917,7 @@ th{{font-weight:500;color:var(--ink2)}} th.rl{{text-align:left}} thead th{{borde
 h2.sh{{font-size:18px;font-weight:500;margin:36px 0 10px}} .dot{{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}}
 .old{{display:none}} .showold .old{{display:revert}} .vgrid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}} @media (max-width:900px){{.vgrid{{grid-template-columns:1fr}}}}
 .vc{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}} .vch{{display:flex;justify-content:space-between;gap:10px;align-items:baseline}}
-.vct{{font-weight:600;line-height:1.3;margin-top:2px}} .pdot{{width:14px;height:14px;border-radius:50%;flex:none;align-self:center;box-shadow:0 0 0 3px var(--card),0 0 0 4px var(--line)}} .vcn{{white-space:nowrap;font-size:18px;font-variant-numeric:tabular-nums}} .vcn small{{font-size:12px;color:var(--muted);font-weight:400}}
+.ctt{{position:absolute;pointer-events:none;z-index:5;opacity:0;transition:opacity .15s,left .12s ease-out,top .12s ease-out;background:rgba(18,18,20,.62);-webkit-backdrop-filter:blur(12px) saturate(140%);backdrop-filter:blur(12px) saturate(140%);color:#fff;border-radius:12px;padding:12px 16px 13px;box-shadow:0 8px 28px rgba(0,0,0,.28);font-size:16px;line-height:1.5;white-space:nowrap}} .ctt-h{{font-size:19px;font-weight:700;margin-bottom:6px}} .ctt-r{{display:flex;align-items:center;gap:9px}} .ctt-r i{{width:13px;height:13px;border-radius:3px;flex:none}} .ctt-sep{{height:1px;background:rgba(255,255,255,.7);margin:10px 0}} @media (max-width:700px){{.ctt{{font-size:14px;padding:10px 12px}} .ctt-h{{font-size:16px}}}} .vct{{font-weight:600;line-height:1.3;margin-top:2px}} .pdot{{width:14px;height:14px;border-radius:50%;flex:none;align-self:center;box-shadow:0 0 0 3px var(--card),0 0 0 4px var(--line)}} .vcn{{white-space:nowrap;font-size:18px;font-variant-numeric:tabular-nums}} .vcn small{{font-size:12px;color:var(--muted);font-weight:400}}
 .vcm{{color:var(--muted);font-size:12px;margin:2px 0 8px}} table.vt{{width:100%;background:transparent}} table.vt th,table.vt td{{padding:5px 6px;font-size:13px;border-bottom:1px solid var(--line)}}
 table.vt thead th{{color:var(--muted);font-weight:500;border-bottom:1px solid var(--line)}} table.vt tbody tr:last-child th,table.vt tbody tr:last-child td{{border-bottom:0}}
 table.vt tr.lead td,table.vt tr.lead th{{background:rgba(42,120,214,.10)}} table.vt a.tp{{text-decoration:none;color:inherit;border-bottom:1px solid #2A78D6}}
@@ -1132,6 +1132,18 @@ function mk(canvas, D) {{ if (!canvas) return;
    D = Object.assign({{}}, D, {{labels: cut(D.labels), installs: cut(D.installs), earned: cut(D.earned), spend: cut(D.spend), est: (D.est || []).map(i => i - k).filter(i => i >= 0), earnPart: (D.earnPart || []).map(i => i - k).filter(i => i >= 0),
      series: Object.fromEntries(Object.entries(D.series).map(([n, s]) => [n, cut(s)]))}}); }}
  const EST = new Set(D.est || []), EP = new Set(D.earnPart || []);
+ const TT = ({{chart: ch, tooltip: t}}) => {{   // HTML pop-up: frosted glass, bigger type, views then installs / earned / spend
+   let el = ch.canvas.parentNode.querySelector('.ctt');
+   if (!el) {{ el = document.createElement('div'); el.className = 'ctt'; ch.canvas.parentNode.style.position = 'relative'; ch.canvas.parentNode.appendChild(el); }}
+   if (!t.opacity) {{ el.style.opacity = 0; return; }}
+   const rows = t.dataPoints.map((p, i) => ({{v: p.dataset.stack === 'v', c: t.labelColors[i].backgroundColor, txt: t.body[i].lines.join(' ')}}));
+   let h = `<div class="ctt-h">${{t.title.join(' ')}}</div>`, sep = false;
+   rows.forEach(r => {{ if (!r.v && !sep && rows.some(x => x.v)) {{ h += '<div class="ctt-sep"></div>'; sep = true; }} h += `<div class="ctt-r"><i style="background:${{r.c}}"></i>${{r.txt}}</div>`; }});
+   el.innerHTML = h; el.style.opacity = 1;
+   const W = ch.canvas.parentNode.clientWidth, w = el.offsetWidth, hh = el.offsetHeight;
+   let x = t.caretX + 16; if (x + w > W) x = t.caretX - w - 16; if (x < 0) x = Math.max(0, (W - w) / 2);
+   let y = Math.max(0, Math.min(t.caretY - hh / 2, ch.canvas.clientHeight - hh));
+   el.style.left = x + 'px'; el.style.top = y + 'px'; }};
  const LASTV = Object.keys(D.series).length - 1;   // index of the last view dataset (views are added first)
  const TTR = c => c.dataset.stack === 'v' ? c.datasetIndex : ({{Installs:100, Earned:101}}[c.dataset.label] ?? 102);   // tooltip: views first, then installs, earned, ad spend
  const SEP = {{id:'ttsep', afterTooltipDraw(ch, args) {{ const t = args.tooltip; if (!t.opacity) return; const o = t.options, H = Chart.helpers, pad = H.toPadding(o.padding);
@@ -1139,14 +1151,13 @@ function mk(canvas, D) {{ if (!canvas) return;
    const tf = H.toFont(o.titleFont), bf = H.toFont(o.bodyFont), nt = t.title.length;
    let y = t.y + pad.top + nt*tf.lineHeight + Math.max(0, nt - 1)*o.titleSpacing + o.titleMarginBottom + k*(Math.max(bf.lineHeight, o.boxHeight || bf.size) + o.bodySpacing) - o.bodySpacing + bf.lineHeight/2;
    const x = ch.ctx; x.save(); x.strokeStyle = 'rgba(255,255,255,.75)'; x.lineWidth = 1; x.beginPath(); x.moveTo(t.x + pad.left, Math.round(y) + .5); x.lineTo(t.x + t.width - pad.right, Math.round(y) + .5); x.stroke(); x.restore(); }}}};
- const chart = new Chart(canvas, {{type:'bar', plugins:[SEP],
+ const chart = new Chart(canvas, {{type:'bar',
  data:{{labels:D.labels, datasets:Object.entries(D.series).map(([n, d]) => ({{label:n, data:d.map(v => v == null ? v : Math.max(0, v)), backgroundColor:C[n][0], borderRadius:3, maxBarThickness:34, stack:'v', barPercentage:0.95, order:2}}))
    .concat(D.spend ? [{{label:'Google Ads', data:D.spend, backgroundColor:'#C9A227', borderRadius:3, maxBarThickness:17, stack:'s', barPercentage:0.475, yAxisID:D.installs ? 'y2' : 'y4', order:3}}] : [])
    .concat(D.installs ? [{{type:'line', label:'Installs', data:D.installs, borderColor:'#7B4FD6', backgroundColor:c => EST.has(c.dataIndex) ? '#fff' : '#7B4FD6', pointBorderWidth:2, yAxisID:'y2', pointRadius:c => EST.has(c.dataIndex) ? 4 : 3, segment:{{borderDash:c => EST.has(c.p1DataIndex) ? [4,3] : undefined}}, borderWidth:2, tension:0.2, spanGaps:true, order:1}}] : [])
    .concat(D.earned ? [{{type:'line', label:'Earned', data:D.earned, borderColor:'#1E9E55', backgroundColor:c => EP.has(c.dataIndex) ? '#fff' : '#1E9E55', pointBorderWidth:2, yAxisID:'y3', pointRadius:c => EP.has(c.dataIndex) ? 4 : 3, pointStyle:'rectRot', borderWidth:2, segment:{{borderDash:c => EP.has(c.p1DataIndex) ? [4,3] : undefined}}, tension:0.2, spanGaps:true, order:0}}] : [])}},
  options:{{responsive:true, maintainAspectRatio:false, interaction:{{mode:'index', intersect:false}},
-  plugins:{{legend:{{display:false}}, tooltip:{{bodySpacing:4, multiKeyBackground:'rgba(0,0,0,0)', itemSort:(a, b) => TTR(a) - TTR(b), callbacks:{{
-   afterLabel: c => c.datasetIndex === LASTV ? ' ' : '',   // blank line before the installs / earned / spend group
+  plugins:{{legend:{{display:false}}, tooltip:{{enabled:false, external:TT, itemSort:(a, b) => TTR(a) - TTR(b), callbacks:{{
    labelColor: c => ({{borderColor:'rgba(0,0,0,0)', backgroundColor: c.dataset.type === 'line' ? c.dataset.borderColor : c.dataset.backgroundColor, borderWidth:1, borderRadius:2}}),
    title: it => {{ const t = it.filter(c => c.dataset.type !== 'line' && c.dataset.stack !== 's').reduce((s, c) => s + (c.parsed.y || 0), 0); return it[0].label + ' · ' + sg(t) + ' views'; }},
    label: c => c.dataset.stack === 's' ? 'Google Ads spend: $' + (c.parsed.y || 0).toFixed(2) : c.dataset.label === 'Earned' ? 'Earned: $' + c.parsed.y.toFixed(2) + (EP.has(c.dataIndex) ? ' (ads only so far; App Store not posted yet)' : '') : c.dataset.type === 'line' ? 'Installs: ' + (EST.has(c.dataIndex) ? '~' : '') + fmt(c.parsed.y) + (EST.has(c.dataIndex) ? ' (estimate)' : '') : c.dataset.label + ': ' + sg(c.parsed.y) }}}}}},
