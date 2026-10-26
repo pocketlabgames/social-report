@@ -1239,6 +1239,8 @@ function renderG() {{   // Oct 26: Reach / Engagement / Retention cards, best ce
   const pk = rid('Pick for ads'); if (pk && pk.full) h += `<p class="gpick">Pick for ads: ${{pk.full}}</p>`;
   g.innerHTML = h;
 }}
+if (/^#sec-/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);   // Guy, Oct 26: a reload opens at the top, not at an old jump target
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual'; scrollTo(0, 0);
 L = load(SAVED); render(); renderPrev(); renderM(); renderG();
 document.querySelectorAll('h2.sh, h2.ph').forEach(h => {{ if (/Views gained per day/.test(h.textContent)) return;   // Guy, Oct 26: Top button right of each section title
   h.classList.add('has-top'); h.insertAdjacentHTML('beforeend', '<button type="button" class="b gray totop">Top</button>'); }});
