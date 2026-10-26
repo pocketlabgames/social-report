@@ -985,7 +985,7 @@ th{{font-weight:500;color:var(--ink2)}} th.rl{{text-align:left}} thead th{{borde
 h2.sh{{font-size:18px;font-weight:500;margin:36px 0 10px}} .dot{{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}}
 .old{{display:none}} .showold .old{{display:revert}} .vgrid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}} @media (max-width:900px){{.vgrid{{grid-template-columns:1fr}}}}
 .vc{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}} .vch{{display:flex;justify-content:space-between;gap:10px;align-items:baseline}}
-.ctt{{position:absolute;pointer-events:none;z-index:5;opacity:0;transition:opacity .15s,left .12s ease-out,top .12s ease-out;background:rgba(18,18,20,.62);-webkit-backdrop-filter:blur(12px) saturate(140%);backdrop-filter:blur(12px) saturate(140%);color:#fff;border-radius:12px;padding:12px 16px 13px;box-shadow:0 8px 28px rgba(0,0,0,.28);font-size:16px;line-height:1.5;white-space:nowrap}} .ctt-h{{font-size:19px;font-weight:700;margin-bottom:6px}} .ctt-r{{display:flex;align-items:center;gap:9px}} .ctt-r i{{width:13px;height:13px;border-radius:3px;flex:none}} .ctt-sep{{height:1px;background:rgba(255,255,255,.7);margin:10px 0}} @media (max-width:700px){{.ctt{{font-size:14px;padding:10px 12px}} .ctt-h{{font-size:16px}}}} .ns{{display:none}} @media (max-width:700px){{.nf{{display:none}} .ns{{display:inline}}}} .vct{{font-weight:600;line-height:1.3;margin-top:2px}} .pdot{{width:14px;height:14px;border-radius:50%;flex:none;align-self:center;box-shadow:0 0 0 3px var(--card),0 0 0 4px var(--line)}} .vcn{{white-space:nowrap;font-size:18px;font-variant-numeric:tabular-nums}} .vcn small{{font-size:12px;color:var(--muted);font-weight:400}}
+.rtt{{min-width:260px}} .rtt-bar{{display:flex;height:12px;border-radius:6px;overflow:hidden;margin:2px 0 10px;gap:2px}} .rtt-bar i{{display:block;height:100%}} .rtt .ctt-r{{gap:10px}} .rtt-n{{flex:1}} .rtt .ctt-r b{{font-weight:600;font-variant-numeric:tabular-nums}} .rtt .ctt-r small{{width:42px;text-align:right;opacity:.75;font-variant-numeric:tabular-nums}} .rtt-m{{width:90px;height:8px;border-radius:4px;background:rgba(255,255,255,.12);overflow:hidden}} .rtt-m em{{display:block;height:100%;border-radius:4px}} .ctt{{position:absolute;pointer-events:none;z-index:5;opacity:0;transition:opacity .15s,left .12s ease-out,top .12s ease-out;background:rgba(18,18,20,.62);-webkit-backdrop-filter:blur(12px) saturate(140%);backdrop-filter:blur(12px) saturate(140%);color:#fff;border-radius:12px;padding:12px 16px 13px;box-shadow:0 8px 28px rgba(0,0,0,.28);font-size:16px;line-height:1.5;white-space:nowrap}} .ctt-h{{font-size:19px;font-weight:700;margin-bottom:6px}} .ctt-r{{display:flex;align-items:center;gap:9px}} .ctt-r i{{width:13px;height:13px;border-radius:3px;flex:none}} .ctt-sep{{height:1px;background:rgba(255,255,255,.7);margin:10px 0}} @media (max-width:700px){{.ctt{{font-size:14px;padding:10px 12px}} .ctt-h{{font-size:16px}}}} .ns{{display:none}} @media (max-width:700px){{.nf{{display:none}} .ns{{display:inline}}}} .vct{{font-weight:600;line-height:1.3;margin-top:2px}} .pdot{{width:14px;height:14px;border-radius:50%;flex:none;align-self:center;box-shadow:0 0 0 3px var(--card),0 0 0 4px var(--line)}} .vcn{{white-space:nowrap;font-size:18px;font-variant-numeric:tabular-nums}} .vcn small{{font-size:12px;color:var(--muted);font-weight:400}}
 .vcm{{color:var(--muted);font-size:12px;margin:2px 0 8px}} table.vt{{width:100%;background:transparent}} table.vt th,table.vt td{{padding:5px 6px;font-size:13px;border-bottom:1px solid var(--line)}}
 table.vt thead th{{color:var(--muted);font-weight:500;border-bottom:1px solid var(--line)}} table.vt tbody tr:last-child th,table.vt tbody tr:last-child td{{border-bottom:0}}
 table.vt tr.lead td,table.vt tr.lead th{{background:rgba(42,120,214,.10)}} table.vt a.tp{{text-decoration:none;color:inherit;border-bottom:1px solid #2A78D6}}
@@ -1231,13 +1231,30 @@ function renderG() {{   // Oct 26: Reach / Engagement / Retention cards, best ce
     if (rows.length) h += '<table><thead><tr><th></th><th class="tl">Total</th>' + sites.map(c => `<th><b class="gd" style="background:${{PC[c.id]}}"></b><span class="nf">${{esc(cid(c.id).label)}}</span></th>`).join('') + '</tr></thead><tbody>';
     rows.forEach(id => {{ const d = rid(id);
       const t = parse(d.cells.total);   // Guy, Oct 26: Total column first, divider after it
-      h += `<tr><td class="lab">${{esc(d.label)}}</td><td class="tot tl">${{show(t)}}</td>` + sites.map(c => {{ const x = parse(d.cells[c.id]); return `<td class="${{x.best ? 'best' : ''}}">${{show(x)}}</td>`; }}).join('');
+      h += `<tr data-r="${{esc(id)}}" data-g="${{name}}"><td class="lab">${{esc(d.label)}}</td><td class="tot tl">${{show(t)}}</td>` + sites.map(c => {{ const x = parse(d.cells[c.id]); return `<td class="${{x.best ? 'best' : ''}}">${{show(x)}}</td>`; }}).join('');
       h += '</tr>'; }});
     if (rows.length) h += '</tbody></table>';
     h += asc + '</section>';
   }});
   const pk = rid('Pick for ads'); if (pk && pk.full) h += `<p class="gpick">Pick for ads: ${{pk.full}}</p>`;
   g.innerHTML = h;
+  // Guy, Oct 26: hover a row = pop-up with that metric split by site (share bar for counts, side-by-side bars for rates)
+  let tip = document.querySelector('.rtt'); if (!tip) {{ tip = document.createElement('div'); tip.className = 'ctt rtt'; tip.style.position = 'fixed'; document.body.appendChild(tip); }}
+  const fill = tr => {{ const d = rid(tr.dataset.r); if (!d) return false;
+    const vals = sites.map(c => num(parse(d.cells[c.id]).v)), ok = vals.map(v => v != null && v >= 0), tot = vals.reduce((a, v, i) => a + (ok[i] ? v : 0), 0);
+    if (!tot) return false;
+    const share = tr.dataset.g === 'Reach' && !/^Avg|^Top/.test(d.label), mx = Math.max(...vals.filter((v, i) => ok[i]));
+    let h = `<div class="ctt-h">${{esc(d.label)}}</div>`;
+    if (share) h += '<div class="rtt-bar">' + sites.map((c, i) => ok[i] && vals[i] ? `<i style="width:${{vals[i] / tot * 100}}%;background:${{PC[c.id]}}"></i>` : '').join('') + '</div>';
+    sites.forEach((c, i) => {{ if (!ok[i]) return; const v = parse(d.cells[c.id]).v;
+      h += `<div class="ctt-r"><i style="background:${{PC[c.id]}}"></i><span class="rtt-n">${{esc(cid(c.id).label)}}</span>` + (share ? `<b>${{esc(v)}}</b><small>${{Math.round(vals[i] / tot * 100)}}%</small>` : `<span class="rtt-m"><em style="width:${{mx ? vals[i] / mx * 100 : 0}}%;background:${{PC[c.id]}}"></em></span><b>${{esc(v)}}</b>`) + '</div>'; }});
+    tip.innerHTML = h; return true; }};
+  const place = e => {{ const w = tip.offsetWidth, hh = tip.offsetHeight; let x = e.clientX + 16, y = e.clientY + 16;
+    if (x + w > innerWidth - 8) x = e.clientX - w - 16; if (y + hh > innerHeight - 8) y = e.clientY - hh - 16; tip.style.left = Math.max(8, x) + 'px'; tip.style.top = Math.max(8, y) + 'px'; }};
+  g.querySelectorAll('tr[data-r]').forEach(tr => {{
+    tr.addEventListener('mouseenter', e => {{ if (fill(tr)) {{ tip.style.opacity = 1; place(e); }} }});
+    tr.addEventListener('mousemove', place);
+    tr.addEventListener('mouseleave', () => {{ tip.style.opacity = 0; }}); }});
 }}
 if (/^#sec-/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);   // Guy, Oct 26: a reload opens at the top, not at an old jump target
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual'; scrollTo(0, 0);
