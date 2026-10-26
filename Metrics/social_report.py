@@ -1016,7 +1016,7 @@ h2.ph{{font-size:18px;font-weight:500;margin:48px 0 4px;padding-top:20px;border-
 #g .sl{{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--ink2);margin:7px 0 14px}} #g .sl b,#g .gd{{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}}
 #g table{{width:100%;table-layout:fixed;border-collapse:collapse;font-variant-numeric:tabular-nums;min-width:0}} #g th{{font-weight:500;color:var(--ink2);font-size:13px;text-align:right;padding:4px 8px;white-space:nowrap;border:0}}
 #g th:first-child,#g td.lab{{width:24%}} #g td{{text-align:right;padding:8px;border:0;border-top:1px solid var(--line);white-space:nowrap}} #g td.lab{{text-align:left;color:var(--ink2);white-space:normal}} #g .tot{{font-weight:600}}
-#g td.best{{background:rgba(42,120,214,.14);box-shadow:inset 0 0 0 1.5px #2A78D6;border-radius:6px}} #g small{{font-size:12px;color:var(--muted)}} #g small.up{{color:#1E9E55}} #g .na{{color:var(--muted);opacity:.6}} #g a.tp{{color:inherit}}
+#g td.best{{background:rgba(42,120,214,.14);box-shadow:inset 0 0 0 1.5px #2A78D6;border-radius:6px}} #g small{{font-size:12px;color:var(--muted)}} #g small.up{{color:#1E9E55}} #g .na{{color:var(--muted);opacity:.6}} #g a.tp{{color:inherit}} #g .cv{{display:inline-grid;grid-template-columns:auto 66px;column-gap:5px;align-items:baseline}} #g .cv>span{{text-align:right}} #g .cv>small{{text-align:left}} @media (max-width:1000px){{#g .cv{{display:block}} #g .cv>small{{display:block;text-align:right}}}}
 #g .tl{{border-right:1px solid var(--line);padding-right:12px}} #g .gpick{{font-size:16px;margin:0 0 14px}} #g .ns{{display:none}}
 
 #g .asc{{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}} #g .ash{{font-size:13px;color:var(--ink2);margin-bottom:8px}} #g .ash small{{display:inline;color:var(--muted)}}
@@ -1024,7 +1024,7 @@ h2.ph{{font-size:18px;font-weight:500;margin:48px 0 4px;padding-top:20px;border-
 #g .at b{{white-space:pre;font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}} #g .at span{{font-size:13px;color:var(--ink2)}} #g .at small{{display:block;font-size:11px;color:var(--muted);line-height:1.3}}
 @media (max-width:700px){{#g .atg{{grid-template-columns:1fr 1fr}} #g .at b{{font-size:18px}}}}
 body.editing #g{{display:none}} body:not(.editing) .tw{{display:none}} #m{{display:none !important}}
-@media (max-width:700px){{#g .nf{{display:none}} #g .ns{{display:inline}} #g th,#g td{{padding:7px 3px;font-size:14px}} #g td.lab{{font-size:13px;width:25%}} #g th:first-child{{width:25%}} #g small{{display:block;font-size:11px}} #g .card{{padding:14px 12px}}}}
+@media (max-width:700px){{#g .nf{{display:none}} #g .ns{{display:inline}} #g th,#g td{{padding:7px 3px;font-size:14px}} #g td.lab{{font-size:13px;width:25%}} #g th:first-child{{width:25%}} #g small{{display:block;font-size:11px}} #g .cv{{display:block}} #g .cv>small{{text-align:right}} #g .card{{padding:14px 12px}}}}
 </style></head><body><main>
 <h1>Beaker Lab - Social Report</h1><p class="sub">{e(stamp)} · changes in brackets are since the last check ({e(prev.get('checked_at', 'none') if prev else 'none')})</p>
 <div class="bar"><button id="refresh" class="b red">Refresh</button><a class="b gray jump" href="#sec-best">Best Posting Time</a><a class="b gray jump" href="#sec-videos">Videos</a><a class="b gray jump" href="#sec-history">History</a><button id="edit" class="b blue">Edit Layout</button>
@@ -1212,10 +1212,10 @@ function renderG() {{   // Oct 26: Reach / Engagement / Retention cards, best ce
   const parse = raw => {{ raw = raw ?? ''; const t = String(raw).replace(/<[^>]+>/g, ''), i = t.indexOf(' (');
     const v = i < 0 ? t : t.slice(0, i), d = i < 0 ? '' : t.slice(i + 2, -1);
     return {{v, d: /^[+−-]0(\\.0)?$/.test(d) ? '' : d, best: /<b>/.test(raw), href: (String(raw).match(/href='([^']+)'/) || [])[1]}}; }};
-  const show = x => {{ if (!x.v || x.v === '?' || x.v === '—') return '<span class="na">–</span>';
+  const show = x => {{ if (!x.v || x.v === '?' || x.v === '—') return '<span class="cv"><span class="na">–</span><small></small></span>';   // Guy, Oct 26: number right-aligned, change left-aligned in its own slot
     let h = k(x.v); if (x.href) h = `<a class="tp" href="${{x.href}}" target="_blank" rel="noopener">${{h}}</a>`;
-    if (x.d) {{ const s = x.d[0]; h += ` <small class="${{s === '+' ? 'up' : ''}}">(${{s}}${{k(x.d.slice(1), '', 1000)}})</small>`; }}
-    return h; }};
+    const s = x.d ? x.d[0] : '';
+    return `<span class="cv"><span>${{h}}</span><small class="${{s === '+' ? 'up' : ''}}">${{x.d ? `(${{s}}${{k(x.d.slice(1), '', 1000)}})` : ''}}</small></span>`; }};
   const order = L.rows.filter(r => !r.custom).map(r => r.id);
   let h = '';
   GR.forEach(([name, sub, ids]) => {{
@@ -1231,7 +1231,7 @@ function renderG() {{   // Oct 26: Reach / Engagement / Retention cards, best ce
     if (rows.length) h += '<table><thead><tr><th></th><th class="tl">Total</th>' + sites.map(c => `<th><b class="gd" style="background:${{PC[c.id]}}"></b><span class="nf">${{esc(cid(c.id).label)}}</span></th>`).join('') + '</tr></thead><tbody>';
     rows.forEach(id => {{ const d = rid(id);
       const t = parse(d.cells.total);   // Guy, Oct 26: Total column first, divider after it
-      h += `<tr><td class="lab">${{esc(d.label)}}</td><td class="tot tl">${{t.v && t.v !== '—' && t.v !== '?' ? show(t) : '–'}}</td>` + sites.map(c => {{ const x = parse(d.cells[c.id]); return `<td class="${{x.best ? 'best' : ''}}">${{show(x)}}</td>`; }}).join('');
+      h += `<tr><td class="lab">${{esc(d.label)}}</td><td class="tot tl">${{show(t)}}</td>` + sites.map(c => {{ const x = parse(d.cells[c.id]); return `<td class="${{x.best ? 'best' : ''}}">${{show(x)}}</td>`; }}).join('');
       h += '</tr>'; }});
     if (rows.length) h += '</tbody></table>';
     h += asc + '</section>';
@@ -1243,6 +1243,10 @@ L = load(SAVED); render(); renderPrev(); renderM(); renderG();
 document.querySelectorAll('h2.sh, h2.ph').forEach(h => {{ if (/Views gained per day/.test(h.textContent)) return;   // Guy, Oct 26: Top button right of each section title
   h.classList.add('has-top'); h.insertAdjacentHTML('beforeend', '<button type="button" class="b gray totop">Top</button>'); }});
 document.addEventListener('click', e => {{ if (e.target.closest('.totop')) scrollTo({{top: 0, behavior: 'smooth'}}); }});
+document.addEventListener('click', e => {{ const j = e.target.closest('a.jump'); if (!j) return;   // Guy, Oct 26: land below the pinned day card
+  const t = document.querySelector(j.getAttribute('href')); if (!t) return; e.preventDefault();
+  const pin = document.querySelector('.day'), off = (pin ? pin.offsetHeight + 8 : 0) + 14;
+  scrollTo({{top: t.getBoundingClientRect().top + scrollY - off, behavior: 'smooth'}}); }});
 const moreBtn = $('more'); if (moreBtn) moreBtn.onclick = () => {{ document.body.classList.toggle('showold'); moreBtn.textContent = document.body.classList.contains('showold') ? 'Hide older videos' : moreBtn.dataset.t; }}; if (moreBtn) moreBtn.dataset.t = moreBtn.textContent;
 if (SITE) $('edit').hidden = true;
 if (served && !SITE) fetch('/layout').then(r => r.json()).then(l => {{ if (!editing && JSON.stringify(l) !== JSON.stringify(SAVED)) {{ L = load(l); render(); renderPrev(); renderM(); renderG(); }} }}).catch(() => {{}});
