@@ -1016,7 +1016,7 @@ h2.ph{{font-size:18px;font-weight:500;margin:48px 0 4px;padding-top:20px;border-
 #g .sl{{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--ink2);margin:7px 0 14px}} #g .sl b,#g .gd{{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}}
 #g table{{width:100%;table-layout:fixed;border-collapse:collapse;font-variant-numeric:tabular-nums;min-width:0}} #g th{{font-weight:500;color:var(--ink2);font-size:13px;text-align:right;padding:4px 8px;white-space:nowrap;border:0}}
 #g th:first-child,#g td.lab{{width:24%}} #g td{{text-align:right;padding:8px;border:0;border-top:1px solid var(--line);white-space:nowrap}} #g td.lab{{text-align:left;color:var(--ink2);white-space:normal}} #g .tot{{font-weight:600}}
-#g td.best{{background:rgba(42,120,214,.14);box-shadow:inset 0 0 0 1.5px #2A78D6;border-radius:6px}} #g small{{font-size:12px;color:var(--muted)}} #g small.up{{color:#1E9E55}} #g .na{{color:var(--muted);opacity:.6}} #g a.tp{{color:inherit}} #g .cv{{display:inline-grid;grid-template-columns:auto 66px;column-gap:5px;align-items:baseline}} #g .cv>span{{text-align:right}} #g .cv>small{{text-align:left}} @media (max-width:1000px){{#g .cv{{display:block}} #g .cv>small{{display:block;text-align:right}}}}
+#g td.best{{background:rgba(42,120,214,.14);box-shadow:inset 0 0 0 1.5px #2A78D6;border-radius:6px}} #g small{{font-size:12px;color:var(--muted)}} #g small.up{{color:#1E9E55}} #g .na{{color:var(--muted);opacity:.6}} #g a.tp{{color:inherit}} #g .cv{{display:inline-grid;grid-template-columns:auto 66px;column-gap:5px;align-items:baseline}} #g .cv>span{{text-align:right}} #g th .gp{{display:inline-block;padding:3px 12px 4px;border-radius:999px;color:#fff;font-weight:600;font-size:13px;line-height:1.3}} #g .cv>small{{text-align:left}} @media (min-width:701px){{#g th:not(:first-child):not(.tl){{text-align:center}} #g td:not(.lab):not(.tl) .cv{{display:grid;grid-template-columns:1fr auto 1fr}} #g td:not(.lab):not(.tl) .cv>span{{grid-column:2}} #g td:not(.lab):not(.tl) .cv>small{{grid-column:3}}}} @media (max-width:1000px){{#g .cv{{display:block}} #g .cv>small{{display:block;text-align:right}}}}
 #g .tl{{border-right:1px solid var(--line);padding-right:12px}} #g .gpick{{font-size:16px;margin:0 0 14px}} #g .ns{{display:none}}
 
 #g .asc{{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}} #g .ash{{font-size:13px;color:var(--ink2);margin-bottom:8px}} #g .ash small{{display:inline;color:var(--muted)}}
@@ -1202,6 +1202,7 @@ function renderM() {{   // phone view: one card per metric, sites in a 2x2 grid
 function renderG() {{   // Oct 26: Reach / Engagement / Retention cards, best cell highlighted, zero changes hidden, share-of-views bar
   const g = $('g'); if (!g) return;
   const PC = {{instagram:'#E87BA4', facebook:'#2A78D6', youtube:'#E34948', tiktok:'#14B8C6'}};
+  const GS = {{instagram:'IG', facebook:'FB', youtube:'YT', tiktok:'TT'}};   // Guy, Oct 26: platform pills (short names on phones)
   const GR = [['Reach', '', ["Today's views", "Yesterday's views", "Total views", "Avg views per post", "Top post views", "Followers", "Posts"]],
               ['Engagement', 'per 1,000 views, so big and small sites compare fairly', ["Likes per 1K views", "Comments per 1K views"]],
               ['Retention', 'how long people keep watching', ["3-s views % of views", "Avg watch time (s)", "Watched % of video"]]];
@@ -1228,7 +1229,7 @@ function renderG() {{   // Oct 26: Reach / Engagement / Retention cards, best ce
     if (name === 'Reach' && tv) {{ const vals = sites.map(c => num(parse(tv.cells[c.id]).v) || 0), tot = vals.reduce((a, b) => a + b, 0);
       if (tot) h += '<div class="shh">Share of total views</div><div class="sbar">' + sites.map((c, i) => `<i style="width:${{vals[i] / tot * 100}}%;background:${{PC[c.id]}}"></i>`).join('') +
         '</div><div class="sl">' + sites.map((c, i) => `<span><b style="background:${{PC[c.id]}}"></b>${{esc(cid(c.id).label)}} ${{Math.round(vals[i] / tot * 100)}}%</span>`).join('') + '</div>'; }}
-    if (rows.length) h += '<table><thead><tr><th></th><th class="tl">Total</th>' + sites.map(c => `<th><b class="gd" style="background:${{PC[c.id]}}"></b><span class="nf">${{esc(cid(c.id).label)}}</span></th>`).join('') + '</tr></thead><tbody>';
+    if (rows.length) h += '<table><thead><tr><th></th><th class="tl">Total</th>' + sites.map(c => `<th><span class="gp" style="background:${{PC[c.id]}}"><span class="nf">${{esc(cid(c.id).label)}}</span><span class="ns">${{GS[c.id] || ''}}</span></span></th>`).join('') + '</tr></thead><tbody>';
     rows.forEach(id => {{ const d = rid(id);
       const t = parse(d.cells.total);   // Guy, Oct 26: Total column first, divider after it
       h += `<tr data-r="${{esc(id)}}" data-g="${{name}}"><td class="lab">${{esc(d.label)}}</td><td class="tot tl">${{show(t)}}</td>` + sites.map(c => {{ const x = parse(d.cells[c.id]); return `<td class="${{x.best ? 'best' : ''}}">${{show(x)}}</td>`; }}).join('');
