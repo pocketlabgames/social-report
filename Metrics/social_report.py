@@ -514,7 +514,7 @@ def history_html(hist):
                    f"<td class='gl'>{f(cum)}</td><td class='hs'>{f(lik)}{d(lik, prev and prev['lik'])}</td><td>{f(fol)}{d(fol, prev and prev['fol'])}</td></tr>")
         prev = {"v": v, "fol": fol, "lik": lik, "day": t.date()}
     head = "".join(f"<th class='hs{' gl' if i == 0 else ''}'>{NAME[p]}</th>" for i, p in enumerate(PLAT))
-    return (f"<style>.hist .gl{{border-left:1px solid var(--line)}}</style><h2 class='ph' id='sec-history'>History</h2><p class='sub'>One row per day since {html.escape(rows[0]['checked_at'][:10])}, newest first (each day's last check; time beside the date). "
+    return (f"<style>.hist .gl{{border-left:1px solid var(--line)}} @media (max-width:700px){{.hist th.rl small{{display:block}} .hist th.rl br{{display:none}} .hist th,.hist td{{font-size:13px;padding:8px 4px}}}}</style><h2 class='ph' id='sec-history'>History</h2><p class='sub'>One row per day since {html.escape(rows[0]['checked_at'][:10])}, newest first (each day's last check; time beside the date). "
             f"Day's views and the site columns are views gained that day; Total views, Likes and Followers (right) are running totals.</p>"
             f"<div class='wrap hist'><table><thead><tr><th class='rl'>Day</th><th>Day's views</th>{head}<th class='gl'>Total views</th><th class='hs'>Likes</th><th>Followers</th></tr></thead>"
             f"<tbody>{''.join(reversed(out))}</tbody></table></div>")
@@ -1000,7 +1000,7 @@ tr.pick td{{text-align:left}} .warn{{margin:0 0 10px;padding:8px 12px;border-rad
 .chart{{position:relative;height:340px}}
 .bar{{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 14px}} #tools{{display:inline-flex;flex-wrap:wrap;gap:8px}} #tools[hidden]{{display:none}}
 .b{{border:0;border-radius:8px;padding:8px 14px;font:inherit;font-weight:600;color:#fff;cursor:pointer}} .b:disabled{{opacity:.6;cursor:default}}
-html{{scroll-behavior:smooth}} a.b.jump{{text-decoration:none;display:inline-block}} [id^="sec-"]{{scroll-margin-top:12px}} .red{{background:#D93A36}} .blue{{background:#2A78D6}} .green{{background:#1E9E55}} .gray{{background:#77756f}}
+html{{scroll-behavior:smooth}} h2.has-top{{display:flex;align-items:center;justify-content:space-between;gap:12px}} .b.totop{{padding:5px 14px;font-size:14px;font-weight:600;flex:none}} a.b.jump{{text-decoration:none;display:inline-block}} [id^="sec-"]{{scroll-margin-top:12px}} .red{{background:#D93A36}} .blue{{background:#2A78D6}} .green{{background:#1E9E55}} .gray{{background:#77756f}}
 select{{font:inherit;padding:7px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}}
 table.fixed{{table-layout:fixed;width:auto}} table.fixed th,table.fixed td{{overflow:hidden;text-overflow:ellipsis}}
 table.edit th,table.edit td{{position:relative;outline:1px dashed var(--line)}}
@@ -1240,6 +1240,9 @@ function renderG() {{   // Oct 26: Reach / Engagement / Retention cards, best ce
   g.innerHTML = h;
 }}
 L = load(SAVED); render(); renderPrev(); renderM(); renderG();
+document.querySelectorAll('h2.sh, h2.ph').forEach(h => {{ if (/Views gained per day/.test(h.textContent)) return;   // Guy, Oct 26: Top button right of each section title
+  h.classList.add('has-top'); h.insertAdjacentHTML('beforeend', '<button type="button" class="b gray totop">Top</button>'); }});
+document.addEventListener('click', e => {{ if (e.target.closest('.totop')) scrollTo({{top: 0, behavior: 'smooth'}}); }});
 const moreBtn = $('more'); if (moreBtn) moreBtn.onclick = () => {{ document.body.classList.toggle('showold'); moreBtn.textContent = document.body.classList.contains('showold') ? 'Hide older videos' : moreBtn.dataset.t; }}; if (moreBtn) moreBtn.dataset.t = moreBtn.textContent;
 if (SITE) $('edit').hidden = true;
 if (served && !SITE) fetch('/layout').then(r => r.json()).then(l => {{ if (!editing && JSON.stringify(l) !== JSON.stringify(SAVED)) {{ L = load(l); render(); renderPrev(); renderM(); renderG(); }} }}).catch(() => {{}});
