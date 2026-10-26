@@ -480,6 +480,10 @@ def day_change(snap, hist, now):
 def history_html(hist):
     """Every complete check in social-stats-history.json, newest first (shown under 24 hours ago)."""
     rows = [h for h in hist if all(isinstance(h.get(p), dict) for p in PLAT)]
+    last = {}   # Guy, Oct 26: one row per day = that day's latest complete check
+    for h in sorted(rows, key=lambda h: h["checked_at"]):
+        last[h["checked_at"][:10]] = h
+    rows = [last[k] for k in sorted(last)]
     f = lambda v: "—" if v is None else f"{v:,}"
     def d(v, o):
         if v is None or o is None or v == o: return ""
@@ -490,7 +494,8 @@ def history_html(hist):
         tot = sum(x or 0 for x in v.values())
         fol = sum(h[p].get("followers") or 0 for p in PLAT)
         lik = sum(h[p].get("likes") or 0 for p in PLAT)
-        when = dt.datetime.strptime(h["checked_at"], "%Y-%m-%d %H:%M").strftime("%a %b %-d · %-I:%M %p")
+        t = dt.datetime.strptime(h["checked_at"], "%Y-%m-%d %H:%M")
+        when = t.strftime("%a %b %-d") + f" <small class='dl'>{t.strftime('%-I:%M %p')}</small>"
         pv = prev or {}
         cells = "".join(f"<td class='hs'>{f(v[p])}{d(v[p], pv.get('v', {}).get(p))}</td>" for p in PLAT)
         out.append(f"<tr><th class='rl'>{when}</th>{cells}<td><b>{f(tot)}</b>{d(tot, pv.get('tot'))}</td>"
@@ -499,9 +504,9 @@ def history_html(hist):
     if not rows:
         return ""
     head = "".join(f"<th class='hs'>{NAME[p]}</th>" for p in PLAT)
-    return (f"<h2 class='ph'>History</h2><p class='sub'>Every check since {html.escape(rows[0]['checked_at'][:10])} "
-            f"({len(rows)} checks), newest first. Views per site; changes in brackets are since the check below.</p>"
-            f"<div class='wrap hist'><table><thead><tr><th class='rl'>Checked</th>{head}<th>Total views</th><th>Followers</th><th class='hs'>Likes</th></tr></thead>"
+    return (f"<h2 class='ph'>History</h2><p class='sub'>Totals by day since {html.escape(rows[0]['checked_at'][:10])}, newest first: "
+            f"each day's last check (time beside the date). Changes in brackets are since the day below.</p>"
+            f"<div class='wrap hist'><table><thead><tr><th class='rl'>Day</th>{head}<th>Total views</th><th>Followers</th><th class='hs'>Likes</th></tr></thead>"
             f"<tbody>{''.join(reversed(out))}</tbody></table></div>")
 
 
