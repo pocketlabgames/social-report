@@ -514,7 +514,7 @@ def history_html(hist):
                    f"<td class='gl'>{f(cum)}</td><td class='hs'>{f(lik)}{d(lik, prev and prev['lik'])}</td><td>{f(fol)}{d(fol, prev and prev['fol'])}</td></tr>")
         prev = {"v": v, "fol": fol, "lik": lik, "day": t.date()}
     head = "".join(f"<th class='hs{' gl' if i == 0 else ''}'>{NAME[p]}</th>" for i, p in enumerate(PLAT))
-    return (f"<style>.hist .gl{{border-left:1px solid var(--line)}}</style><h2 class='ph'>History</h2><p class='sub'>One row per day since {html.escape(rows[0]['checked_at'][:10])}, newest first (each day's last check; time beside the date). "
+    return (f"<style>.hist .gl{{border-left:1px solid var(--line)}}</style><h2 class='ph' id='sec-history'>History</h2><p class='sub'>One row per day since {html.escape(rows[0]['checked_at'][:10])}, newest first (each day's last check; time beside the date). "
             f"Day's views and the site columns are views gained that day; Total views, Likes and Followers (right) are running totals.</p>"
             f"<div class='wrap hist'><table><thead><tr><th class='rl'>Day</th><th>Day's views</th>{head}<th class='gl'>Total views</th><th class='hs'>Likes</th><th>Followers</th></tr></thead>"
             f"<tbody>{''.join(reversed(out))}</tbody></table></div>")
@@ -631,7 +631,7 @@ def posts_section(posts, phist, now):
                      f"<div class='vcm'>{when(g['created'])}{(' · ' + num(ln) + ' s') if ln else ''}{(' · not on ' + ', '.join(missing)) if missing and len(missing) < 4 else ''}</div>"
                      f"<table class='vt'><thead><tr><th class='rl'>Site</th><th>Views</th><th>{gain_label}</th><th>Likes / 1K</th><th class='aw'>Avg watch</th><th>Watched</th></tr></thead><tbody>{rows}</tbody></table></div>")
     more = f"<button id='more' class='b gray' type='button'>Show {hidden} older video(s)</button>" if hidden else ""
-    return (f"<h2 class='sh'>Videos</h2><p class='sub'>One card per video, newest first, with its numbers on each site. {gain_label} = views gained since the check closest to 24 h ago"
+    return (f"<h2 class='sh' id='sec-videos'>Videos</h2><p class='sub'>One card per video, newest first, with its numbers on each site. {gain_label} = views gained since the check closest to 24 h ago"
             f"{' (no earlier check yet)' if not base else ''}. Watched = share of the video watched on average; YouTube can pass 100% when Shorts loop. Dot = views vs a typical video at the same age: <span style='color:#1E9E55'>●</span> 1.5× or more, <span style='color:#F5B400'>●</span> 0.5–1.5×, <span style='color:#E5484D'>●</span> under 0.5×, <span style='color:#B8B8B8'>●</span> first 6 hours.</p>"
             f"<div class='vgrid'>{''.join(cards)}</div>{more}")
 
@@ -812,7 +812,7 @@ def time_section(posts, now):
             best = out[-1]
     trs = "".join(x[4].replace("<tr ", "<tr class='bestrow' ") if x is best else x[4] for x in out)
     heads = "".join(f"<th class='hs'>{NAME[p]}</th>" for p in PLAT)
-    return (f"<h2 class='sh'>Best posting time</h2><p class='sub'>Public posts grouped by the hour they went up (Eastern). "
+    return (f"<h2 class='sh' id='sec-best'>Best posting time</h2><p class='sub'>Public posts grouped by the hour they went up (Eastern). "
             f"Views per day = views divided by days since posting, so new posts compare fairly with old ones. Best so far: <b>{e(best[0])}</b> "
             f"({best[1]} post(s), {best[3]:,.0f} views per post per day). Small numbers; treat as a hint until there are more posts.</p>"
             f"<div class='wrap'><table class='slots'><thead><tr><th class='rl'>Posted</th><th>Posts</th><th>Avg views</th><th>Views / day</th>{heads}</tr></thead>"
@@ -1000,7 +1000,7 @@ tr.pick td{{text-align:left}} .warn{{margin:0 0 10px;padding:8px 12px;border-rad
 .chart{{position:relative;height:340px}}
 .bar{{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 14px}} #tools{{display:inline-flex;flex-wrap:wrap;gap:8px}} #tools[hidden]{{display:none}}
 .b{{border:0;border-radius:8px;padding:8px 14px;font:inherit;font-weight:600;color:#fff;cursor:pointer}} .b:disabled{{opacity:.6;cursor:default}}
-.red{{background:#D93A36}} .blue{{background:#2A78D6}} .green{{background:#1E9E55}} .gray{{background:#77756f}}
+html{{scroll-behavior:smooth}} a.b.jump{{text-decoration:none;display:inline-block}} [id^="sec-"]{{scroll-margin-top:12px}} .red{{background:#D93A36}} .blue{{background:#2A78D6}} .green{{background:#1E9E55}} .gray{{background:#77756f}}
 select{{font:inherit;padding:7px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}}
 table.fixed{{table-layout:fixed;width:auto}} table.fixed th,table.fixed td{{overflow:hidden;text-overflow:ellipsis}}
 table.edit th,table.edit td{{position:relative;outline:1px dashed var(--line)}}
@@ -1017,7 +1017,7 @@ h2.ph{{font-size:18px;font-weight:500;margin:48px 0 4px;padding-top:20px;border-
 #g table{{width:100%;table-layout:fixed;border-collapse:collapse;font-variant-numeric:tabular-nums;min-width:0}} #g th{{font-weight:500;color:var(--ink2);font-size:13px;text-align:right;padding:4px 8px;white-space:nowrap;border:0}}
 #g th:first-child,#g td.lab{{width:24%}} #g td{{text-align:right;padding:8px;border:0;border-top:1px solid var(--line);white-space:nowrap}} #g td.lab{{text-align:left;color:var(--ink2);white-space:normal}} #g .tot{{font-weight:600}}
 #g td.best{{background:rgba(42,120,214,.14);box-shadow:inset 0 0 0 1.5px #2A78D6;border-radius:6px}} #g small{{font-size:12px;color:var(--muted)}} #g small.up{{color:#1E9E55}} #g .na{{color:var(--muted);opacity:.6}} #g a.tp{{color:inherit}}
-#g .gpick{{font-size:16px;margin:0 0 14px}} #g .ns{{display:none}}
+#g .tl{{border-right:1px solid var(--line);padding-right:12px}} #g .gpick{{font-size:16px;margin:0 0 14px}} #g .ns{{display:none}}
 
 #g .asc{{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}} #g .ash{{font-size:13px;color:var(--ink2);margin-bottom:8px}} #g .ash small{{display:inline;color:var(--muted)}}
 #g .atg{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}} #g .at{{background:var(--bg);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:1px}}
@@ -1027,7 +1027,7 @@ body.editing #g{{display:none}} body:not(.editing) .tw{{display:none}} #m{{displ
 @media (max-width:700px){{#g .nf{{display:none}} #g .ns{{display:inline}} #g th,#g td{{padding:7px 3px;font-size:14px}} #g td.lab{{font-size:13px;width:25%}} #g th:first-child{{width:25%}} #g small{{display:block;font-size:11px}} #g .card{{padding:14px 12px}}}}
 </style></head><body><main>
 <h1>Beaker Lab - Social Report</h1><p class="sub">{e(stamp)} · changes in brackets are since the last check ({e(prev.get('checked_at', 'none') if prev else 'none')})</p>
-<div class="bar"><button id="refresh" class="b red">Refresh</button><button id="edit" class="b blue">Edit Layout</button>
+<div class="bar"><button id="refresh" class="b red">Refresh</button><a class="b gray jump" href="#sec-best">Best Posting Time</a><a class="b gray jump" href="#sec-videos">Videos</a><a class="b gray jump" href="#sec-history">History</a><button id="edit" class="b blue">Edit Layout</button>
 <span id="tools" hidden><select id="addc"></select><select id="addr"></select><button id="cancel" class="b gray">Cancel</button><button id="reset" class="b gray">Reset Layout</button></span>
 <span id="msg" class="note"></span></div>
 {day_html}{week_html}<h2 class="sh" style="margin-top:4px">Views gained per day</h2>
@@ -1228,10 +1228,11 @@ function renderG() {{   // Oct 26: Reach / Engagement / Retention cards, best ce
     if (name === 'Reach' && tv) {{ const vals = sites.map(c => num(parse(tv.cells[c.id]).v) || 0), tot = vals.reduce((a, b) => a + b, 0);
       if (tot) h += '<div class="shh">Share of total views</div><div class="sbar">' + sites.map((c, i) => `<i style="width:${{vals[i] / tot * 100}}%;background:${{PC[c.id]}}"></i>`).join('') +
         '</div><div class="sl">' + sites.map((c, i) => `<span><b style="background:${{PC[c.id]}}"></b>${{esc(cid(c.id).label)}} ${{Math.round(vals[i] / tot * 100)}}%</span>`).join('') + '</div>'; }}
-    if (rows.length) h += '<table><thead><tr><th></th>' + sites.map(c => `<th><b class="gd" style="background:${{PC[c.id]}}"></b><span class="nf">${{esc(cid(c.id).label)}}</span></th>`).join('') + '<th>Total</th></tr></thead><tbody>';
+    if (rows.length) h += '<table><thead><tr><th></th><th class="tl">Total</th>' + sites.map(c => `<th><b class="gd" style="background:${{PC[c.id]}}"></b><span class="nf">${{esc(cid(c.id).label)}}</span></th>`).join('') + '</tr></thead><tbody>';
     rows.forEach(id => {{ const d = rid(id);
-      h += `<tr><td class="lab">${{esc(d.label)}}</td>` + sites.map(c => {{ const x = parse(d.cells[c.id]); return `<td class="${{x.best ? 'best' : ''}}">${{show(x)}}</td>`; }}).join('');
-      const t = parse(d.cells.total); h += `<td class="tot">${{t.v && t.v !== '—' && t.v !== '?' ? show(t) : '–'}}</td></tr>`; }});
+      const t = parse(d.cells.total);   // Guy, Oct 26: Total column first, divider after it
+      h += `<tr><td class="lab">${{esc(d.label)}}</td><td class="tot tl">${{t.v && t.v !== '—' && t.v !== '?' ? show(t) : '–'}}</td>` + sites.map(c => {{ const x = parse(d.cells[c.id]); return `<td class="${{x.best ? 'best' : ''}}">${{show(x)}}</td>`; }}).join('');
+      h += '</tr>'; }});
     if (rows.length) h += '</tbody></table>';
     h += asc + '</section>';
   }});
