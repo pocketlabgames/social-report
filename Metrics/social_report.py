@@ -478,34 +478,43 @@ def day_change(snap, hist, now):
 
 
 def history_html(hist):
-    """Every complete check in social-stats-history.json, newest first (shown under 24 hours ago)."""
+    """One row per day, newest first (Guy, Oct 26): views GAINED that day on each site (that day's last complete
+    check minus the previous day's last check) and their total. Followers and Likes stay running totals."""
     rows = [h for h in hist if all(isinstance(h.get(p), dict) for p in PLAT)]
-    last = {}   # Guy, Oct 26: one row per day = that day's latest complete check
+    last = {}
     for h in sorted(rows, key=lambda h: h["checked_at"]):
         last[h["checked_at"][:10]] = h
     rows = [last[k] for k in sorted(last)]
+    if not rows:
+        return ""
     f = lambda v: "—" if v is None else f"{v:,}"
+    sg = lambda v: "—" if v is None else (f"{v:,}" if v >= 0 else f"−{-v:,}")
     def d(v, o):
         if v is None or o is None or v == o: return ""
         return f" <span class='dl'>({'+' if v > o else '−'}{abs(v - o):,})</span>"
     out, prev = [], None
     for h in rows:
         v = {p: h[p].get("views") for p in PLAT}
-        tot = sum(x or 0 for x in v.values())
         fol = sum(h[p].get("followers") or 0 for p in PLAT)
         lik = sum(h[p].get("likes") or 0 for p in PLAT)
         t = dt.datetime.strptime(h["checked_at"], "%Y-%m-%d %H:%M")
         when = t.strftime("%a %b %-d") + f" <small class='dl'>{t.strftime('%-I:%M %p')}</small>"
-        pv = prev or {}
-        cells = "".join(f"<td class='hs'>{f(v[p])}{d(v[p], pv.get('v', {}).get(p))}</td>" for p in PLAT)
-        out.append(f"<tr><th class='rl'>{when}</th>{cells}<td><b>{f(tot)}</b>{d(tot, pv.get('tot'))}</td>"
-                   f"<td>{f(fol)}{d(fol, pv.get('fol'))}</td><td class='hs'>{f(lik)}{d(lik, pv.get('lik'))}</td></tr>")
-        prev = {"v": v, "tot": tot, "fol": fol, "lik": lik}
-    if not rows:
-        return ""
+        if prev:
+            g = {p: (None if v[p] is None or prev["v"][p] is None else v[p] - prev["v"][p]) for p in PLAT}
+            gap = (t.date() - prev["day"]).days
+            if gap > 1:   # no check on the days in between: the gain covers all of them
+                when += f"<br><small class='dl'>since {prev['day'].strftime('%b %-d')} ({gap} days)</small>"
+        else:
+            g = {p: None for p in PLAT}
+        known = [x for x in g.values() if x is not None]
+        tot = sum(known) if known else None
+        cells = "".join(f"<td class='hs'>{sg(g[p])}</td>" for p in PLAT)
+        out.append(f"<tr><th class='rl'>{when}</th>{cells}<td><b>{sg(tot)}</b></td>"
+                   f"<td>{f(fol)}{d(fol, prev and prev['fol'])}</td><td class='hs'>{f(lik)}{d(lik, prev and prev['lik'])}</td></tr>")
+        prev = {"v": v, "fol": fol, "lik": lik, "day": t.date()}
     head = "".join(f"<th class='hs'>{NAME[p]}</th>" for p in PLAT)
-    return (f"<h2 class='ph'>History</h2><p class='sub'>Totals by day since {html.escape(rows[0]['checked_at'][:10])}, newest first: "
-            f"each day's last check (time beside the date). Changes in brackets are since the day below.</p>"
+    return (f"<h2 class='ph'>History</h2><p class='sub'>Views gained each day since {html.escape(rows[0]['checked_at'][:10])}, newest first "
+            f"(each day's last check minus the day before's; time beside the date). Followers and Likes are running totals.</p>"
             f"<div class='wrap hist'><table><thead><tr><th class='rl'>Day</th>{head}<th>Total views</th><th>Followers</th><th class='hs'>Likes</th></tr></thead>"
             f"<tbody>{''.join(reversed(out))}</tbody></table></div>")
 
