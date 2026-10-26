@@ -510,13 +510,13 @@ def history_html(hist):
         tot = sum(known) if known else None
         cells = "".join(f"<td class='hs{' gl' if i == 0 else ''}'>{sg(g[p])}</td>" for i, p in enumerate(PLAT))
         cum = sum(x or 0 for x in v.values())   # Guy, Oct 26: running total first; the day's gain in brackets
-        out.append(f"<tr><th class='rl'>{when}</th><td><b>{f(cum)}</b>{d(cum, prev and sum(x or 0 for x in prev['v'].values()))}</td>{cells}"
-                   f"<td class='gl'>{f(fol)}{d(fol, prev and prev['fol'])}</td><td class='hs'>{f(lik)}{d(lik, prev and prev['lik'])}</td></tr>")
+        out.append(f"<tr><th class='rl'>{when}</th><td><b>{sg(tot)}</b></td>{cells}"   # Guy, Oct 26: day's views left, running totals right
+                   f"<td class='gl'>{f(cum)}</td><td class='hs'>{f(lik)}{d(lik, prev and prev['lik'])}</td><td>{f(fol)}{d(fol, prev and prev['fol'])}</td></tr>")
         prev = {"v": v, "fol": fol, "lik": lik, "day": t.date()}
     head = "".join(f"<th class='hs{' gl' if i == 0 else ''}'>{NAME[p]}</th>" for i, p in enumerate(PLAT))
     return (f"<style>.hist .gl{{border-left:1px solid var(--line)}}</style><h2 class='ph'>History</h2><p class='sub'>One row per day since {html.escape(rows[0]['checked_at'][:10])}, newest first (each day's last check; time beside the date). "
-            f"Total views, Followers and Likes are running totals with that day's change in brackets; the site columns are views gained that day.</p>"
-            f"<div class='wrap hist'><table><thead><tr><th class='rl'>Day</th><th>Total views</th>{head}<th class='gl'>Followers</th><th class='hs'>Likes</th></tr></thead>"
+            f"Day's views and the site columns are views gained that day; Total views, Likes and Followers (right) are running totals.</p>"
+            f"<div class='wrap hist'><table><thead><tr><th class='rl'>Day</th><th>Day's views</th>{head}<th class='gl'>Total views</th><th class='hs'>Likes</th><th>Followers</th></tr></thead>"
             f"<tbody>{''.join(reversed(out))}</tbody></table></div>")
 
 
@@ -1202,7 +1202,7 @@ function renderM() {{   // phone view: one card per metric, sites in a 2x2 grid
 function renderG() {{   // Oct 26: Reach / Engagement / Retention cards, best cell highlighted, zero changes hidden, share-of-views bar
   const g = $('g'); if (!g) return;
   const PC = {{instagram:'#E87BA4', facebook:'#2A78D6', youtube:'#E34948', tiktok:'#14B8C6'}};
-  const GR = [['Reach', '', ["Total views", "Today's views", "Yesterday's views", "Avg views per post", "Top post views", "Followers", "Posts"]],
+  const GR = [['Reach', '', ["Today's views", "Yesterday's views", "Total views", "Avg views per post", "Top post views", "Followers", "Posts"]],
               ['Engagement', 'per 1,000 views, so big and small sites compare fairly', ["Likes per 1K views", "Comments per 1K views"]],
               ['Retention', 'how long people keep watching', ["3-s views % of views", "Avg watch time (s)", "Watched % of video"]]];
   const sites = L.cols.filter(c => !c.custom && PC[c.id] && cid(c.id));
@@ -1219,7 +1219,7 @@ function renderG() {{   // Oct 26: Reach / Engagement / Retention cards, best ce
   const order = L.rows.filter(r => !r.custom).map(r => r.id);
   let h = '';
   GR.forEach(([name, sub, ids]) => {{
-    const rows = ids.filter(id => rid(id)).sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99))
+    const rows = ids.filter(id => rid(id))   // Guy, Oct 26: fixed order per card (Reach: Today, Yesterday, Total first)
       .filter(id => sites.some(c => {{ const v = parse(rid(id).cells[c.id]).v; return v && v !== '?' && v !== '—'; }}));
     const asc = name === 'Retention' && $('ascret') ? $('ascret').innerHTML : '';
     if (!rows.length && !asc) return;
