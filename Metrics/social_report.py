@@ -930,7 +930,8 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
             if prev and all(isinstance(prev.get(p), dict) and prev[p].get("views") is not None and (snap.get(p) or {}).get("views") is not None for p in PLAT):
                 mv = sum(snap[p]["views"] - prev[p]["views"] for p in PLAT)
                 since = dt.datetime.strptime(prev["checked_at"], "%Y-%m-%d %H:%M").strftime("%-I:%M %p")
-                sub = f"<small class='sub2'>({'+' if mv >= 0 else '−'}{abs(mv):,} since the {since} refresh)</small>" + sub
+                allv0 = sum((snap.get(p) or {}).get("views") or 0 for p in PLAT)   # Guy, Oct 26: JS swaps this for "since you last looked"
+                sub = f"<small class='sub2' id='slv' data-total='{allv0}' data-stamp='{html.escape(stamp)}'>({'+' if mv >= 0 else '−'}{abs(mv):,} since the {since} refresh)</small>" + sub
             head = "Views today" + (f" <small>since the {today['since'].strftime('%b %-d, %-I:%M %p')} check</small>" if abs(today["off_h"]) > 2 else "")
             parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> <span class='nf'>{NAME[p]}</span><span class='ns'>{SHORT[p]}</span> {'+' if today['per'][p] >= 0 else '−'}{abs(today['per'][p]):,}" for p in PLAT)
         allv = sum((snap.get(p) or {}).get("views") or 0 for p in PLAT)
@@ -1260,6 +1261,16 @@ function renderG() {{   // Oct 26: Reach / Engagement / Retention cards, best ce
 if (/^#sec-/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);   // Guy, Oct 26: a reload opens at the top, not at an old jump target
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual'; scrollTo(0, 0);
 L = load(SAVED); render(); renderPrev(); renderM(); renderG();
+(() => {{   // Guy, Oct 26: views gained since this browser last opened the report (kept per device)
+  const el = $('slv'); if (!el) return; const tot = +el.dataset.total, stamp = el.dataset.stamp || document.title; let v = null;
+  try {{ v = JSON.parse(localStorage.getItem('bl_lastview') || 'null'); }} catch (e) {{}}
+  // same report reloaded: keep the earlier baseline; new report: the last report seen becomes the baseline
+  const base = v ? (v.stamp === stamp ? v.base : {{total: v.total, at: v.at}}) : null;
+  if (base && base.total != null) {{ const d = tot - base.total, t = new Date(base.at);
+    const when = t.toDateString() === new Date().toDateString() ? t.toLocaleTimeString([], {{hour: 'numeric', minute: '2-digit'}}) : t.toLocaleDateString([], {{weekday: 'short'}}) + ' ' + t.toLocaleTimeString([], {{hour: 'numeric', minute: '2-digit'}});
+    el.textContent = `(${{d >= 0 ? '+' : '−'}}${{Math.abs(d).toLocaleString()}} since you last looked, ${{when}})`; }}
+  try {{ localStorage.setItem('bl_lastview', JSON.stringify({{stamp, total: tot, at: v && v.stamp === stamp ? v.at : Date.now(), base: base}})); }} catch (e) {{}}
+}})();
 document.querySelectorAll('h2.sh, h2.ph').forEach(h => {{ if (/Views gained per day/.test(h.textContent)) return;   // Guy, Oct 26: Top button right of each section title
   h.classList.add('has-top'); h.insertAdjacentHTML('beforeend', '<button type="button" class="b gray totop">Top</button>'); }});
 document.addEventListener('click', e => {{ if (e.target.closest('.totop')) scrollTo({{top: 0, behavior: 'smooth'}}); }});
