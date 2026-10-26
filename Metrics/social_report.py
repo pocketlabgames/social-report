@@ -31,6 +31,7 @@ POSTS_HIST = os.path.join(HERE, "posts-history.json")   # per-post views at ever
 POSTS = []   # per-post rows from the latest fetch (filled by fetch())
 INSTALLS = {}   # {date: first downloads} from App Store Connect (filled by fetch(); empty if the key is missing)
 MONEY = {}      # {date: {"ads": usd, "iap": usd}} (filled by fetch(); empty if keys are missing)
+RET = {}        # {"d1": %, "d1_n": players, "d7": %, "d7_n": players} from Firebase / GA4 (ga4_lite)
 GADS = {}       # {date: Google Ads spend in USD} (gads_lite; empty if keys are missing)
 RCNEW = {}      # {date: RevenueCat new customers (first opens)} for the same-day download estimate
 LAST = os.path.join(HERE, "cache", "report-last.json")   # the previous run's table + chart, shown at the bottom (one run only, not a history)
@@ -57,6 +58,10 @@ def fetch():
     except ImportError:
         rc_lite = None
     try:
+        from sources import ga4_lite
+    except ImportError:
+        ga4_lite = None
+    try:
         from sources import gads_lite
     except ImportError:
         gads_lite = None
@@ -74,12 +79,14 @@ def fetch():
                     return {}, f"{m.__name__.split('.')[-1]} (3 tries): {msg}"[:200]
                 time.sleep(10 * attempt)
 
-    INSTALLS.clear(); MONEY.clear(); RCNEW.clear(); GADS.clear()
+    INSTALLS.clear(); MONEY.clear(); RCNEW.clear(); GADS.clear(); RET.clear()
     srcs = [youtube, meta, tiktok] + ([asc_lite] if asc_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")) else [])
     if money_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")) and os.path.exists(os.path.join(KEYS, "admob-token.json")):
         srcs.append(money_lite)
     if rc_lite and os.path.exists(os.path.join(KEYS, "revenuecat-key.txt")):
         srcs.append(rc_lite)
+    if ga4_lite and os.path.exists(os.path.join(KEYS, "ga4-token.json")):
+        srcs.append(ga4_lite)
     if gads_lite and os.path.exists(os.path.join(KEYS, "googleads-token.json")):
         srcs.append(gads_lite)
     elif gads_lite and os.path.exists(gads_lite.CACHE):   # no keys here: still show the spend we already have
@@ -89,6 +96,9 @@ def fetch():
             if "ASC Installs Lite" in got:
                 d = got.pop("ASC Installs Lite")
                 INSTALLS.update({r.date: (None if pd.isna(r.installs) else int(r.installs)) for r in d.itertuples()})
+            if "GA4 Retention Lite" in got:
+                r0 = got.pop("GA4 Retention Lite").iloc[0].to_dict()
+                RET.update({k: (None if pd.isna(v) else v) for k, v in r0.items()})
             if "GAds Spend Lite" in got:
                 d = got.pop("GAds Spend Lite")
                 GADS.update({r.date: float(r.spend) for r in d.itertuples() if pd.notna(r.spend)})
@@ -874,6 +884,9 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         allv = sum((snap.get(p) or {}).get("views") or 0 for p in PLAT)
         tot_dl = sum(v for v in installs.values() if v is not None) if installs else None
         right = f"<div class='dayt'>{allv:,} <small>total views</small></div>" + (f"<div class='dayt'>{tot_dl:,} <small>total downloads</small></div>" if tot_dl is not None else "")
+        if RET.get("d1") is not None:   # Guy, Oct 26: Firebase next-day return of new players (last 7 complete days)
+            tip = f"Day-1: {RET['d1']:.0f}% of {int(RET.get('d1_n') or 0):,} new players came back the next day" + (f" · Day-7: {RET['d7']:.0f}%" if RET.get("d7") is not None else "") + " (Firebase, last 7 complete days)"
+            right += f"<div class='dayt' title='{tip}'>{RET['d1']:.0f}% <small>day-1 retention</small></div>"
         if money:
             right += f"<div class='dayt'>${money['all']:,.2f} <small>total earned</small></div>"
             inst += (f"<div class='dayp daym'>Earned: <b>${money['t']:,.2f}</b> today so far · <b>${money['y']:,.2f}</b> yesterday · <b>${money['w']:,.2f}</b> last 7 days · <b>${money['m']:,.2f}</b> in {money['month']}"
@@ -929,7 +942,7 @@ table.vt tr.lead td,table.vt tr.lead th{{background:rgba(42,120,214,.10)}} table
  .week ul{{margin:0;padding-left:18px;color:var(--ink)}} .week li{{margin:3px 0;line-height:1.4}} tr.bestrow th,tr.bestrow td{{background:rgba(42,120,214,.12)}} table.slots small{{color:var(--muted);font-weight:400}}
 @media (max-width:700px){{.hsn{{display:none}} table.slots th,table.slots td{{padding:8px 5px;font-size:13px}} table.slots small{{display:block;font-size:11px}}
 .day{{grid-template-columns:1fr;grid-template-areas:"l" "v" "p" "t" "i" "m" "r"}} .day .dayp{{grid-column:1/-1}}
-.dayr{{display:flex;justify-content:space-between;align-items:flex-end;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}} .dayr .dayt{{font-size:22px}} .dayr .dayt{{margin:0 !important}} .dayr .dayt:first-child{{text-align:left}} .dayr .dayt:last-child{{text-align:right}}}}
+.dayr{{display:flex;justify-content:space-between;align-items:flex-end;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}} .dayr .dayt{{font-size:19px}} .dayr .dayt small{{font-size:12px}} .dayr .dayt{{margin:0 !important}} .dayr .dayt:first-child{{text-align:left}} .dayr .dayt:last-child{{text-align:right}}}}
 tr.pick td{{text-align:left}} .warn{{margin:0 0 10px;padding:8px 12px;border-radius:8px;background:#FFF4CC;color:#5c4a00;font-size:14px}} .hist td,.hist th{{color:var(--ink2);font-size:14px}} .dl{{color:var(--muted);font-size:12px}} b{{font-weight:600}}
 .lgs{{display:flex;flex-wrap:wrap;gap:16px;margin:28px 0 8px;font-size:12px;color:var(--ink2)}} .lg{{display:flex;align-items:center;gap:6px}}
 .chart{{position:relative;height:340px}}
@@ -1167,7 +1180,10 @@ function mk(canvas, D) {{ if (!canvas) return;
   scales:{{x:{{stacked:true, grid:{{display:false}}, ticks:{{color:muted, maxRotation:0, autoSkip:true}}}}, y:{{stacked:true, beginAtZero:true, min:0, grid:{{color:grid}}, ticks:{{color:muted, callback:v => v.toLocaleString()}}, title:{{display:true, text:'Views gained', color:muted}}}},
    ...(D.installs ? {{y2:{{position:'right', beginAtZero:true, grid:{{display:false}}, ticks:{{color:'#7B4FD6', precision:0}}, title:{{display:true, text:'Installs', color:'#7B4FD6'}}}}}} : {{}}),
    ...(D.earned ? {{y3:{{display:false, beginAtZero:true}}}} : {{}}),
-   ...(D.spend && !D.installs ? {{y4:{{display:false, beginAtZero:true, stacked:false}}}} : {{}})}}}}}}); }}
+   ...(D.spend && !D.installs ? {{y4:{{display:false, beginAtZero:true, stacked:false}}}} : {{}})}}}}}}); 
+ const hide = () => {{ if (chart.tooltip.getActiveElements().length) {{ chart.tooltip.setActiveElements([], {{x:0, y:0}}); chart.setActiveElements([]); chart.update('none'); }} const el = canvas.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; }};   // phones: no mouse-out, so tap outside the chart or scroll to close the pop-up
+ document.addEventListener('touchstart', ev => {{ if (ev.target !== canvas) hide(); }}, {{passive:true}});
+ addEventListener('scroll', hide, {{passive:true}}); }}
 mk(document.getElementById('c'), D);
 </script></body></html>"""
     open(OUT_HTML, "w").write(doc)
