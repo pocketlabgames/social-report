@@ -508,14 +508,15 @@ def history_html(hist):
             g = {p: None for p in PLAT}
         known = [x for x in g.values() if x is not None]
         tot = sum(known) if known else None
-        cells = "".join(f"<td class='hs'>{sg(g[p])}</td>" for p in PLAT)
-        out.append(f"<tr><th class='rl'>{when}</th>{cells}<td><b>{sg(tot)}</b></td>"
-                   f"<td>{f(fol)}{d(fol, prev and prev['fol'])}</td><td class='hs'>{f(lik)}{d(lik, prev and prev['lik'])}</td></tr>")
+        cells = "".join(f"<td class='hs{' gl' if i == 0 else ''}'>{sg(g[p])}</td>" for i, p in enumerate(PLAT))
+        cum = sum(x or 0 for x in v.values())   # Guy, Oct 26: running total first; the day's gain in brackets
+        out.append(f"<tr><th class='rl'>{when}</th><td><b>{f(cum)}</b>{d(cum, prev and sum(x or 0 for x in prev['v'].values()))}</td>{cells}"
+                   f"<td class='gl'>{f(fol)}{d(fol, prev and prev['fol'])}</td><td class='hs'>{f(lik)}{d(lik, prev and prev['lik'])}</td></tr>")
         prev = {"v": v, "fol": fol, "lik": lik, "day": t.date()}
-    head = "".join(f"<th class='hs'>{NAME[p]}</th>" for p in PLAT)
-    return (f"<h2 class='ph'>History</h2><p class='sub'>Views gained each day since {html.escape(rows[0]['checked_at'][:10])}, newest first "
-            f"(each day's last check minus the day before's; time beside the date). Followers and Likes are running totals.</p>"
-            f"<div class='wrap hist'><table><thead><tr><th class='rl'>Day</th>{head}<th>Total views</th><th>Followers</th><th class='hs'>Likes</th></tr></thead>"
+    head = "".join(f"<th class='hs{' gl' if i == 0 else ''}'>{NAME[p]}</th>" for i, p in enumerate(PLAT))
+    return (f"<style>.hist .gl{{border-left:1px solid var(--line)}}</style><h2 class='ph'>History</h2><p class='sub'>One row per day since {html.escape(rows[0]['checked_at'][:10])}, newest first (each day's last check; time beside the date). "
+            f"Total views, Followers and Likes are running totals with that day's change in brackets; the site columns are views gained that day.</p>"
+            f"<div class='wrap hist'><table><thead><tr><th class='rl'>Day</th><th>Total views</th>{head}<th class='gl'>Followers</th><th class='hs'>Likes</th></tr></thead>"
             f"<tbody>{''.join(reversed(out))}</tbody></table></div>")
 
 
