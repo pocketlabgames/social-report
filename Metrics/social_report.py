@@ -31,6 +31,7 @@ POSTS_HIST = os.path.join(HERE, "posts-history.json")   # per-post views at ever
 POSTS = []   # per-post rows from the latest fetch (filled by fetch())
 INSTALLS = {}   # {date: first downloads} from App Store Connect (filled by fetch(); empty if the key is missing)
 MONEY = {}      # {date: {"ads": usd, "iap": usd}} (filled by fetch(); empty if keys are missing)
+ASCR = {}       # App Store Connect app numbers for the Retention card (asc_ret_lite; Guy, Oct 26)
 RET = {}        # {"d1": %, "d1_n": players, "d7": %, "d7_n": players} from Firebase / GA4 (ga4_lite)
 GADS = {}       # {date: Google Ads spend in USD} (gads_lite; empty if keys are missing)
 RCNEW = {}      # {date: RevenueCat new customers (first opens)} for the same-day download estimate
@@ -62,6 +63,10 @@ def fetch():
     except ImportError:
         ga4_lite = None
     try:
+        from sources import asc_ret_lite
+    except ImportError:
+        asc_ret_lite = None
+    try:
         from sources import gads_lite
     except ImportError:
         gads_lite = None
@@ -79,7 +84,7 @@ def fetch():
                     return {}, f"{m.__name__.split('.')[-1]} (3 tries): {msg}"[:200]
                 time.sleep(10 * attempt)
 
-    INSTALLS.clear(); MONEY.clear(); RCNEW.clear(); GADS.clear(); RET.clear()
+    INSTALLS.clear(); MONEY.clear(); RCNEW.clear(); GADS.clear(); RET.clear(); ASCR.clear()
     srcs = [youtube, meta, tiktok] + ([asc_lite] if asc_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")) else [])
     if money_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")) and os.path.exists(os.path.join(KEYS, "admob-token.json")):
         srcs.append(money_lite)
@@ -87,6 +92,8 @@ def fetch():
         srcs.append(rc_lite)
     if ga4_lite and os.path.exists(os.path.join(KEYS, "ga4-token.json")):
         srcs.append(ga4_lite)
+    if asc_ret_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")):
+        srcs.append(asc_ret_lite)
     if gads_lite and os.path.exists(os.path.join(KEYS, "googleads-token.json")):
         srcs.append(gads_lite)
     elif gads_lite and os.path.exists(gads_lite.CACHE):   # no keys here: still show the spend we already have
@@ -99,6 +106,10 @@ def fetch():
             if "GA4 Retention Lite" in got:
                 r0 = got.pop("GA4 Retention Lite").iloc[0].to_dict()
                 RET.update({k: (None if pd.isna(v) else v) for k, v in r0.items()})
+            if "ASC Retention Lite" in got:
+                r0 = got.pop("ASC Retention Lite").iloc[0].to_dict() if len(got.get("ASC Retention Lite", [])) else {}
+                got.pop("ASC Retention Lite", None)
+                ASCR.update({k: (None if pd.isna(v) else (v.item() if hasattr(v, "item") else v)) for k, v in r0.items()})
             if "GAds Spend Lite" in got:
                 d = got.pop("GAds Spend Lite")
                 GADS.update({r.date: float(r.spend) for r in d.itertuples() if pd.notna(r.spend)})
@@ -333,7 +344,7 @@ def build_rows(snap, prev, rd):
     metrics = [("Total views", "views"), ("Avg views per post", "avg"), ("Top post views", "top_views"),
                ("3-second views", "views_3s"), ("3-s views % of views", "hold_pct"),
                ("Avg watch time (s)", "avg_watch_s"), ("Watched % of video", "watch_pct"), ("Likes per 1K views", "likes_per_k"),
-               ("Likes / upvotes", "likes")]
+               ("Comments per 1K views", "comments_per_k"), ("Likes / upvotes", "likes"), ("Followers", "followers"), ("Posts", "posts")]   # Oct 26: grouped view rows
     rows = []
     for label, key in metrics:
         vals, olds = {}, {}
@@ -345,6 +356,9 @@ def build_rows(snap, prev, rd):
                 for d, src in ((vals, s), (olds, o)):
                     if src and src.get("views_3s") is not None and src.get("views"):
                         d[p] = round(src["views_3s"] / src["views"] * 100, 1)
+            if key == "comments_per_k":
+                for d, src in ((vals, s), (olds, o)):
+                    d[p] = round(src["comments"] / src["views"] * 1000, 1) if src and src.get("comments") is not None and src.get("views") else None
             if key == "likes_per_k":   # older checks stored only likes + views
                 for d, src in ((vals, s), (olds, o)):
                     if d[p] is None and src and src.get("likes") is not None and src.get("views"):
@@ -384,7 +398,13 @@ def build_rows(snap, prev, rd):
                 tv = sum((src.get(p) or {}).get("views") or 0 for p in PLAT); tl = sum((src.get(p) or {}).get("likes") or 0 for p in PLAT)
                 return round(tl / tv * 1000, 1) if tv else None
             tot, otot = lpk(snap), (lpk(prev) if prev else None)
-        rkey = {"avg": None, "followers": None, "avg_watch_s": None, "watch_pct": None, "likes_per_k": None, "views_3s": None, "hold_pct": None}.get(key, key)
+        if key == "comments_per_k":
+            def cpk(src):
+                pr = [((src.get(p) or {}).get("comments"), (src.get(p) or {}).get("views")) for p in PLAT]
+                tv = sum(v or 0 for c, v in pr if c is not None); tc = sum(c for c, v in pr if c is not None)
+                return round(tc / tv * 1000, 1) if tv else None
+            tot, otot = cpk(snap), (cpk(prev) if prev else None)
+        rkey = {"comments_per_k": None, "avg": None, "followers": None, "avg_watch_s": None, "watch_pct": None, "likes_per_k": None, "views_3s": None, "hold_pct": None}.get(key, key)
         rv = None if not rd or rkey is None else rd.get(rkey)
         if key == "likes_per_k" and rd and rd.get("views") and rd.get("likes") is not None:
             rv = round(rd["likes"] / rd["views"] * 1000, 1)
@@ -808,6 +828,23 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         trows.append({"id": r["label"], "label": r["label"], "cells": cells})
     trows.append({"id": "Pick for ads", "label": "Pick for ads", "full": f"<b>{e(pick(snap))}</b>"})
     table = json.dumps({"cols": cols, "rows": trows}).replace("</", "<\\/")
+    asc_tpl = ""
+    if ASCR.get("spd") is not None or ASCR.get("d1") is not None:   # Guy, Oct 26: App Store Connect numbers in the Retention card
+        md = lambda d: dt.date.fromisoformat(d).strftime("%b %-d")
+        tiles = []
+        if ASCR.get("d1") is not None:
+            tiles.append((f"{ASCR['d1']:.0f}%", "Day-1 return", f"of {ASCR.get('d1_n', 0):,} new devices opened it again the next day (estimate)"))
+        if ASCR.get("spd") is not None:
+            tiles.append((f"{ASCR['spd']:.1f}", "Sessions per device", "app opens per active device per day"))
+        if ASCR.get("mins") is not None:
+            tiles.append((f"{ASCR['mins']:.1f} min", "Avg session", "time per app open"))
+        if ASCR.get("deletes") is not None:
+            kept = f"  (~{max(0, 100 - round(ASCR['deletes'] / ASCR['installs'] * 100))}% kept)" if ASCR.get("installs") else ""   # Guy, Oct 26: rough, deletions include earlier installs
+            tiles.append((f"{ASCR['deletes']:,}{kept}", "Deletions", f"vs {ASCR.get('installs', 0):,} new installs"))
+        asc_tpl = ("<template id='ascret'><div class='asc'><div class='ash'>App · App Store Connect, "
+                   f"{e(md(ASCR['first']))} – {e(md(ASCR['last']))} <small>(last {ASCR.get('days', 7)} days Apple has posted)</small></div><div class='atg'>"
+                   + "".join(f"<div class='at'><b>{e(v)}</b><span>{e(l)}</span><small>{e(n)}</small></div>" for v, l, n in tiles)
+                   + "</div></div></template>")
     layout = open(LAYOUT).read().replace("</", "<\\/") if os.path.exists(LAYOUT) else "null"
     rnote = (f"Reddit is entered by hand (Reddit hides views from its API): {rd['posts']} live post(s), {rd['removed']} removed, "
              f"last reading {rd['as_of']}, {rd['unknown_views']} post(s) without a view count yet.") if rd else "No Reddit rows yet."
@@ -957,6 +994,22 @@ table.edit th,table.edit td{{position:relative;outline:1px dashed var(--line)}}
 .ed{{outline:none;min-width:30px;display:inline-block}} table.edit .ed{{background:rgba(42,120,214,.08)}}
 h2.ph{{font-size:18px;font-weight:500;margin:48px 0 4px;padding-top:20px;border-top:1px solid var(--line)}} #pt th,#pt td{{color:var(--ink2)}}
 .dropL{{box-shadow:inset 3px 0 0 #2A78D6}} .dropR{{box-shadow:inset -3px 0 0 #2A78D6}} .dropT{{box-shadow:inset 0 3px 0 #2A78D6}} .dropB{{box-shadow:inset 0 -3px 0 #2A78D6}} ul{{color:var(--ink2)}} .note{{color:var(--muted);font-size:13px}} a{{color:#2A78D6}}
+
+#g .card{{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:0 0 14px}}
+#g .gh{{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px}} #g h3{{margin:0;font-size:18px}} #g .gs{{color:var(--muted);font-size:13px}}
+#g .shh{{font-size:13px;color:var(--ink2);margin-bottom:6px}} #g .sbar{{display:flex;height:14px;border-radius:7px;overflow:hidden;gap:2px}} #g .sbar i{{display:block}}
+#g .sl{{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--ink2);margin:7px 0 14px}} #g .sl b,#g .gd{{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}}
+#g table{{width:100%;table-layout:fixed;border-collapse:collapse;font-variant-numeric:tabular-nums;min-width:0}} #g th{{font-weight:500;color:var(--ink2);font-size:13px;text-align:right;padding:4px 8px;white-space:nowrap;border:0}}
+#g th:first-child,#g td.lab{{width:24%}} #g td{{text-align:right;padding:8px;border:0;border-top:1px solid var(--line);white-space:nowrap}} #g td.lab{{text-align:left;color:var(--ink2);white-space:normal}} #g .tot{{font-weight:600}}
+#g td.best{{background:rgba(42,120,214,.14);box-shadow:inset 0 0 0 1.5px #2A78D6;border-radius:6px}} #g small{{font-size:12px;color:var(--muted)}} #g small.up{{color:#1E9E55}} #g .na{{color:var(--muted);opacity:.6}} #g a.tp{{color:inherit}}
+#g .gpick{{font-size:16px;margin:0 0 14px}} #g .ns{{display:none}}
+
+#g .asc{{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}} #g .ash{{font-size:13px;color:var(--ink2);margin-bottom:8px}} #g .ash small{{display:inline;color:var(--muted)}}
+#g .atg{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}} #g .at{{background:var(--bg);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:1px}}
+#g .at b{{white-space:pre;font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}} #g .at span{{font-size:13px;color:var(--ink2)}} #g .at small{{display:block;font-size:11px;color:var(--muted);line-height:1.3}}
+@media (max-width:700px){{#g .atg{{grid-template-columns:1fr 1fr}} #g .at b{{font-size:18px}}}}
+body.editing #g{{display:none}} body:not(.editing) .tw{{display:none}} #m{{display:none !important}}
+@media (max-width:700px){{#g .nf{{display:none}} #g .ns{{display:inline}} #g th,#g td{{padding:7px 3px;font-size:14px}} #g td.lab{{font-size:13px;width:25%}} #g th:first-child{{width:25%}} #g small{{display:block;font-size:11px}} #g .card{{padding:14px 12px}}}}
 </style></head><body><main>
 <h1>Beaker Lab - Social Report</h1><p class="sub">{e(stamp)} · changes in brackets are since the last check ({e(prev.get('checked_at', 'none') if prev else 'none')})</p>
 <div class="bar"><button id="refresh" class="b red">Refresh</button><button id="edit" class="b blue">Edit Layout</button>
@@ -966,7 +1019,7 @@ h2.ph{{font-size:18px;font-weight:500;margin:48px 0 4px;padding-top:20px;border-
 <div class="lgs" style="margin-top:0">{legend}</div>
 <div class="chart"><canvas id="c" role="img" aria-label="Views gained per day per platform, last 14 days"></canvas></div>
 <p class="note">Bars: last check of each day vs the day before; the last bar is today so far. Days with no check share the gain evenly. Purple line: App Store first downloads per day (right axis; Apple posts each day by the next morning; a hollow point is a conservative estimate from RevenueCat first opens until Apple posts). Green line: money earned that day, ads + App Store proceeds (hover for $). Dotted with hollow points until Apple posts that day's App Store proceeds; it turns solid once Apple's numbers are in. Gold bar (narrow, next to each day's views): Google Ads spend that day, on the Installs scale ($1 = 1 install), so a gold bar taller than that day's purple point means installs cost more than $1 each.</p>
-{stale_html}<div class="wrap tw"><table id="t"></table></div><div id="m"></div>
+{stale_html}<div id="g"></div>{asc_tpl}<div class="wrap tw"><table id="t"></table></div><div id="m"></div>
 <p class="note">YouTube average uses public posts only. Facebook comments = viewer comments (the Page's own link comments are left out). Comments = viewer comments only (our own replies and pinned comments are left out).</p>
 {posts_html}
 <p>{top_line}</p>
@@ -1033,7 +1086,7 @@ function grab() {{   // keep typed text from blank columns/rows
     if (r.custom) (r.cells = r.cells || {{}})[ci] = n.textContent.trim(); else (c.cells = c.cells || {{}})[ri] = n.textContent.trim(); }});
 }}
 function setEdit(on) {{
-  editing = on; $('tools').hidden = !on;
+  editing = on; $('tools').hidden = !on; document.body.classList.toggle('editing', on);
   $('edit').textContent = on ? 'Save Layout' : 'Edit Layout'; $('edit').className = 'b ' + (on ? 'green' : 'blue');
   if (on) {{ backup = JSON.stringify(L); const ths = document.querySelectorAll('#t thead th'); L.cols.forEach((c, i) => c.w = c.w || Math.ceil(ths[i].getBoundingClientRect().width)); }}
   render();
@@ -1044,14 +1097,14 @@ $('edit').onclick = async () => {{
   grab();
   const body = JSON.stringify({{...L, known: T.cols.map(c => 'c:' + c.id).concat(T.rows.map(r => 'r:' + r.id))}});
   if (!served) return msg('Can’t save from this copy. Run "Refresh Social Report" once, then use the report it opens.');
-  try {{ const r = await fetch('/layout', {{method: 'POST', body}}); if (!r.ok) throw 0; setEdit(false); msg('Layout saved. Future reports will use it.'); }}
+  try {{ const r = await fetch('/layout', {{method: 'POST', body}}); if (!r.ok) throw 0; setEdit(false); renderG(); msg('Layout saved. Future reports will use it.'); }}
   catch (e) {{ msg('Save failed: the report helper isn’t running. Run "Refresh Social Report" once, then try again.'); }}
 }};
-$('cancel').onclick = () => {{ L = JSON.parse(backup); setEdit(false); msg(''); }};
+$('cancel').onclick = () => {{ L = JSON.parse(backup); setEdit(false); renderG(); msg(''); }};
 $('reset').onclick = async () => {{
   if (!confirm('Go back to the default layout for this and all future reports?')) return;
   if (served) try {{ await fetch('/layout', {{method: 'DELETE'}}); }} catch (e) {{}}
-  L = load(null); setEdit(false); msg('Layout reset to default.');
+  L = load(null); setEdit(false); renderG(); msg('Layout reset to default.');
 }};
 $('addc').onchange = e => {{ grab(); const v = e.target.value; if (!v) return;
   L.cols.push(v === '*' ? {{id: 'x' + Date.now(), custom: true, label: 'New column', w: 140}} : {{id: v, w: 120}}); render(); }};
@@ -1130,10 +1183,50 @@ function renderM() {{   // phone view: one card per metric, sites in a 2x2 grid
   }});
   m.innerHTML = h;
 }}
-L = load(SAVED); render(); renderPrev(); renderM();
+
+function renderG() {{   // Oct 26: Reach / Engagement / Retention cards, best cell highlighted, zero changes hidden, share-of-views bar
+  const g = $('g'); if (!g) return;
+  const PC = {{instagram:'#E87BA4', facebook:'#2A78D6', youtube:'#E34948', tiktok:'#14B8C6'}};
+  const GR = [['Reach', '', ["Total views", "Today's views", "Yesterday's views", "Avg views per post", "Top post views", "Followers", "Posts"]],
+              ['Engagement', 'per 1,000 views, so big and small sites compare fairly', ["Likes per 1K views", "Comments per 1K views"]],
+              ['Retention', 'how long people keep watching', ["3-s views % of views", "Avg watch time (s)", "Watched % of video"]]];
+  const sites = L.cols.filter(c => !c.custom && PC[c.id] && cid(c.id));
+  const num = t => {{ const n = parseFloat(String(t).replace(/,/g, '')); return isNaN(n) ? null : n; }};
+  const k = (t, sign, lim = 10000) => {{ const n = num(t); if (n == null || Math.abs(n) < lim) return esc(t);
+    return `<span class="nf">${{esc(t)}}</span><span class="ns">${{sign || ''}}${{(Math.abs(n) / 1000).toFixed(1)}}K</span>`; }};
+  const parse = raw => {{ raw = raw ?? ''; const t = String(raw).replace(/<[^>]+>/g, ''), i = t.indexOf(' (');
+    const v = i < 0 ? t : t.slice(0, i), d = i < 0 ? '' : t.slice(i + 2, -1);
+    return {{v, d: /^[+−-]0(\\.0)?$/.test(d) ? '' : d, best: /<b>/.test(raw), href: (String(raw).match(/href='([^']+)'/) || [])[1]}}; }};
+  const show = x => {{ if (!x.v || x.v === '?' || x.v === '—') return '<span class="na">–</span>';
+    let h = k(x.v); if (x.href) h = `<a class="tp" href="${{x.href}}" target="_blank" rel="noopener">${{h}}</a>`;
+    if (x.d) {{ const s = x.d[0]; h += ` <small class="${{s === '+' ? 'up' : ''}}">(${{s}}${{k(x.d.slice(1), '', 1000)}})</small>`; }}
+    return h; }};
+  const order = L.rows.filter(r => !r.custom).map(r => r.id);
+  let h = '';
+  GR.forEach(([name, sub, ids]) => {{
+    const rows = ids.filter(id => rid(id)).sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99))
+      .filter(id => sites.some(c => {{ const v = parse(rid(id).cells[c.id]).v; return v && v !== '?' && v !== '—'; }}));
+    const asc = name === 'Retention' && $('ascret') ? $('ascret').innerHTML : '';
+    if (!rows.length && !asc) return;
+    h += `<section class="card"><div class="gh"><h3>${{name}}</h3>${{sub ? `<span class="gs">${{sub}}</span>` : ''}}</div>`;
+    const tv = rid('Total views');
+    if (name === 'Reach' && tv) {{ const vals = sites.map(c => num(parse(tv.cells[c.id]).v) || 0), tot = vals.reduce((a, b) => a + b, 0);
+      if (tot) h += '<div class="shh">Share of total views</div><div class="sbar">' + sites.map((c, i) => `<i style="width:${{vals[i] / tot * 100}}%;background:${{PC[c.id]}}"></i>`).join('') +
+        '</div><div class="sl">' + sites.map((c, i) => `<span><b style="background:${{PC[c.id]}}"></b>${{esc(cid(c.id).label)}} ${{Math.round(vals[i] / tot * 100)}}%</span>`).join('') + '</div>'; }}
+    if (rows.length) h += '<table><thead><tr><th></th>' + sites.map(c => `<th><b class="gd" style="background:${{PC[c.id]}}"></b><span class="nf">${{esc(cid(c.id).label)}}</span></th>`).join('') + '<th>Total</th></tr></thead><tbody>';
+    rows.forEach(id => {{ const d = rid(id);
+      h += `<tr><td class="lab">${{esc(d.label)}}</td>` + sites.map(c => {{ const x = parse(d.cells[c.id]); return `<td class="${{x.best ? 'best' : ''}}">${{show(x)}}</td>`; }}).join('');
+      const t = parse(d.cells.total); h += `<td class="tot">${{t.v && t.v !== '—' && t.v !== '?' ? show(t) : '–'}}</td></tr>`; }});
+    if (rows.length) h += '</tbody></table>';
+    h += asc + '</section>';
+  }});
+  const pk = rid('Pick for ads'); if (pk && pk.full) h += `<p class="gpick">Pick for ads: ${{pk.full}}</p>`;
+  g.innerHTML = h;
+}}
+L = load(SAVED); render(); renderPrev(); renderM(); renderG();
 const moreBtn = $('more'); if (moreBtn) moreBtn.onclick = () => {{ document.body.classList.toggle('showold'); moreBtn.textContent = document.body.classList.contains('showold') ? 'Hide older videos' : moreBtn.dataset.t; }}; if (moreBtn) moreBtn.dataset.t = moreBtn.textContent;
 if (SITE) $('edit').hidden = true;
-if (served && !SITE) fetch('/layout').then(r => r.json()).then(l => {{ if (!editing && JSON.stringify(l) !== JSON.stringify(SAVED)) {{ L = load(l); render(); renderPrev(); renderM(); }} }}).catch(() => {{}});
+if (served && !SITE) fetch('/layout').then(r => r.json()).then(l => {{ if (!editing && JSON.stringify(l) !== JSON.stringify(SAVED)) {{ L = load(l); render(); renderPrev(); renderM(); renderG(); }} }}).catch(() => {{}});
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
@@ -1176,7 +1269,7 @@ function mk(canvas, D) {{ if (!canvas) return;
   plugins:{{legend:{{display:false}}, tooltip:{{enabled:false, external:TT, itemSort:(a, b) => TTR(a) - TTR(b), callbacks:{{
    labelColor: c => ({{borderColor:'rgba(0,0,0,0)', backgroundColor: c.dataset.type === 'line' ? c.dataset.borderColor : c.dataset.backgroundColor, borderWidth:1, borderRadius:2}}),
    title: it => {{ const t = it.filter(c => c.dataset.type !== 'line' && c.dataset.stack !== 's').reduce((s, c) => s + (c.parsed.y || 0), 0); return it[0].label + ' · ' + sg(t) + ' views'; }},
-   label: c => c.dataset.stack === 's' ? 'Google Ads spend: $' + (c.parsed.y || 0).toFixed(2) : c.dataset.label === 'Earned' ? 'Earned: $' + c.parsed.y.toFixed(2) + (EP.has(c.dataIndex) ? ' (ads only so far; App Store not posted yet)' : '') : c.dataset.type === 'line' ? 'Installs: ' + (EST.has(c.dataIndex) ? '~' : '') + fmt(c.parsed.y) + (EST.has(c.dataIndex) ? ' (estimate)' : '') : c.dataset.label + ': ' + sg(c.parsed.y) }}}}}},
+   label: c => c.dataset.stack === 's' ? 'Google Ads spend: $' + (c.parsed.y || 0).toFixed(2) : c.dataset.label === 'Earned' ? 'Earned: $' + c.parsed.y.toFixed(2) + (EP.has(c.dataIndex) ? ' (Ads only)' : '') : c.dataset.type === 'line' ? 'Installs: ' + (EST.has(c.dataIndex) ? '~' : '') + fmt(c.parsed.y) + (EST.has(c.dataIndex) ? ' (estimate)' : '') : c.dataset.label + ': ' + sg(c.parsed.y) }}}}}},
   scales:{{x:{{stacked:true, grid:{{display:false}}, ticks:{{color:muted, maxRotation:0, autoSkip:true}}}}, y:{{stacked:true, beginAtZero:true, min:0, grid:{{color:grid}}, ticks:{{color:muted, callback:v => v.toLocaleString()}}, title:{{display:true, text:'Views gained', color:muted}}}},
    ...(D.installs ? {{y2:{{position:'right', beginAtZero:true, grid:{{display:false}}, ticks:{{color:'#7B4FD6', precision:0}}, title:{{display:true, text:'Installs', color:'#7B4FD6'}}}}}} : {{}}),
    ...(D.earned ? {{y3:{{display:false, beginAtZero:true}}}} : {{}}),
