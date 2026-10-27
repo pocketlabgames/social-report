@@ -608,6 +608,22 @@ def posts_section(posts, phist, now):
         if sc >= 1.5: return "#1E9E55", tip
         if sc >= 0.5: return "#F5B400", tip
         return "#E5484D", tip
+    def gm(g):   # per-video engagement metrics across sites
+        v = tot(g); w = [(x["avg_watch_s"], x["views"]) for x in g["posts"] if x.get("avg_watch_s") is not None and x["views"]]
+        lk = [x["likes"] for x in g["posts"] if x.get("likes") is not None]; cm = [x["comments"] for x in g["posts"] if x.get("comments") is not None]
+        return {"watch": sum(a * b for a, b in w) / sum(b for a, b in w) if w else None,
+                "likes": sum(lk) / v * 1000 if lk and v else None, "comments": sum(cm) / v * 1000 if cm and v else None}
+    def med(xs):
+        xs = sorted(x for x in xs if x is not None)
+        return None if not xs else (xs[len(xs) // 2] if len(xs) % 2 else (xs[len(xs) // 2 - 1] + xs[len(xs) // 2]) / 2)
+    base = {k: med(gm(g)[k] for g in mature) for k in ("watch", "likes", "comments")}
+    def dist(g):   # Guy, Oct 27: our cross-site take on Meta's Distribution score (Meta's exact formula isn't public)
+        if age_h(g) < 6 or not M: return None
+        r = [min(tot(g) / (M * (1 - math.exp(-age_h(g) / 18))), 5)]
+        m = gm(g)
+        for k in ("watch", "likes", "comments"):
+            if m[k] is not None and base[k]: r.append(min(m[k] / base[k], 5))
+        return sum(r) / len(r) - 1
     for g in groups:
         old = g["created"] < cutoff
         hidden += old
@@ -626,8 +642,11 @@ def posts_section(posts, phist, now):
                      f"<td class='aw'>{num(x['avg_watch_s'], 1) + ' s' if x['avg_watch_s'] is not None else '—'}</td><td>{num(x['watch_pct']) + '%' if x['watch_pct'] is not None else '—'}</td></tr>")
         missing = [NAME[p] for p in PLAT if not any(x["site"] == p for x in g["posts"])]
         pc, pt = perf(g)
+        dv = dist(g)
+        dsg = "" if dv is None or abs(dv) < 0.05 else ("+" if dv > 0 else "−")
+        dhtml = "" if dv is None else f"<span class='pdist' title='Distribution: views at this age, watch time, likes and comments vs your recent videos (0 = typical)'>{dsg}{abs(dv):.1f}×</span>"
         cards.append(f"<div class='vc{' old' if old else ''}'><div class='vch'><div class='vcn'><b>{num(tv)}</b> <small>views{(' (' + sg(tg) + ')') if tg is not None else ''}</small></div>"
-                     f"<span class='pdot' style='background:{pc}' title='{pt}'></span></div><div class='vct'>{e(g['name'][:90])}</div>"
+                     f"<span class='pcol'><span class='pdot' style='background:{pc}' title='{pt}'></span>{dhtml}</span></div><div class='vct'>{e(g['name'][:90])}</div>"
                      f"<div class='vcm'>{when(g['created'])}{(' · ' + num(ln) + ' s') if ln else ''}{(' · not on ' + ', '.join(missing)) if missing and len(missing) < 4 else ''}</div>"
                      f"<table class='vt'><thead><tr><th class='rl'>Site</th><th>Views</th><th>{gain_label}</th><th>Likes / 1K</th><th class='aw'>Avg watch</th><th>Watched</th></tr></thead><tbody>{rows}</tbody></table></div>")
     more = f"<button id='more' class='b gray' type='button'>Show {hidden} older video(s)</button>" if hidden else ""
@@ -986,7 +1005,7 @@ th{{font-weight:500;color:var(--ink2)}} th.rl{{text-align:left}} thead th{{borde
 h2.sh{{font-size:18px;font-weight:500;margin:36px 0 10px}} .dot{{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}}
 .old{{display:none}} .showold .old{{display:revert}} .vgrid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}} @media (max-width:900px){{.vgrid{{grid-template-columns:1fr}}}}
 .vc{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}} .vch{{display:flex;justify-content:space-between;gap:10px;align-items:baseline}}
-.rtt{{min-width:260px}} .rtt-bar{{display:flex;height:12px;border-radius:6px;overflow:hidden;margin:2px 0 10px;gap:2px}} .rtt-bar i{{display:block;height:100%}} .rtt .ctt-r{{display:grid;column-gap:10px;align-items:center}} .rtt .ctt-r.rb{{grid-template-columns:13px minmax(84px,1fr) 100px 52px}} .rtt .ctt-r.rs{{grid-template-columns:13px minmax(84px,1fr) 60px 42px}} .rtt .ctt-r b{{text-align:right}} .rtt-n{{white-space:nowrap}} .rtt .ctt-r b{{font-weight:600;font-variant-numeric:tabular-nums}} .rtt .ctt-r small{{width:42px;text-align:right;opacity:.75;font-variant-numeric:tabular-nums}} .rtt-m{{width:100px;height:8px;border-radius:4px;background:rgba(255,255,255,.12);overflow:hidden}} .rtt-m em{{display:block;height:100%;border-radius:4px}} .ctt{{position:absolute;pointer-events:none;z-index:5;opacity:0;transition:opacity .15s,left .12s ease-out,top .12s ease-out;background:rgba(18,18,20,.62);-webkit-backdrop-filter:blur(12px) saturate(140%);backdrop-filter:blur(12px) saturate(140%);color:#fff;border-radius:12px;padding:12px 16px 13px;box-shadow:0 8px 28px rgba(0,0,0,.28);font-size:16px;line-height:1.5;white-space:nowrap}} .ctt-h{{font-size:19px;font-weight:700;margin-bottom:6px}} .ctt-r{{display:flex;align-items:center;gap:9px}} .ctt-r i{{width:13px;height:13px;border-radius:3px;flex:none}} .ctt-sep{{height:1px;background:rgba(255,255,255,.7);margin:10px 0}} @media (max-width:700px){{.ctt{{font-size:14px;padding:10px 12px}} .ctt-h{{font-size:16px}}}} .ns{{display:none}} @media (max-width:700px){{.nf{{display:none}} .ns{{display:inline}}}} .vct{{font-weight:600;line-height:1.3;margin-top:2px}} .pdot{{width:14px;height:14px;border-radius:50%;flex:none;align-self:center;box-shadow:0 0 0 3px var(--card),0 0 0 4px var(--line)}} .vcn{{white-space:nowrap;font-size:18px;font-variant-numeric:tabular-nums}} .vcn small{{font-size:12px;color:var(--muted);font-weight:400}}
+.rtt{{min-width:260px}} .rtt-bar{{display:flex;height:12px;border-radius:6px;overflow:hidden;margin:2px 0 10px;gap:2px}} .rtt-bar i{{display:block;height:100%}} .rtt .ctt-r{{display:grid;column-gap:10px;align-items:center}} .rtt .ctt-r.rb{{grid-template-columns:13px minmax(84px,1fr) 100px 52px}} .rtt .ctt-r.rs{{grid-template-columns:13px minmax(84px,1fr) 60px 42px}} .rtt .ctt-r b{{text-align:right}} .rtt-n{{white-space:nowrap}} .rtt .ctt-r b{{font-weight:600;font-variant-numeric:tabular-nums}} .rtt .ctt-r small{{width:42px;text-align:right;opacity:.75;font-variant-numeric:tabular-nums}} .rtt-m{{width:100px;height:8px;border-radius:4px;background:rgba(255,255,255,.12);overflow:hidden}} .rtt-m em{{display:block;height:100%;border-radius:4px}} .ctt{{position:absolute;pointer-events:none;z-index:5;opacity:0;transition:opacity .15s,left .12s ease-out,top .12s ease-out;background:rgba(18,18,20,.62);-webkit-backdrop-filter:blur(12px) saturate(140%);backdrop-filter:blur(12px) saturate(140%);color:#fff;border-radius:12px;padding:12px 16px 13px;box-shadow:0 8px 28px rgba(0,0,0,.28);font-size:16px;line-height:1.5;white-space:nowrap}} .ctt-h{{font-size:19px;font-weight:700;margin-bottom:6px}} .ctt-r{{display:flex;align-items:center;gap:9px}} .ctt-r i{{width:13px;height:13px;border-radius:3px;flex:none}} .ctt-sep{{height:1px;background:rgba(255,255,255,.7);margin:10px 0}} @media (max-width:700px){{.ctt{{font-size:14px;padding:10px 12px}} .ctt-h{{font-size:16px}}}} .ns{{display:none}} @media (max-width:700px){{.nf{{display:none}} .ns{{display:inline}}}} .vct{{font-weight:600;line-height:1.3;margin-top:2px}} .pcol{{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none}} .pdist{{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}} .pdot{{width:14px;height:14px;border-radius:50%;flex:none;align-self:center;box-shadow:0 0 0 3px var(--card),0 0 0 4px var(--line)}} .vcn{{white-space:nowrap;font-size:18px;font-variant-numeric:tabular-nums}} .vcn small{{font-size:12px;color:var(--muted);font-weight:400}}
 .vcm{{color:var(--muted);font-size:12px;margin:2px 0 8px}} table.vt{{width:100%;background:transparent}} table.vt th,table.vt td{{padding:5px 6px;font-size:13px;border-bottom:1px solid var(--line)}}
 table.vt thead th{{color:var(--muted);font-weight:500;border-bottom:1px solid var(--line)}} table.vt tbody tr:last-child th,table.vt tbody tr:last-child td{{border-bottom:0}}
 table.vt tr.lead td,table.vt tr.lead th{{background:rgba(42,120,214,.10)}} table.vt a.tp{{text-decoration:none;color:inherit;border-bottom:1px solid #2A78D6}}
