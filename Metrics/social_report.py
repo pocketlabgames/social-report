@@ -642,9 +642,9 @@ def posts_section(posts, phist, now):
                      f"<td class='aw'>{num(x['avg_watch_s'], 1) + ' s' if x['avg_watch_s'] is not None else '—'}</td><td>{num(x['watch_pct']) + '%' if x['watch_pct'] is not None else '—'}</td></tr>")
         missing = [NAME[p] for p in PLAT if not any(x["site"] == p for x in g["posts"])]
         pc, pt = perf(g)
-        dv = dist(g)
-        dsg = "" if dv is None or abs(dv) < 0.05 else ("+" if dv > 0 else "−")
-        dhtml = "" if dv is None else f"<span class='pdist' title='Distribution: views at this age, watch time, likes and comments vs your recent videos (0 = typical)'>{dsg}{abs(dv):.1f}×</span>"
+        xh = age_h(g)   # Guy, Oct 27: one number = views vs a typical video at the same age (same measure as the dot)
+        xv = (tot(g) / (M * (1 - math.exp(-xh / 18)))) if (M and xh >= 6) else None
+        dhtml = "" if xv is None else f"<span class='pdist' title='Views compared with a typical video of yours at the same age (1.0× = typical)'>{xv:.1f}× typical</span>"
         cards.append(f"<div class='vc{' old' if old else ''}'><div class='vch'><div class='vcn'><b>{num(tv)}</b> <small>views{(' (' + sg(tg) + ')') if tg is not None else ''}</small></div>"
                      f"<span class='pcol'><span class='pdot' style='background:{pc}' title='{pt}'></span>{dhtml}</span></div><div class='vct'>{e(g['name'][:90])}</div>"
                      f"<div class='vcm'>{when(g['created'])}{(' · ' + num(ln) + ' s') if ln else ''}{(' · not on ' + ', '.join(missing)) if missing and len(missing) < 4 else ''}</div>"
