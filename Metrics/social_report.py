@@ -1441,8 +1441,7 @@ def main():
                 stale[p] = dt.datetime.strptime(last["checked_at"], "%Y-%m-%d %H:%M").strftime("%b %-d, %-I:%M %p")
     rd = None   # Reddit tracking paused (Guy, Oct 22); reddit() still works if we bring it back
     rows = build_rows(snap, prev, rd)
-    first = min((dt.datetime.strptime(h["checked_at"], "%Y-%m-%d %H:%M").date() for h in hist), default=now.date())
-    labels, series = gains(hist, snap, now, max(14, min(365, (now.date() - first).days))); source = "history file"   # Guy, Oct 27: all history; slider picks the window
+    labels, series = gains(hist, snap, now, 30); source = "history file"   # Guy, Oct 27: 30 days; slider shows 14 at a time
     yv = {q: (series.get(q) or [None, None])[-2] for q in PLAT}      # yesterday's bar in the chart
     yo = {q: (series.get(q) or [None, None, None])[-3] if len(series.get(q) or []) >= 3 else None for q in PLAT}   # the day before
     if all(v is not None for v in yv.values()):   # Guy, Oct 23: views gained yesterday, (+/-) vs the day before
