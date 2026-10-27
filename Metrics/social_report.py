@@ -887,7 +887,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
     legend = "".join(
         f"<span class='lg'><svg width='22' height='10'><line x1='0' y1='5' x2='22' y2='5' stroke='{COLOR[p]}' stroke-width='2'"
         f"{' stroke-dasharray=\"4 3\"' if p == 'instagram' else ''}/></svg>{NAME[p]} {fmt((snap.get(p) or {}).get('views'))}"
-        f"{delta((snap.get(p) or {}).get('views'), (prev.get(p) or {}).get('views') if prev else None) or ''}</span>" for p in PLAT)
+        f"{delta((snap.get(p) or {}).get('views'), (prev.get(p) or {}).get('views') if prev else None) or ''}</span>" for p in sorted(PLAT, key=lambda q: -((snap.get(q) or {}).get('views') or 0)))   # Guy, Oct 27: most to least
     inst_series = None
     if installs:
         td = dt.date.today()
@@ -1253,8 +1253,9 @@ function renderG() {{   // Oct 26: Reach / Engagement / Retention cards, best ce
     h += `<section class="card"><div class="gh"><h3>${{name}}</h3>${{sub ? `<span class="gs">${{sub}}</span>` : ''}}</div>`;
     const tv = rid('Total views');
     if (name === 'Reach' && tv) {{ const vals = sites.map(c => num(parse(tv.cells[c.id]).v) || 0), tot = vals.reduce((a, b) => a + b, 0);
-      if (tot) h += '<div class="shh">Share of total views</div><div class="sbar">' + sites.map((c, i) => `<i style="width:${{vals[i] / tot * 100}}%;background:${{PC[c.id]}}"></i>`).join('') +
-        '</div><div class="sl">' + sites.map((c, i) => `<span><b style="background:${{PC[c.id]}}"></b>${{esc(cid(c.id).label)}} ${{Math.round(vals[i] / tot * 100)}}%</span>`).join('') + '</div>'; }}
+      const ix = sites.map((c, i) => i).sort((a, b) => vals[b] - vals[a]);   // Guy, Oct 27: most to least
+      if (tot) h += '<div class="shh">Share of total views</div><div class="sbar">' + ix.map(i => sites[i]).map((c, j, _, i = ix[j]) => `<i style="width:${{vals[i] / tot * 100}}%;background:${{PC[c.id]}}"></i>`).join('') +
+        '</div><div class="sl">' + ix.map(i => sites[i]).map((c, j, _, i = ix[j]) => `<span><b style="background:${{PC[c.id]}}"></b>${{esc(cid(c.id).label)}} ${{Math.round(vals[i] / tot * 100)}}%</span>`).join('') + '</div>'; }}
     if (rows.length) h += '<table><thead><tr><th></th><th class="tl">Total</th>' + sites.map(c => `<th><span class="gp" style="background:${{PC[c.id]}}"><span class="nf">${{esc(cid(c.id).label)}}</span><span class="ns">${{GS[c.id] || ''}}</span></span></th>`).join('') + '</tr></thead><tbody>';
     rows.forEach(id => {{ const d = rid(id);
       const t = parse(d.cells.total);   // Guy, Oct 26: Total column first, divider after it
