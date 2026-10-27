@@ -13388,11 +13388,11 @@
     }
   },
   {
-    "checked_at": "2026-10-27 13:30",
+    "checked_at": "2026-10-27 13:33",
     "source": "social_report.py",
     "instagram": {
       "posts": 46,
-      "views": 23681,
+      "views": 23683,
       "top_views": 2010,
       "likes": 29,
       "comments": 0,
@@ -13404,7 +13404,7 @@
     },
     "facebook": {
       "posts": 50,
-      "views": 7578,
+      "views": 7581,
       "top_views": 379,
       "likes": 18,
       "comments": 0,
