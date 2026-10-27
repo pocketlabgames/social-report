@@ -1369,7 +1369,9 @@ function rangeSlider(chart, D, O) {{   // Guy, Oct 27: drag the blue window to l
  const set = (v, upd) => {{ s = Math.max(0, Math.min(n - win, Math.round(v))); w.style.left = (100 * s / n) + '%'; w.style.width = (100 * win / n) + '%';
    lab[0].textContent = D.labels[s]; lab[1].textContent = D.labels[s + win - 1];
    O.v = s; chart.data.labels = D.labels.slice(s, s + win); chart.data.datasets.forEach((d, i) => d.data = FULL[i].slice(s, s + win)); chart.stop(); chart.update('none'); }};
- const FULL = chart.data.datasets.map(d => d.data.slice()); set(s, true); draw(); addEventListener('resize', draw);
+ const FULL = chart.data.datasets.map(d => d.data.slice());
+ Object.entries(chart.scales).forEach(([id, sc]) => {{ if (id !== 'x') chart.options.scales[id].max = sc.max; }});   // Guy, Oct 27: lock every axis to the full 30 days so sliding never rescales
+ set(s, true); draw(); addEventListener('resize', draw);
  let x0 = null, s0 = 0;
  box.addEventListener('pointerdown', e => {{ box.setPointerCapture(e.pointerId); const bw = box.clientWidth / n;
    if (e.target.closest('.rng-w')) {{ x0 = e.clientX; s0 = s; box.classList.add('drag'); }}
