@@ -289,7 +289,7 @@ def gains(hist, snap, end, ndays=14):
                     dd = d - dt.timedelta(days=n)
                     if dd in days[1:]:
                         series[p][days[1:].index(dd)] = round(per_day)
-    labels = [d.strftime("%b %-d") for d in days[1:]]
+    labels = [d.strftime("%-m/%-d") for d in days[1:]]   # Guy, Oct 27: short dates so every day gets a label
     return labels, series
 
 
@@ -1018,6 +1018,11 @@ table.vt tr.lead td,table.vt tr.lead th{{background:rgba(42,120,214,.10)}} table
 tr.pick td{{text-align:left}} .warn{{margin:0 0 10px;padding:8px 12px;border-radius:8px;background:#FFF4CC;color:#5c4a00;font-size:14px}} .hist td,.hist th{{color:var(--ink2);font-size:14px}} .dl{{color:var(--muted);font-size:12px}} b{{font-weight:600}}
 .lgs{{display:flex;flex-wrap:wrap;gap:16px;margin:28px 0 8px;font-size:12px;color:var(--ink2)}} .lg{{display:flex;align-items:center;gap:6px}}
 .chart{{position:relative;height:340px}}
+.rng{{position:relative;height:34px;margin:10px 0 0 52px;margin-right:52px;border-radius:9px;background:var(--line);touch-action:none;user-select:none;cursor:pointer}} .rng-c{{position:absolute;inset:0;width:100%;height:100%;border-radius:9px}}
+.rng-w{{position:absolute;top:0;bottom:0;border-radius:9px;background:rgba(59,139,223,.16);border:2px solid #3B8BDF;cursor:grab;transition:left .18s cubic-bezier(.2,.8,.2,1);box-sizing:border-box}} .rng.drag .rng-w{{transition:none;cursor:grabbing}}
+.rng-w i{{position:absolute;top:50%;width:3px;height:14px;margin-top:-7px;border-radius:2px;background:#3B8BDF}} .rng-w i:first-child{{left:6px}} .rng-w i:last-child{{right:6px}}
+.rng-l{{display:flex;justify-content:space-between;margin:5px 52px 0;font-size:12px;color:var(--muted)}}
+@media (max-width:700px){{.rng,.rng-l{{margin-left:8px;margin-right:8px}}}}
 .bar{{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 14px}} #tools{{display:inline-flex;flex-wrap:wrap;gap:8px}} #tools[hidden]{{display:none}}
 .b{{border:0;border-radius:8px;padding:8px 14px;font:inherit;font-weight:600;color:#fff;cursor:pointer}} .b:disabled{{opacity:.6;cursor:default}}
 html{{scroll-behavior:smooth}} h2.has-top{{display:flex;align-items:center;justify-content:space-between;gap:12px}} .b.totop{{padding:5px 14px;font-size:14px;font-weight:600;flex:none}} a.b.jump{{text-decoration:none;display:inline-block}} [id^="sec-"]{{scroll-margin-top:12px}} .red{{background:#D93A36}} .blue{{background:#2A78D6}} .green{{background:#1E9E55}} .gray{{background:#77756f}}
@@ -1052,7 +1057,8 @@ body.editing #g{{display:none}} body:not(.editing) .tw{{display:none}} #m{{displ
 <span id="msg" class="note"></span></div>
 {day_html}{week_html}<h2 class="sh" style="margin-top:4px">Views gained per day</h2>
 <div class="lgs" style="margin-top:0">{legend}</div>
-<div class="chart"><canvas id="c" role="img" aria-label="Views gained per day per platform, last 14 days"></canvas></div>
+<div class="chart"><canvas id="c" role="img" aria-label="Views gained per day per platform"></canvas></div>
+<div class="rng" id="rng" hidden><canvas class="rng-c"></canvas><div class="rng-w"><i></i><i></i></div></div><div class="rng-l" id="rngl" hidden><span></span><span></span></div>
 <p class="note">Bars: last check of each day vs the day before; the last bar is today so far. Days with no check share the gain evenly. Purple line: App Store first downloads per day (right axis; Apple posts each day by the next morning; a hollow point is a conservative estimate from RevenueCat first opens until Apple posts). Green line: money earned that day, ads + App Store proceeds (hover for $). Dotted with hollow points until Apple posts that day's App Store proceeds; it turns solid once Apple's numbers are in. Gold bar (narrow, next to each day's views): Google Ads spend that day, on the Installs scale ($1 = 1 install), so a gold bar taller than that day's purple point means installs cost more than $1 each.</p>
 {stale_html}<div id="g"></div>{asc_tpl}<div class="wrap tw"><table id="t"></table></div><div id="m"></div>
 <p class="note">YouTube average uses public posts only. Facebook comments = viewer comments (the Page's own link comments are left out). Comments = viewer comments only (our own replies and pinned comments are left out).</p>
@@ -1310,11 +1316,11 @@ const C = {{Instagram:['#E87BA4','circle',[6,4]], Facebook:['#2A78D6','rect',[]]
 const fmt = v => Math.round(v).toLocaleString(), sg = v => (v < 0 ? '−' : '+') + fmt(Math.abs(v));
 const prevVal = (d, i) => {{ for(let j = i - 1; j >= 0; j--) if(d[j] != null) return [d[j], j]; return [null, -1]; }};
 function mk(canvas, D) {{ if (!canvas) return;
- if (matchMedia('(max-width:700px)').matches && D.labels.length > 8) {{   // phones: previous 7 days + today
+ if (false) {{   // phones: was a hard cut to 8 days; the range slider now picks the window (Guy, Oct 27)
    const k = D.labels.length - 8, cut = a => a ? a.slice(k) : a;
    D = Object.assign({{}}, D, {{labels: cut(D.labels), installs: cut(D.installs), earned: cut(D.earned), spend: cut(D.spend), est: (D.est || []).map(i => i - k).filter(i => i >= 0), earnPart: (D.earnPart || []).map(i => i - k).filter(i => i >= 0),
      series: Object.fromEntries(Object.entries(D.series).map(([n, s]) => [n, cut(s)]))}}); }}
- const EST = new Set(D.est || []), EP = new Set(D.earnPart || []);
+ const EST = new Set(D.est || []), EP = new Set(D.earnPart || []); const O = {{v:0}};   // window offset (range slider)
  const TT = ({{chart: ch, tooltip: t}}) => {{   // HTML pop-up: frosted glass, bigger type, views then installs / earned / spend
    let el = ch.canvas.parentNode.querySelector('.ctt');
    if (!el) {{ el = document.createElement('div'); el.className = 'ctt'; ch.canvas.parentNode.style.position = 'relative'; ch.canvas.parentNode.appendChild(el); }}
@@ -1337,20 +1343,39 @@ function mk(canvas, D) {{ if (!canvas) return;
  const chart = new Chart(canvas, {{type:'bar',
  data:{{labels:D.labels, datasets:Object.entries(D.series).map(([n, d]) => ({{label:n, data:d.map(v => v == null ? v : Math.max(0, v)), backgroundColor:C[n][0], borderRadius:3, maxBarThickness:34, stack:'v', barPercentage:0.95, order:2}}))
    .concat(D.spend ? [{{label:'Google Ads', data:D.spend, backgroundColor:'#C9A227', borderRadius:3, maxBarThickness:17, stack:'s', barPercentage:0.475, yAxisID:D.installs ? 'y2' : 'y4', order:3}}] : [])
-   .concat(D.installs ? [{{type:'line', label:'Installs', data:D.installs, borderColor:'#7B4FD6', backgroundColor:c => EST.has(c.dataIndex) ? '#fff' : '#7B4FD6', pointBorderWidth:2, yAxisID:'y2', pointRadius:c => EST.has(c.dataIndex) ? 4 : 3, segment:{{borderDash:c => EST.has(c.p1DataIndex) ? [4,3] : undefined}}, borderWidth:2, tension:0.2, spanGaps:true, order:1}}] : [])
-   .concat(D.earned ? [{{type:'line', label:'Earned', data:D.earned, borderColor:'#1E9E55', backgroundColor:c => EP.has(c.dataIndex) ? '#fff' : '#1E9E55', pointBorderWidth:2, yAxisID:'y3', pointRadius:c => EP.has(c.dataIndex) ? 4 : 3, pointStyle:'rectRot', borderWidth:2, segment:{{borderDash:c => EP.has(c.p1DataIndex) ? [4,3] : undefined}}, tension:0.2, spanGaps:true, order:0}}] : [])}},
+   .concat(D.installs ? [{{type:'line', label:'Installs', data:D.installs, borderColor:'#7B4FD6', backgroundColor:c => EST.has(c.dataIndex + O.v) ? '#fff' : '#7B4FD6', pointBorderWidth:2, yAxisID:'y2', pointRadius:c => EST.has(c.dataIndex + O.v) ? 4 : 3, segment:{{borderDash:c => EST.has(c.p1DataIndex + O.v) ? [4,3] : undefined}}, borderWidth:2, tension:0.2, spanGaps:true, order:1}}] : [])
+   .concat(D.earned ? [{{type:'line', label:'Earned', data:D.earned, borderColor:'#1E9E55', backgroundColor:c => EP.has(c.dataIndex + O.v) ? '#fff' : '#1E9E55', pointBorderWidth:2, yAxisID:'y3', pointRadius:c => EP.has(c.dataIndex + O.v) ? 4 : 3, pointStyle:'rectRot', borderWidth:2, segment:{{borderDash:c => EP.has(c.p1DataIndex + O.v) ? [4,3] : undefined}}, tension:0.2, spanGaps:true, order:0}}] : [])}},
  options:{{responsive:true, maintainAspectRatio:false, interaction:{{mode:'index', intersect:false}},
   plugins:{{legend:{{display:false}}, tooltip:{{enabled:false, external:TT, itemSort:(a, b) => TTR(a) - TTR(b), callbacks:{{
    labelColor: c => ({{borderColor:'rgba(0,0,0,0)', backgroundColor: c.dataset.type === 'line' ? c.dataset.borderColor : c.dataset.backgroundColor, borderWidth:1, borderRadius:2}}),
    title: it => {{ const t = it.filter(c => c.dataset.type !== 'line' && c.dataset.stack !== 's').reduce((s, c) => s + (c.parsed.y || 0), 0); return it[0].label + ' · ' + sg(t) + ' views'; }},
-   label: c => c.dataset.stack === 's' ? 'Google Ads spend: $' + (c.parsed.y || 0).toFixed(2) : c.dataset.label === 'Earned' ? 'Earned: $' + c.parsed.y.toFixed(2) + (EP.has(c.dataIndex) ? ' (Ads only)' : '') : c.dataset.type === 'line' ? 'Installs: ' + (EST.has(c.dataIndex) ? '~' : '') + fmt(c.parsed.y) + (EST.has(c.dataIndex) ? ' (estimate)' : '') : c.dataset.label + ': ' + sg(c.parsed.y) }}}}}},
-  scales:{{x:{{stacked:true, grid:{{display:false}}, ticks:{{color:muted, maxRotation:0, autoSkip:true}}}}, y:{{stacked:true, beginAtZero:true, min:0, grid:{{color:grid}}, ticks:{{color:muted, callback:v => v.toLocaleString()}}, title:{{display:true, text:'Views gained', color:muted}}}},
+   label: c => c.dataset.stack === 's' ? 'Google Ads spend: $' + (c.parsed.y || 0).toFixed(2) : c.dataset.label === 'Earned' ? 'Earned: $' + c.parsed.y.toFixed(2) + (EP.has(c.dataIndex + O.v) ? ' (Ads only)' : '') : c.dataset.type === 'line' ? 'Installs: ' + (EST.has(c.dataIndex + O.v) ? '~' : '') + fmt(c.parsed.y) + (EST.has(c.dataIndex + O.v) ? ' (estimate)' : '') : c.dataset.label + ': ' + sg(c.parsed.y) }}}}}},
+  scales:{{x:{{stacked:true, grid:{{display:false}}, ticks:{{color:muted, maxRotation:0, autoSkip:false, font:{{size:12}}, callback(v) {{ return this.getLabelForValue(v).split(' ')[0]; }}}}}}, y:{{stacked:true, beginAtZero:true, min:0, grid:{{color:grid}}, ticks:{{color:muted, callback:v => v.toLocaleString()}}, title:{{display:true, text:'Views gained', color:muted}}}},
    ...(D.installs ? {{y2:{{position:'right', beginAtZero:true, grid:{{display:false}}, ticks:{{color:'#7B4FD6', precision:0}}, title:{{display:true, text:'Installs', color:'#7B4FD6'}}}}}} : {{}}),
    ...(D.earned ? {{y3:{{display:false, beginAtZero:true}}}} : {{}}),
    ...(D.spend && !D.installs ? {{y4:{{display:false, beginAtZero:true, stacked:false}}}} : {{}})}}}}}}); 
+ rangeSlider(chart, D, O); 
  const hide = () => {{ if (chart.tooltip.getActiveElements().length) {{ chart.tooltip.setActiveElements([], {{x:0, y:0}}); chart.setActiveElements([]); chart.update('none'); }} const el = canvas.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; }};   // phones: no mouse-out, so tap outside the chart or scroll to close the pop-up
  document.addEventListener('touchstart', ev => {{ if (ev.target !== canvas) hide(); }}, {{passive:true}});
  addEventListener('scroll', hide, {{passive:true}}); }}
+function rangeSlider(chart, D, O) {{   // Guy, Oct 27: drag the blue window to look further back
+ const n = D.labels.length, win = matchMedia('(max-width:700px)').matches ? 8 : 14, box = document.getElementById('rng'); if (!box || n <= win) return;
+ box.hidden = false; document.getElementById('rngl').hidden = false;
+ const w = box.querySelector('.rng-w'), cv = box.querySelector('.rng-c'), lab = document.getElementById('rngl').children;
+ const tot = D.labels.map((_, i) => Object.values(D.series).reduce((s, a) => s + Math.max(0, a[i] || 0), 0)), mx = Math.max(1, ...tot);
+ const draw = () => {{ const r = devicePixelRatio || 1, W = box.clientWidth, H = box.clientHeight; cv.width = W * r; cv.height = H * r; const x = cv.getContext('2d'); x.scale(r, r);
+   const bw = W / n; x.fillStyle = dark ? 'rgba(255,255,255,.22)' : 'rgba(0,0,0,.16)'; tot.forEach((v, i) => {{ const h = Math.max(1, (H - 8) * v / mx); x.fillRect(i * bw + bw * .2, H - 4 - h, bw * .6, h); }}); }};
+ let s = n - win;
+ const set = (v, upd) => {{ s = Math.max(0, Math.min(n - win, Math.round(v))); w.style.left = (100 * s / n) + '%'; w.style.width = (100 * win / n) + '%';
+   lab[0].textContent = D.labels[s]; lab[1].textContent = D.labels[s + win - 1];
+   O.v = s; chart.data.labels = D.labels.slice(s, s + win); chart.data.datasets.forEach((d, i) => d.data = FULL[i].slice(s, s + win)); chart.stop(); chart.update('none'); }};
+ const FULL = chart.data.datasets.map(d => d.data.slice()); set(s, true); draw(); addEventListener('resize', draw);
+ let x0 = null, s0 = 0;
+ box.addEventListener('pointerdown', e => {{ box.setPointerCapture(e.pointerId); const bw = box.clientWidth / n;
+   if (e.target.closest('.rng-w')) {{ x0 = e.clientX; s0 = s; box.classList.add('drag'); }}
+   else set((e.clientX - box.getBoundingClientRect().left) / bw - win / 2, true); }});
+ box.addEventListener('pointermove', e => {{ if (x0 == null) return; const ns = Math.round(s0 + (e.clientX - x0) / (box.clientWidth / n)); if (ns !== s) set(ns, true); }});
+ const up = () => {{ x0 = null; box.classList.remove('drag'); }}; box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up); }}
 mk(document.getElementById('c'), D);
 </script></body></html>"""
     open(OUT_HTML, "w").write(doc)
@@ -1416,7 +1441,8 @@ def main():
                 stale[p] = dt.datetime.strptime(last["checked_at"], "%Y-%m-%d %H:%M").strftime("%b %-d, %-I:%M %p")
     rd = None   # Reddit tracking paused (Guy, Oct 22); reddit() still works if we bring it back
     rows = build_rows(snap, prev, rd)
-    labels, series = gains(hist, snap, now); source = "history file"
+    first = min((dt.datetime.strptime(h["checked_at"], "%Y-%m-%d %H:%M").date() for h in hist), default=now.date())
+    labels, series = gains(hist, snap, now, max(14, min(365, (now.date() - first).days))); source = "history file"   # Guy, Oct 27: all history; slider picks the window
     yv = {q: (series.get(q) or [None, None])[-2] for q in PLAT}      # yesterday's bar in the chart
     yo = {q: (series.get(q) or [None, None, None])[-3] if len(series.get(q) or []) >= 3 else None for q in PLAT}   # the day before
     if all(v is not None for v in yv.values()):   # Guy, Oct 23: views gained yesterday, (+/-) vs the day before
