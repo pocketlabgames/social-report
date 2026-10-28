@@ -32,6 +32,7 @@ POSTS = []   # per-post rows from the latest fetch (filled by fetch())
 INSTALLS = {}   # {date: first downloads} from App Store Connect (filled by fetch(); empty if the key is missing)
 MONEY = {}      # {date: {"ads": usd, "iap": usd}} (filled by fetch(); empty if keys are missing)
 ASCR = {}       # App Store Connect app numbers for the Retention card (asc_ret_lite; Guy, Oct 26)
+ASC_D1_ON = False   # flip to True once ASC Analytics > Retention shows data (Guy wants Apple numbers when reliable)
 RET = {}        # {"d1": %, "d1_n": players, "d7": %, "d7_n": players} from Firebase / GA4 (ga4_lite)
 GADS = {}       # {date: Google Ads spend in USD} (gads_lite; empty if keys are missing)
 RCNEW = {}      # {date: RevenueCat new customers (first opens)} for the same-day download estimate
@@ -866,7 +867,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
     if ASCR.get("spd") is not None or ASCR.get("d1") is not None:   # Guy, Oct 26: App Store Connect numbers in the Retention card
         md = lambda d: dt.date.fromisoformat(d).strftime("%b %-d")
         tiles = []
-        if ASCR.get("d1") is not None:
+        if ASCR.get("d1") is not None and ASC_D1_ON:   # Guy, Oct 27: hidden until Apple's Retention page shows data (opt-in sample too small); Firebase is the day-1 number for now
             tiles.append((f"{ASCR['d1']:.0f}%", "Day-1 return", f"of {ASCR.get('d1_n', 0):,} new devices opened it again the next day (estimate)"))
         if ASCR.get("spd") is not None:
             tiles.append((f"{ASCR['spd']:.1f}", "Sessions per device", "app opens per active device per day"))
