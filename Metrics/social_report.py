@@ -179,27 +179,6 @@ def fetch():
                           "comments": int(r.comments) if "comments" in d and pd.notna(r.get("comments")) else None,
                           "avg_watch_s": aw, "watch_pct": wp, "url": str(r.get("url") or "")})
 
-    # Guy, Oct 27: a site sometimes sends 0 views for videos that had views (TikTok zeroed 19 at 10:25 PM).
-    # Views never really drop to 0, so keep the last good count from posts-history.json.
-    try:
-        last = {}
-        for h in json.load(open(POSTS_HIST)) if os.path.exists(POSTS_HIST) else []:
-            for k, n in h["posts"].items():
-                if n:
-                    last[k] = n
-        for name, site in (("IG Media", "instagram"), ("FB Reels", "facebook"), ("YouTube Videos", "youtube"), ("TikTok Videos", "tiktok")):
-            d = out.get(name)
-            if d is None or d.empty:
-                continue
-            ids = (site + ":" + d.get("video_id", d.get("media_id", pd.Series("", index=d.index))).astype(str))
-            keep = ids.map(last)
-            bad = (d.views.fillna(0) == 0) & keep.notna()
-            if bad.any():
-                d.loc[bad, "views"] = keep[bad]
-                errors.append(f"{NAME[site]}: {int(bad.sum())} videos came back with 0 views; showing their last count")
-    except Exception as e:
-        errors.append(f"keep-last-views: {type(e).__name__}"[:200])
-
     POSTS.clear()
     collect("instagram", "IG Media", "likes", "caption", "created")
     collect("facebook", "FB Reels", "reactions", "caption", "created")
@@ -748,7 +727,7 @@ def money_bits(money, now):
         return v
     allk = sorted(money)
     y = (td - dt.timedelta(days=1)).isoformat()
-    w = [d for d in allk if (td - dt.date.fromisoformat(d)).days <= 7]
+    w = [d for d in allk if 0 <= (td - dt.date.fromisoformat(d)).days < 7]   # Guy, Oct 27 audit: was 8 days (<= 7); now today + 6 days, same window as views
     mo = [d for d in allk if d[:7] == td.strftime("%Y-%m")]
     return {"all": tot(allk), "t": tot([td.isoformat()]), "y": tot([y]), "w": tot(w), "m": tot(mo), "ads": tot(allk, "ads"), "iap": tot(allk, "iap"),
             "y_missing": (money.get(y) or {}).get("iap") is None, "month": td.strftime("%B")}
