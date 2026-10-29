@@ -32,6 +32,7 @@ POSTS_HIST = os.path.join(HERE, "posts-history.json")   # per-post views at ever
 POSTS = []   # per-post rows from the latest fetch (filled by fetch())
 YSAME = None   # Guy, Oct 29: views gained yesterday by this time of day (gray line left of today's bar)
 INSTALLS = {}   # {date: first downloads} from App Store Connect (filled by fetch(); empty if the key is missing)
+COUNTRIES = {}  # {country code: first downloads since launch} from App Store Connect (asc_lite; Guy, Oct 29)
 MONEY = {}      # {date: {"ads": usd, "iap": usd}} (filled by fetch(); empty if keys are missing)
 ASCR = {}       # App Store Connect app numbers for the Retention card (asc_ret_lite; Guy, Oct 26)
 ASC_D1_ON = False   # flip to True once ASC Analytics > Retention shows data (Guy wants Apple numbers when reliable)
@@ -88,7 +89,7 @@ def fetch():
                     return {}, f"{m.__name__.split('.')[-1]} (3 tries): {msg}"[:200]
                 time.sleep(10 * attempt)
 
-    INSTALLS.clear(); MONEY.clear(); RCNEW.clear(); GADS.clear(); RET.clear(); ASCR.clear()
+    INSTALLS.clear(); COUNTRIES.clear(); MONEY.clear(); RCNEW.clear(); GADS.clear(); RET.clear(); ASCR.clear()
     srcs = [youtube, meta, tiktok] + ([asc_lite] if asc_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")) else [])
     if money_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")) and os.path.exists(os.path.join(KEYS, "admob-token.json")):
         srcs.append(money_lite)
@@ -107,6 +108,9 @@ def fetch():
             if "ASC Installs Lite" in got:
                 d = got.pop("ASC Installs Lite")
                 INSTALLS.update({r.date: (None if pd.isna(r.installs) else int(r.installs)) for r in d.itertuples()})
+            if "ASC Countries Lite" in got:
+                for r in got.pop("ASC Countries Lite").itertuples():
+                    COUNTRIES[r.country] = COUNTRIES.get(r.country, 0) + int(r.installs)
             if "GA4 Retention Lite" in got:
                 r0 = got.pop("GA4 Retention Lite").iloc[0].to_dict()
                 RET.update({k: (None if pd.isna(v) else v) for k, v in r0.items()})
@@ -1051,6 +1055,9 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         allv = sum((snap.get(p) or {}).get("views") or 0 for p in PLAT)
         tot_dl = sum(v for v in installs.values() if v is not None) if installs else None
         right = f"<div class='dayt'>{allv:,} <small>total views</small></div>" + (f"<div class='dayt'>{tot_dl:,} <small>total downloads</small></div>" if tot_dl is not None else "")
+        if COUNTRIES:   # Guy, Oct 29: countries with at least one App Store first download since launch; hover for the top ones
+            top = ", ".join(f"{c} {n:,}" for c, n in sorted(COUNTRIES.items(), key=lambda x: -x[1])[:10])
+            right += f"<div class='dayt' title='{html.escape(top)} (App Store first downloads since launch)'>{len(COUNTRIES):,} <small>countries</small></div>"
         if RET.get("d1") is not None:   # Guy, Oct 26: Firebase next-day return of new players (last 7 complete days)
             tip = f"Day-1: {RET['d1']:.0f}% of {int(RET.get('d1_n') or 0):,} new players came back the next day" + (f" · Day-7: {RET['d7']:.0f}%" if RET.get("d7") is not None else "") + " (Firebase, last 7 complete days)"
             right += f"<div class='dayt' title='{tip}'>{RET['d1']:.0f}% <small>day-1 retention</small></div>"

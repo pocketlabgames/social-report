@@ -46,7 +46,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Metrics/social-stats-history.json Metrics/posts-history.json Metrics/installs-cache.json Metrics/money-cache.json Metrics/gads-cache.json Metrics/cache/report-last.json
+          git add Metrics/social-stats-history.json Metrics/posts-history.json Metrics/installs-cache.json Metrics/countries-cache.json Metrics/money-cache.json Metrics/gads-cache.json Metrics/cache/report-last.json
           git commit -qm "Report $(TZ=America/New_York date '+%Y-%m-%d %H:%M')" || echo "nothing to save"
           git pull -q --rebase -X theirs || true
           git push
