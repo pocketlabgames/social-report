@@ -821,7 +821,22 @@ def sources_section():
     days = sorted(d for d, r in ASCSRC.items() if any(k.startswith("pv_") for k in r))[-14:]
     if not days:
         return ""
-    g = lambda d, k: ASCSRC[d].get(k, 0)
+    KS = ("ads", "search", "browse", "other")
+    dlx = {}   # Guy, Oct 29: download totals = Apple's sales report (same as the main chart); the source split = Apple's analytics shares
+    for d in days:
+        a = {k: ASCSRC[d].get("dl_" + k, 0) for k in KS}
+        T = INSTALLS.get(d)
+        if T is None:
+            dlx[d] = a; continue
+        n = sum(a.values())
+        if not n:
+            dlx[d] = {**{k: 0 for k in KS}, "other": T}; continue
+        raw = {k: T * a[k] / n for k in KS}
+        r = {k: int(raw[k]) for k in KS}
+        for k in sorted(KS, key=lambda k: -(raw[k] - r[k]))[:T - sum(r.values())]:   # largest remainder, so the split adds up to T
+            r[k] += 1
+        dlx[d] = r
+    g = lambda d, k: dlx[d][k[3:]] if k.startswith("dl_") else ASCSRC[d].get(k, 0)
     tot = lambda k: sum(g(d, k) for d in days[-7:])
     pct = lambda a, b: f"{a / b * 100:.0f}%" if b else "—"
     wk = days[-7:]
@@ -862,7 +877,7 @@ def sources_section():
  const hide = () => { const el = cv.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); };
  document.addEventListener('touchstart', e => { if (e.target !== cv) hide(); }, {passive: true}); }; </script>""".replace("__DATA__", json.dumps(data))
     return (f"<h2 class='sh' id='sec-sources'>App Store visits by source</h2><p class='sub'>App Store product page views (unique devices) per day, stacked by where people came from; hover or tap a day for downloads (with each source's share of that day's downloads) and Google Ads spend. "
-            f"Apple posts these 1–2 days behind. Google Ads = Apple's “App referrer” (visits from inside other apps, which is where the ads run). "
+            f"Apple posts these 1–2 days behind. Download totals match the main chart (Apple's sales report); the split by source comes from Apple's analytics report, so per-source downloads are close estimates. Google Ads = Apple's “App referrer” (visits from inside other apps, which is where the ads run). "
             f"Search = people who searched the App Store; social posts say “search Beaker Lab”, so post viewers land here, along with anyone else who searched. Browse = found inside the App Store. Other = Apple couldn't tell the source.</p>"
             f"<p class='sub'>{summ}</p><div class='lgs' style='margin-top:6px'>{legend}</div><div class='chart' style='height:300px'><canvas id='srcc' role='img' aria-label='App Store page views per day by source'></canvas></div>{js}")
 

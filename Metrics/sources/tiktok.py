@@ -99,7 +99,10 @@ def _call(method, path, token, **kw):
 def fetch(keys_dir, today):
     token = _access_token(keys_dir)
     snap = today.isoformat()
-    u = _call("GET", "user/info/", token, params={"fields": USER_FIELDS})["user"]
+    try:
+        u = _call("GET", "user/info/", token, params={"fields": USER_FIELDS})["user"]
+    except RuntimeError:   # Oct 29, 2026: TikTok's user/info fails with internal_error for the full field list; the counts alone still work
+        u = _call("GET", "user/info/", token, params={"fields": "open_id,display_name,follower_count,following_count,likes_count,video_count"})["user"]
 
     vids, cursor = [], None
     while True:
