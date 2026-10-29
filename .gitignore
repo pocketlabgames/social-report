@@ -2,3 +2,5 @@ Private Keys/
 __pycache__/
 site/
 Metrics/Social Report.html
+Ads/**/*.mp4
+Ads/**/still-*.png
