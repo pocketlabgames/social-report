@@ -297,23 +297,73 @@ def maze_background(tint):
     return bg, masks
 
 
-def reflect(img, cam, masks, layer, fx, fy, wx, stretch=None, alpha=0.55, flip=True):
-    """Mirror-maze reflections: a copy of the character in each nearby mirror (clipped to the glass), fading with distance."""
+WARPS = ["tall", "wavy", "squat", "hourglass", "bulge", "wavy"]
+SPOOKY = [(120, 255, 150), (190, 120, 255), (255, 150, 60)]   # ghost green, witch purple, pumpkin orange
+_T = [0.0]                                                    # current time, for the warps' wobble
+
+
+def funhouse(layer, fx, fy, kind, t):
+    """Fun-house mirror warp of a character layer. Returns (warped, foot_x, foot_y)."""
+    w, h = layer.size
+    vs = {"tall": 1.4, "squat": 0.62, "wavy": 1.05, "hourglass": 1.2, "bulge": 0.9, "scare": 1.5}[kind]
+    ly = layer.resize((w, int(h * vs)), Image.BICUBIC)
+    hh = ly.height
+    band = k(4)
+    maxs, maxd = 1.8, k(40)
+    out = Image.new("RGBA", (int(w * maxs) + 2 * maxd, hh), (0, 0, 0, 0))
+    ocx = out.width / 2
+    for y in range(0, hh, band):
+        u = y / hh
+        wob = 1 + 0.08 * math.sin(t * 3 + u * 5)
+        sc, dx = 1.0, 0.0
+        if kind == "tall":
+            sc = 0.62
+        elif kind == "squat":
+            sc = 1.55
+        elif kind == "wavy":
+            dx = k(24) * math.sin(u * 14 + t * 6)
+        elif kind == "hourglass":
+            sc = 1.2 - 0.6 * math.sin(math.pi * u)
+        elif kind == "bulge":
+            sc = 0.7 + 0.8 * math.sin(math.pi * u)
+        elif kind == "scare":
+            sc = 0.7 + 0.25 * math.sin(u * 9 + t * 8)
+            dx = k(36) * math.sin(u * 10 + t * 9)
+        sc = max(0.2, min(maxs, sc * wob))
+        strip = ly.crop((0, y, w, min(hh, y + band)))
+        nw = max(1, int(w * sc))
+        strip = strip.resize((nw, strip.height), Image.BILINEAR)
+        out.alpha_composite(strip, (int(ocx - nw / 2 + max(-maxd, min(maxd, dx))), y))
+    return out, ocx - (w / 2 - fx), fy * vs
+
+
+def spooky(ly, color, alpha):
+    """Halloween tint + soft glow for a reflection."""
+    a = ly.getchannel("A")
+    tinted = Image.blend(ly.convert("RGB"), Image.new("RGB", ly.size, color), 0.4).convert("RGBA")
+    tinted.putalpha(a.point(lambda v: int(v * alpha)))
+    small = a.resize((max(1, ly.width // 8), max(1, ly.height // 8)), Image.BILINEAR).filter(ImageFilter.GaussianBlur(3))
+    glow = Image.new("RGBA", ly.size, color + (0,))
+    glow.putalpha(small.resize(ly.size, Image.BILINEAR).point(lambda v: int(v * 0.45 * alpha)))
+    glow.alpha_composite(tinted)
+    return glow
+
+
+def reflect(img, cam, masks, layer, fx, fy, wx, kind=None, alpha=0.55, flip=True):
+    """Mirror-maze reflections: a fun-house-warped, Halloween-tinted copy of the character in each nearby mirror
+    (clipped to the glass), fading with distance. Each mirror has its own warp unless `kind` overrides it."""
     for x0, x1, m in masks:
         mc = (x0 + x1) / 2
         dist = abs(wx - mc)
         if dist > 560:
             continue
+        idx = int(x0 // (MIRROR_W + MIRROR_GAP))
         sx = mc - cam + (wx - mc) * 0.35
-        a = alpha * (1 - dist / 700)
+        a = min(1.0, alpha * (1 - dist / 700) * (1.4 if kind else 1.15))
+        ly, wfx, wfy = funhouse(layer, fx, fy, kind or WARPS[idx % len(WARPS)], _T[0] + idx)
+        ly = spooky(ly, SPOOKY[idx % len(SPOOKY)], a)
         tmp = Image.new("RGBA", img.size, (0, 0, 0, 0))
-        if stretch:
-            sq, wob = stretch
-            ly = layer.resize((int(layer.width / math.sqrt(sq)), int(layer.height * sq)), Image.BICUBIC)
-            ly = ly.transform(ly.size, Image.AFFINE, (1, wob, -wob * ly.height / 2, 0, 1, 0), resample=Image.BICUBIC)
-            place(tmp, ly, fx / math.sqrt(sq), fy * sq, sx, FLOOR - 50, 0.85 * CS, flip, alpha=min(1, a * 1.4))
-        else:
-            place(tmp, layer, fx, fy, sx, FLOOR - 50, 0.78 * CS, flip, alpha=a)
+        place(tmp, ly, wfx, wfy, sx, FLOOR - 50, 0.78 * CS, flip)
         full = Image.new("L", img.size, 0)
         full.paste(m, (k(x0 - cam), 0))
         tmp.putalpha(ImageChops.multiply(tmp.getchannel("A"), full))
@@ -384,6 +434,7 @@ BG_A = BG_B = None
 
 def maze_frame(t):
     """0-11.2 s: S1 skeleton alone, S2 cat alone, S3 they meet and hug."""
+    _T[0] = t
     blink = int(t * 10) % 37 == 0
     if t < 4.6:                                  # S1: skeleton tiptoes left -> right
         bg, masks = BG_A
@@ -396,11 +447,10 @@ def maze_frame(t):
         shake = 4 * math.sin(t * 70) if scared else 0
         img = bg.crop((k(cam), 0, k(cam + W), k(H)))
         lay, fx, fy = tube("skeleton", t, mood, walk, look=1 if not scared else -1, blink=blink and not scared)
-        funhouse = (sq := 1 + 0.35 * math.sin(t * 6)), 0.25 * math.sin(t * 4)
-        # the mirror right of the start is a funhouse one: wobbly stretched reflection gives the scare
+        # one mirror near the start goes extra wild: its warping reflection gives the scare
         for x0, x1, m in masks:
             fun = x0 > 700 and x0 < 1100
-            reflect(img, cam, [(x0, x1, m)], lay, fx, fy, wx, stretch=funhouse if fun else None, alpha=0.7)
+            reflect(img, cam, [(x0, x1, m)], lay, fx, fy, wx, kind="scare" if fun else None, alpha=0.7)
         place(img, lay, fx, fy, wx - cam + shake, FLOOR + 6 + jump)
         exclaim(img, wx - cam + 90, FLOOR - 740, 2.6, t)
         caption(img, "Lost in the haunted\nmirror maze...", 230, 0.2, 4.5, t)
