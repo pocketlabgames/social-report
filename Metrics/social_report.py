@@ -206,6 +206,7 @@ def fetch():
         v = out["YouTube Videos"]
         pub = v[v.privacy == "public"]
         yt.update(public_posts=len(pub), public_views=int(pub.views.fillna(0).sum()))
+        yt["posts"] = len(pub)   # Guy, Oct 28: count published Shorts only (scheduled ones are private until they go live)
         ch = out.get("YouTube Channel")
         yt["followers"] = int(ch.subscribers.iloc[-1]) if ch is not None and not ch.empty else None
         try:   # viewer comments only: the API count includes our own pinned comments, so subtract the channel's own
@@ -923,7 +924,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
     day_html = ""
     if day:
         sign = "+" if day["total"] >= 0 else "−"
-        parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> <span class='nf'>{NAME[p]}</span><span class='ns'>{SHORT[p]}</span> {'+' if day['per'][p] >= 0 else '−'}{abs(day['per'][p]):,}" for p in PLAT)
+        parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> <span class='nf'>{NAME[p]}</span><span class='ns'>{SHORT[p]}</span> {'+' if day['per'][p] >= 0 else '−'}{abs(day['per'][p]):,}" for p in sorted(PLAT, key=lambda q: -day['per'][q]))   # Guy, Oct 28: most to least
         when = "Last 24 hours" if 21 <= day["hours"] <= 27 else f"Last {day['hours']} hours (closest check to 24 h ago: {day['since'].strftime('%b %-d, %-I:%M %p')})"
         inst = ""
         if installs:
@@ -959,7 +960,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
                 allv0 = sum((snap.get(p) or {}).get("views") or 0 for p in PLAT)   # Guy, Oct 26: JS swaps this for "since you last looked"
                 sub = f"<small class='sub2' id='slv' data-total='{allv0}' data-stamp='{html.escape(stamp)}'>({'+' if mv >= 0 else '−'}{abs(mv):,} since the {since} refresh)</small>" + sub
             head = "Views today" + (f" <small>since the {today['since'].strftime('%b %-d, %-I:%M %p')} check</small>" if abs(today["off_h"]) > 2 else "")
-            parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> <span class='nf'>{NAME[p]}</span><span class='ns'>{SHORT[p]}</span> {'+' if today['per'][p] >= 0 else '−'}{abs(today['per'][p]):,}" for p in PLAT)
+            parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> <span class='nf'>{NAME[p]}</span><span class='ns'>{SHORT[p]}</span> {'+' if today['per'][p] >= 0 else '−'}{abs(today['per'][p]):,}" for p in sorted(PLAT, key=lambda q: -today['per'][q]))   # Guy, Oct 28: most to least
         allv = sum((snap.get(p) or {}).get("views") or 0 for p in PLAT)
         tot_dl = sum(v for v in installs.values() if v is not None) if installs else None
         right = f"<div class='dayt'>{allv:,} <small>total views</small></div>" + (f"<div class='dayt'>{tot_dl:,} <small>total downloads</small></div>" if tot_dl is not None else "")
@@ -972,7 +973,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
                      f" · ads ${money['ads']:,.2f} + App Store ${money['iap']:,.2f} since launch {' <small>(Apple hasn’t posted yesterday yet)</small>' if money['y_missing'] else ''}</div>")
         v3now = {p: (snap.get(p) or {}).get("views_3s") for p in PLAT}
         v3b = {p: (day_base.get(p) or {}).get("views_3s") for p in PLAT} if day_base else {}
-        v3parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> <span class='nf'>{NAME[p]}</span><span class='ns'>{SHORT[p]}</span> {v3now[p]:,}" + (f" <small>(+{v3now[p] - v3b[p]:,} 24 h)</small>" if v3b.get(p) is not None and v3now[p] - v3b[p] >= 0 else "") for p in PLAT if v3now[p] is not None)
+        v3parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> <span class='nf'>{NAME[p]}</span><span class='ns'>{SHORT[p]}</span> {v3now[p]:,}" + (f" <small>(+{v3now[p] - v3b[p]:,} 24 h)</small>" if v3b.get(p) is not None and v3now[p] - v3b[p] >= 0 else "") for p in sorted(PLAT, key=lambda q: -(v3now[q] or 0)) if v3now[p] is not None)   # most to least
         v3line = f"<div class='dayp day3'>3-second views: {v3parts}</div>" if v3parts else ""
         inst = v3line + inst
         day_html = (f"<div class='day'><div class='dayl'>{head}</div><div class='dayv'>{big} <small>views</small> {sub}</div>"
