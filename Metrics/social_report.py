@@ -14,6 +14,7 @@ import datetime as dt
 import html
 import json
 import os
+import re
 import sys
 import webbrowser
 
@@ -162,6 +163,7 @@ def fetch():
         return {"posts": len(d), "views": views, "top_views": int(d.views.fillna(0).max()),
                 "likes": lk, "comments": int(d.comments.fillna(0).sum()) if "comments" in d else None,
                 "top_url": d.sort_values("views").iloc[-1].get("url", ""),
+                "top_title": short_title(next((str(d.sort_values("views").iloc[-1].get(c) or "") for c in ("title", "caption") if c in d), "")),   # Guy, Oct 29: shown in the Top post views pop-up
                 "avg_watch_s": watch(d), "watch_pct": watch_pct(d),
                 "likes_per_k": round(lk / views * 1000, 1) if lk is not None and views else None,
                 "views_3s": v3(d)}
@@ -529,6 +531,17 @@ def history_html(hist):
 
 
 VIDEO_MAP = os.path.join(HERE, "video-map.csv")
+
+
+def short_title(t, n=36):
+    """A reel's caption/title cut to a short name: first line, no hashtags, at a word boundary (Guy, Oct 29)."""
+    t = re.sub(r"#\w+", "", str(t or "").split("\n")[0]).strip()
+    if len(t) <= n:
+        return t
+    cut = t[:n].rsplit(" ", 1)[0].rstrip(" ,.:;·…-+&×")
+    while cut.rsplit(" ", 1)[-1].lower() in ("in", "the", "a", "an", "and", "of", "to", "on", "for", "with", "shown") and " " in cut:
+        cut = cut.rsplit(" ", 1)[0].rstrip(" ,.:;·…-+&×")
+    return (cut or t[:n]) + "…"
 
 
 def group_videos(posts):
@@ -933,7 +946,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
             txt = e(fmt(v) + delta(v, r["olds"][p]))
             cells[p] = "<b>" + txt + "</b>" if v is not None and v == r["top"] and r["top"] else txt
             if r["label"] == "Top post views" and v is not None and (snap.get(p) or {}).get("top_url"):
-                cells[p] = f"<a class='tp' href='{e(snap[p]['top_url'])}' target='_blank' rel='noopener'>{cells[p]}</a>"
+                cells[p] = f"<a class='tp' data-t='{e(snap[p].get('top_title') or '')}' href='{e(snap[p]['top_url'])}' target='_blank' rel='noopener'>{cells[p]}</a>"
         cells["reddit"] = "—" if r["label"] in ("Followers", "Avg views per post", "Avg watch time (s)", "Watched % of video") else fmt(r["reddit"])
         if r["label"] == "Top post views" and rd and rd.get("top_url") and r["reddit"] is not None:
             cells["reddit"] = f"<a class='tp' href='{e(rd['top_url'])}' target='_blank' rel='noopener'>{cells['reddit']}</a>"
@@ -1087,7 +1100,7 @@ th{{font-weight:500;color:var(--ink2)}} th.rl{{text-align:left}} thead th{{borde
 h2.sh{{font-size:18px;font-weight:500;margin:36px 0 10px}} .dot{{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}}
 .old{{display:none}} .showold .old{{display:revert}} .vgrid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}} @media (max-width:900px){{.vgrid{{grid-template-columns:1fr}}}}
 .vc{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}} .vch{{display:flex;justify-content:space-between;gap:10px;align-items:baseline}}
-.rtt{{min-width:260px}} .rtt-bar{{display:flex;height:12px;border-radius:6px;overflow:hidden;margin:2px 0 10px;gap:2px}} .rtt-bar i{{display:block;height:100%}} .rtt .ctt-r{{display:grid;column-gap:10px;align-items:center}} .rtt .ctt-r.rb{{grid-template-columns:13px minmax(84px,1fr) 100px 52px}} .rtt .ctt-r.rs{{grid-template-columns:13px minmax(84px,1fr) 60px 42px}} .rtt .ctt-r b{{text-align:right}} .rtt-n{{white-space:nowrap}} .rtt .ctt-r b{{font-weight:600;font-variant-numeric:tabular-nums}} .rtt .ctt-r small{{width:42px;text-align:right;opacity:.75;font-variant-numeric:tabular-nums}} .rtt-m{{width:100px;height:8px;border-radius:4px;background:rgba(255,255,255,.12);overflow:hidden}} .rtt-m em{{display:block;height:100%;border-radius:4px}} .ctt{{position:absolute;pointer-events:none;z-index:5;opacity:0;transition:opacity .15s,left .12s ease-out,top .12s ease-out;background:rgba(18,18,20,.62);-webkit-backdrop-filter:blur(12px) saturate(140%);backdrop-filter:blur(12px) saturate(140%);color:#fff;border-radius:12px;padding:12px 16px 13px;box-shadow:0 8px 28px rgba(0,0,0,.28);font-size:16px;line-height:1.5;white-space:nowrap}} .ctt-h{{font-size:19px;font-weight:700;margin-bottom:6px}} .ctt-y{{font-size:14px;font-weight:700;opacity:.85;margin:-2px 0 8px}} .ctt-r{{display:flex;align-items:center;gap:9px}} .ctt-r i{{width:13px;height:13px;border-radius:3px;flex:none}} .ctt-sep{{height:1px;background:rgba(255,255,255,.7);margin:10px 0}} @media (max-width:700px){{.ctt{{font-size:14px;padding:10px 12px}} .ctt-h{{font-size:16px}} .ctt-y{{font-size:12.5px}}}} .ns{{display:none}} @media (max-width:700px){{.nf{{display:none}} .ns{{display:inline}}}} .vct{{font-weight:600;line-height:1.3;margin-top:2px}} .pcol{{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none}} .pdist{{font-size:13px;font-weight:700;color:var(--ink2);font-variant-numeric:tabular-nums;white-space:nowrap}} .pdot{{width:14px;height:14px;border-radius:50%;flex:none;align-self:center;box-shadow:0 0 0 3px var(--card),0 0 0 4px var(--line)}} .vcn{{white-space:nowrap;font-size:18px;font-variant-numeric:tabular-nums}} .vcn small{{font-size:12px;color:var(--muted);font-weight:400}}
+.rtt{{min-width:260px}} .rtt-bar{{display:flex;height:12px;border-radius:6px;overflow:hidden;margin:2px 0 10px;gap:2px}} .rtt-bar i{{display:block;height:100%}} .rtt .ctt-r{{display:grid;column-gap:10px;align-items:center}} .rtt .ctt-r.rb{{grid-template-columns:13px minmax(84px,1fr) 100px 52px}} .rtt .ctt-r.rs{{grid-template-columns:13px minmax(84px,1fr) 60px 42px}} .rtt .ctt-r b{{text-align:right}} .rtt-n{{white-space:nowrap}} .rtt-t{{font-size:13px;opacity:.75;margin:-3px 0 6px 22px;white-space:nowrap}} .rtt .ctt-r b{{font-weight:600;font-variant-numeric:tabular-nums}} .rtt .ctt-r small{{width:42px;text-align:right;opacity:.75;font-variant-numeric:tabular-nums}} .rtt-m{{width:100px;height:8px;border-radius:4px;background:rgba(255,255,255,.12);overflow:hidden}} .rtt-m em{{display:block;height:100%;border-radius:4px}} .ctt{{position:absolute;pointer-events:none;z-index:5;opacity:0;transition:opacity .15s,left .12s ease-out,top .12s ease-out;background:rgba(18,18,20,.62);-webkit-backdrop-filter:blur(12px) saturate(140%);backdrop-filter:blur(12px) saturate(140%);color:#fff;border-radius:12px;padding:12px 16px 13px;box-shadow:0 8px 28px rgba(0,0,0,.28);font-size:16px;line-height:1.5;white-space:nowrap}} .ctt-h{{font-size:19px;font-weight:700;margin-bottom:6px}} .ctt-y{{font-size:14px;font-weight:700;opacity:.85;margin:-2px 0 8px}} .ctt-r{{display:flex;align-items:center;gap:9px}} .ctt-r i{{width:13px;height:13px;border-radius:3px;flex:none}} .ctt-sep{{height:1px;background:rgba(255,255,255,.7);margin:10px 0}} @media (max-width:700px){{.ctt{{font-size:14px;padding:10px 12px}} .ctt-h{{font-size:16px}} .ctt-y{{font-size:12.5px}}}} .ns{{display:none}} @media (max-width:700px){{.nf{{display:none}} .ns{{display:inline}}}} .vct{{font-weight:600;line-height:1.3;margin-top:2px}} .pcol{{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none}} .pdist{{font-size:13px;font-weight:700;color:var(--ink2);font-variant-numeric:tabular-nums;white-space:nowrap}} .pdot{{width:14px;height:14px;border-radius:50%;flex:none;align-self:center;box-shadow:0 0 0 3px var(--card),0 0 0 4px var(--line)}} .vcn{{white-space:nowrap;font-size:18px;font-variant-numeric:tabular-nums}} .vcn small{{font-size:12px;color:var(--muted);font-weight:400}}
 .vcm{{color:var(--muted);font-size:12px;margin:2px 0 8px}} table.vt{{width:100%;background:transparent}} table.vt th,table.vt td{{padding:5px 6px;font-size:13px;border-bottom:1px solid var(--line)}}
 table.vt thead th{{color:var(--muted);font-weight:500;border-bottom:1px solid var(--line)}} table.vt tbody tr:last-child th,table.vt tbody tr:last-child td{{border-bottom:0}}
 table.vt tr.lead td,table.vt tr.lead th{{background:rgba(42,120,214,.10)}} table.vt a.tp{{text-decoration:none;color:inherit;border-bottom:1px solid #2A78D6}}
@@ -1357,8 +1370,9 @@ function renderG() {{   // Oct 26: Reach / Engagement / Retention cards, best ce
     const ord = sites.map((c, i) => i).filter(i => ok[i]).sort((a, b) => vals[b] - vals[a]);   // Guy, Oct 27: most to least
     let h = `<div class="ctt-h">${{esc(d.label)}}</div>`;
     if (share) h += '<div class="rtt-bar">' + ord.map(i => vals[i] ? `<i style="width:${{vals[i] / tot * 100}}%;background:${{PC[sites[i].id]}}"></i>` : '').join('') + '</div>';
-    ord.forEach(i => {{ const c = sites[i], v = parse(d.cells[c.id]).v;
-      h += `<div class="ctt-r ${{share ? 'rs' : 'rb'}}"><i style="background:${{PC[c.id]}}"></i><span class="rtt-n">${{esc(cid(c.id).label)}}</span>` + (share ? `<b>${{esc(v)}}</b><small>${{Math.round(vals[i] / tot * 100)}}%</small>` : `<span class="rtt-m"><em style="width:${{mx ? vals[i] / mx * 100 : 0}}%;background:${{PC[c.id]}}"></em></span><b>${{esc(v)}}</b>`) + '</div>'; }});
+    ord.forEach(i => {{ const c = sites[i], v = parse(d.cells[c.id]).v, tt = (String(d.cells[c.id] ?? '').match(/data-t=['"]([^'"]*)['"]/) || [])[1];
+      h += `<div class="ctt-r ${{share ? 'rs' : 'rb'}}"><i style="background:${{PC[c.id]}}"></i><span class="rtt-n">${{esc(cid(c.id).label)}}</span>` + (share ? `<b>${{esc(v)}}</b><small>${{Math.round(vals[i] / tot * 100)}}%</small>` : `<span class="rtt-m"><em style="width:${{mx ? vals[i] / mx * 100 : 0}}%;background:${{PC[c.id]}}"></em></span><b>${{esc(v)}}</b>`) + '</div>'
+        + (tt ? `<div class="rtt-t">${{tt}}</div>` : ''); }});   // Guy, Oct 29: Top post views shows each top reel's short name
     tip.innerHTML = h; return true; }};
   const place = e => {{ const w = tip.offsetWidth, hh = tip.offsetHeight; let x = e.clientX + 16, y = e.clientY + 16;
     if (x + w > innerWidth - 8) x = e.clientX - w - 16; if (y + hh > innerHeight - 8) y = e.clientY - hh - 16; tip.style.left = Math.max(8, x) + 'px'; tip.style.top = Math.max(8, y) + 'px'; }};
@@ -1531,7 +1545,7 @@ def main():
         if p not in snap:
             last = next((h for h in reversed(hist) if isinstance(h.get(p), dict)), None)
             if last:
-                snap[p] = dict(last[p], top_url="")
+                snap[p] = dict(last[p], top_url="", top_title="")
                 stale[p] = dt.datetime.strptime(last["checked_at"], "%Y-%m-%d %H:%M").strftime("%b %-d, %-I:%M %p")
     rd = None   # Reddit tracking paused (Guy, Oct 22); reddit() still works if we bring it back
     rows = build_rows(snap, prev, rd)
@@ -1560,7 +1574,7 @@ def main():
     complete = len(snap) == len(PLAT) and not stale   # only record complete checks, so the next deltas stay honest
     if complete:
         entry = {"checked_at": now.strftime("%Y-%m-%d %H:%M"), "source": "social_report.py"}
-        entry.update({p: {k: v for k, v in snap[p].items() if k != "top_url"} for p in PLAT})
+        entry.update({p: {k: v for k, v in snap[p].items() if k not in ("top_url", "top_title")} for p in PLAT})
         hist.append(entry)
     before = hist[:-1] if complete else hist   # history before this run
     PICK_CTX.update(hist=before, now=now)
