@@ -462,36 +462,77 @@ def maze_frame(t):
     return img
 
 
+_LIQUID = None
+
+
+def liquid_bg():
+    """Close-up of the cat's green liquid behind glass (as in the zoom-loop ad): lighter left, darker right,
+    soft vertical streaks and a bright glass highlight band."""
+    global _LIQUID
+    if _LIQUID is None:
+        bg = Image.new("RGBA", (k(W), k(H)))
+        d = ImageDraw.Draw(bg)
+        for x in range(0, k(W), 2):
+            u = x / k(W)
+            d.line([(x, 0), (x, k(H))], fill=mix((126, 222, 66), (54, 150, 26), u ** 0.8) + (255,), width=2)
+        streaks = Image.new("RGBA", bg.size, (0, 0, 0, 0))
+        sd = ImageDraw.Draw(streaks)
+        rnd = random.Random(3)
+        for _ in range(14):
+            x, w = rnd.uniform(0, W), rnd.uniform(8, 40)
+            sd.rectangle([k(x), 0, k(x + w), k(H)], fill=(255, 255, 255, rnd.randint(8, 22)))
+        sd.rectangle([k(205), 0, k(262), k(H)], fill=(255, 255, 255, 120))     # glass highlight
+        sd.rectangle([k(300), 0, k(318), k(H)], fill=(255, 255, 255, 50))
+        bg.alpha_composite(streaks.filter(ImageFilter.GaussianBlur(k(10))))
+        _LIQUID = bg
+    return _LIQUID
+
+
+def fizz_bubble(d, x, y, r):
+    """Small soda bubble from the zoom-loop ad: tinted disc, thin darker rim, white glint, light lower crescent."""
+    d.ellipse([k(x - r), k(y - r), k(x + r), k(y + r)], fill=(70, 160, 40, 90), outline=(40, 110, 20, 170), width=k(max(1.5, r * 0.08)))
+    d.arc([k(x - r * 0.78), k(y - r * 0.78), k(x + r * 0.78), k(y + r * 0.78)], 25, 155, fill=(225, 255, 205, 115), width=k(max(2, r * 0.14)))
+    g = r * 0.3
+    d.ellipse([k(x - r * 0.4 - g), k(y - r * 0.4 - g), k(x - r * 0.4 + g), k(y - r * 0.4 + g)], fill=(255, 255, 255, 245))
+
+
 def fizz_frame(t, zoom_src):
-    """11.2-13.0 s: push in on the cat's liquid until the frame is only fizzy green liquid."""
-    p = ease(seg(t, 11.2, 11.9))
-    z = 1 + 7 * p * p
+    """11.2-13.0 s: fast push into the cat's tube, then the liquid up close with streams of fizz bubbles rising."""
+    p = seg(t, 11.2, 11.65)
+    z = 1 + 9 * p ** 2.2                          # accelerating push, like the zoom-loop ad
     fx, fy = 540 + 80 * CS + 6, FLOOR - 175 * CS   # the cat's liquid, in frame coords
     cw, ch = W / z, H / z
     x0 = clamp(fx - cw / 2, 0, W - cw)
     y0 = clamp(fy - ch / 2, 0, H - ch)
-    zoomed = zoom_src.crop((k(x0), k(y0), k(x0 + cw), k(y0 + ch))).resize((k(W), k(H)), Image.BICUBIC)
-    macro = Image.new("RGBA", (k(W), k(H)))
+    m = ease(seg(t, 11.5, 11.7))
+    if m >= 1:
+        zoomed = None
+    else:
+        zoomed = zoom_src.crop((k(x0), k(y0), k(x0 + cw), k(y0 + ch))).resize((k(W), k(H)), Image.BICUBIC).convert("RGBA")
+        if m <= 0:
+            return zoomed
+    macro = liquid_bg().copy()
     d = ImageDraw.Draw(macro)
-    for y in range(0, k(H), 4):
-        d.line([(0, y), (k(W), y)], fill=mix((150, 250, 90), (40, 150, 24), y / k(H)) + (255,), width=4)
     rnd = random.Random(5)
-    for n in range(70):                            # fizz: bubbles rising at different speeds/sizes
-        r = rnd.uniform(6, 40)
-        sp = rnd.uniform(250, 700) * (1.2 - r / 50)
-        x = rnd.uniform(0, W) + 14 * math.sin(t * 3 + n)
-        y = (rnd.uniform(0, H) - (t - 11.2) * sp) % (H + 100) - 50
-        d.ellipse([k(x - r), k(y - r), k(x + r), k(y + r)], fill=(190, 255, 150, 120))
-        d.ellipse([k(x - r * 0.55), k(y - r * 0.6), k(x - r * 0.05), k(y - r * 0.1)], fill=(235, 255, 225, 110))
-    for n in range(7):                             # big purple dots drifting by
-        x = 140 + n * 140 + 30 * math.sin(t + n)
-        y = (300 + n * 260 - (t - 11.2) * 90) % H
-        r = 70 + 20 * (n % 3)
-        d.ellipse([k(x - r), k(y - r), k(x + r), k(y + r)], fill=DOT + (235,))
-        d.ellipse([k(x - r * 0.5), k(y - r * 0.6), k(x - r * 0.05), k(y - r * 0.2)], fill=(190, 150, 255, 200))
-    macro = macro.filter(ImageFilter.GaussianBlur(k(1.2)))
-    m = seg(t, 11.65, 11.95)
-    return Image.blend(zoomed.convert("RGBA"), macro, m) if m < 1 else macro
+    tt = t - 11.2
+    for sx in [150, 330, 420, 560, 640, 780, 860, 990] + [rnd.uniform(60, 1020) for _ in range(5)]:
+        sp = rnd.uniform(520, 760)
+        every = rnd.uniform(0.16, 0.3)
+        for n in range(int((H + 200) / (sp * every)) + 2):    # a stream: bubbles leave the bottom every `every` s
+            born = n * every - rnd.uniform(0, every) - (H + 100) / sp
+            age = tt - born
+            y = H + 60 - age * sp - 40 * age * age
+            if not (-60 < y < H + 60):
+                continue
+            r = rnd.uniform(13, 30)
+            x = sx + 7 * math.sin(age * 9 + n) + rnd.uniform(-10, 10)
+            fizz_bubble(d, x, y, r)
+    # keep pushing in slowly while we sit in the liquid
+    zm = 1 + 0.18 * ease(seg(t, 11.5, 13.0))
+    if zm > 1:
+        cw2, ch2 = k(W) / zm, k(H) / zm
+        macro = macro.crop((int((k(W) - cw2) / 2), int((k(H) - ch2) / 2), int((k(W) + cw2) / 2), int((k(H) + ch2) / 2))).resize((k(W), k(H)), Image.BICUBIC)
+    return macro if zoomed is None else Image.blend(zoomed, macro, m)
 
 
 BUBBLE_COLORS = [(232, 150, 52), (96, 196, 72), (150, 92, 196), (176, 64, 84), (226, 226, 236)]
