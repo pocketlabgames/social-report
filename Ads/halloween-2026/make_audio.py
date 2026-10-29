@@ -1,6 +1,6 @@
 """Sound for the Mirror Maze reel (ad107): synthesized cartoon SFX timed to render_mirror_maze.py, plus music.
 
-    python3 make_audio.py ad107-mirror-maze.mp4 [music.mp3]
+    python3 make_audio.py ad107-mirror-maze.mp4 [music.mp3 [start_seconds]]
 Writes ad107-mirror-maze-sound.mp4 (video stream copied, AAC audio, loudness-normalised for social).
 Timings below follow the scene times in render_mirror_maze.py; gameplay pours were read off the ad105 footage.
 """
@@ -165,6 +165,7 @@ def build(total):
 def main():
     video = sys.argv[1]
     music = sys.argv[2] if len(sys.argv) > 2 else None
+    start = float(sys.argv[3]) if len(sys.argv) > 3 else 0.0   # where in the music track the video begins
     total = float(subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", video]))
     sfx = build(total)
     sfx = sfx / max(1e-6, np.abs(sfx).max()) * 0.9
@@ -178,7 +179,7 @@ def main():
     cmd = ["ffmpeg", "-y", "-v", "error", "-i", video, "-i", tmp]
     if music:
         cmd += ["-i", music]
-        fc = (f"[2:a]atrim=0:{total},asetpts=PTS-STARTPTS,volume=0.45,afade=t=out:st={total - 1.5}:d=1.5[m];"
+        fc = (f"[2:a]atrim={start}:{start + total},asetpts=PTS-STARTPTS,volume=0.45,afade=t=out:st={total - 1.5}:d=1.5[m];"
               f"[1:a]aformat=channel_layouts=stereo[s];[m][s]amix=inputs=2:normalize=0,loudnorm=I=-14:TP=-1.5[a]")
     else:
         fc = "[1:a]aformat=channel_layouts=stereo,loudnorm=I=-16:TP=-1.5[a]"
