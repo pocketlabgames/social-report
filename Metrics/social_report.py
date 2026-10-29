@@ -1339,7 +1339,7 @@ function mk(canvas, D) {{ if (!canvas) return;
    let h = `<div class="ctt-h">${{t.title.join(' ')}}</div>`, sep = false;
    const di = t.dataPoints.length ? t.dataPoints[0].dataIndex + O.v : -1;   // Guy, Oct 29: today's pop-up compares with this time yesterday
    if (D.ysame != null && di === D.labels.length - 1) {{ const tv = t.dataPoints.filter(p => p.dataset.stack === 'v').reduce((a, p) => a + (p.parsed.y || 0), 0), dd = tv - D.ysame, pc = D.ysame ? Math.round(dd / D.ysame * 100) : null;
-     h += `<div class="ctt-y">Views this time yesterday ${{D.ysame.toLocaleString()}} (${{dd >= 0 ? '+' : '−'}}${{Math.abs(dd).toLocaleString()}})` + (pc == null ? '' : ` (${{pc >= 0 ? '+' : '−'}}${{Math.abs(pc)}}%)`) + '</div>'; }}
+     h += `<div class="ctt-y">This time yesterday ${{D.ysame.toLocaleString()}} (${{dd >= 0 ? '+' : '−'}}${{Math.abs(dd).toLocaleString()}})` + (pc == null ? '' : ` (${{pc >= 0 ? '+' : '−'}}${{Math.abs(pc)}}%)`) + '</div>'; }}
    rows.forEach(r => {{ if (!r.v && !sep && rows.some(x => x.v)) {{ h += '<div class="ctt-sep"></div>'; sep = true; }} h += `<div class="ctt-r"><i style="background:${{r.c}}"></i>${{r.txt}}</div>`; }});
    el.innerHTML = h; el.style.opacity = 1;
    const W = ch.canvas.parentNode.clientWidth, w = el.offsetWidth, hh = el.offsetHeight;
