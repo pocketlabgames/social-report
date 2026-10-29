@@ -837,7 +837,7 @@ def sources_section():
             "spend": [GADS.get(d) for d in days], "src": [{"k": k, "l": l, "c": c} for k, l, c in src],
             **{"pv_" + k: [g(d, "pv_" + k) for d in days] for k, _, _ in src}, **{"dl_" + k: [g(d, "dl_" + k) for d in days] for k, _, _ in src}}
     legend = "".join(f"<span class='lg'><svg width='22' height='10'><line x1='0' y1='5' x2='22' y2='5' stroke='{c}' stroke-width='3'/></svg>{l} {sum(g(d, 'pv_' + k) for d in days):,}</span>" for k, l, c in src)
-    js = """<script>addEventListener('load', () => { const X = __DATA__, cv = document.getElementById('srcc'); if (!cv || !window.Chart) return;
+    js = """<script>window.SRCCHART = () => { const X = __DATA__, cv = document.getElementById('srcc'); if (!cv || !window.Chart || Chart.getChart(cv)) return;   // started by the main chart script (the password page writes this page in after 'load' has fired)
  const dark = matchMedia('(prefers-color-scheme: dark)').matches, grid = dark ? '#2c2c2a' : '#e1e0d9', muted = '#898781', n = v => (v || 0).toLocaleString();
  const tt = ({chart: ch, tooltip: t}) => { let el = ch.canvas.parentNode.querySelector('.ctt');
   if (!el) { el = document.createElement('div'); el.className = 'ctt'; ch.canvas.parentNode.appendChild(el); }
@@ -858,7 +858,7 @@ def sources_section():
    scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: 12}}},
     y: {stacked: true, beginAtZero: true, grid: {color: grid}, ticks: {color: muted, callback: v => v.toLocaleString()}, title: {display: true, text: 'Page views', color: muted}}}}});
  const hide = () => { const el = cv.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); };
- document.addEventListener('touchstart', e => { if (e.target !== cv) hide(); }, {passive: true}); }); </script>""".replace("__DATA__", json.dumps(data))
+ document.addEventListener('touchstart', e => { if (e.target !== cv) hide(); }, {passive: true}); }; </script>""".replace("__DATA__", json.dumps(data))
     return (f"<h2 class='sh' id='sec-sources'>App Store visits by source</h2><p class='sub'>App Store product page views (unique devices) per day, stacked by where people came from; hover or tap a day for downloads, ad conversion and Google Ads spend. "
             f"Apple posts these 1–2 days behind. Google Ads = Apple's “App referrer” (visits from inside other apps, which is where the ads run). "
             f"Search = people who searched the App Store; social posts say “search Beaker Lab”, so post viewers land here, along with anyone else who searched. Browse = found inside the App Store. Other = Apple couldn't tell the source.</p>"
@@ -1453,6 +1453,7 @@ function rangeSlider(chart, D, O) {{   // Guy, Oct 27: drag the blue window to l
  box.addEventListener('pointermove', e => {{ if (x0 == null) return; const ns = Math.round(s0 + (e.clientX - x0) / (box.clientWidth / n)); if (ns !== s) set(ns, true); }});
  const up = () => {{ x0 = null; box.classList.remove('drag'); }}; box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up); }}
 mk(document.getElementById('c'), D);
+if (window.SRCCHART) SRCCHART();   // Guy, Oct 29: App Store sources chart
 </script></body></html>"""
     open(OUT_HTML, "w").write(doc)
     return {"stamp": stamp, "table": {"cols": cols, "rows": trows}, "legend": legend,
