@@ -26,7 +26,7 @@ OUT = os.path.join(HERE, "ad107-mirror-maze.mp4")
 FONT = "/usr/share/fonts/opentype/inter/InterDisplay-Black.otf"
 EMOJI = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
 
-ANIM_END = 14.0                           # our animation (maze, hug, fizz, bubble transition) runs 0-14 s
+ANIM_END = 14.2                           # our animation (maze, hug, fizz, bubble transition) runs 0-14.2 s
 GP_IN, GP_OUT = 6.0, 10.6                 # ad105 gameplay: 6.0 s is revealed by the bubbles, then plays on
 CARD_IN, CARD_OUT = 11.0, 13.0            # ad105 end card
 CARD_HOLD = 0.5                           # freeze the end card a little longer
@@ -481,8 +481,8 @@ def fizz_frame(t, zoom_src):
         sp = rnd.uniform(250, 700) * (1.2 - r / 50)
         x = rnd.uniform(0, W) + 14 * math.sin(t * 3 + n)
         y = (rnd.uniform(0, H) - (t - 11.2) * sp) % (H + 100) - 50
-        d.ellipse([k(x - r), k(y - r), k(x + r), k(y + r)], outline=(230, 255, 210, 230), width=k(max(2, r / 8)))
-        d.ellipse([k(x - r * 0.5), k(y - r * 0.6), k(x - r * 0.1), k(y - r * 0.2)], fill=(255, 255, 255, 200))
+        d.ellipse([k(x - r), k(y - r), k(x + r), k(y + r)], fill=(190, 255, 150, 120))
+        d.ellipse([k(x - r * 0.55), k(y - r * 0.6), k(x - r * 0.05), k(y - r * 0.1)], fill=(235, 255, 225, 110))
     for n in range(7):                             # big purple dots drifting by
         x = 140 + n * 140 + 30 * math.sin(t + n)
         y = (300 + n * 260 - (t - 11.2) * 90) % H
@@ -494,27 +494,38 @@ def fizz_frame(t, zoom_src):
     return Image.blend(zoomed.convert("RGBA"), macro, m) if m < 1 else macro
 
 
+BUBBLE_COLORS = [(232, 150, 52), (96, 196, 72), (150, 92, 196), (176, 64, 84), (226, 226, 236)]
+
+
+def game_bubble(d, x, y, r, c, a):
+    """One glassy bubble like the game's level transition: tinted disc, darker rim, big glint, light lower crescent."""
+    rim = mix(c, (20, 10, 30), 0.35)
+    d.ellipse([k(x - r), k(y - r), k(x + r), k(y + r)], fill=c + (int(120 * a),), outline=rim + (int(170 * a),), width=k(max(2, r * 0.07)))
+    g = r * 0.3
+    gx, gy = x - r * 0.32, y - r * 0.32
+    d.ellipse([k(gx - g), k(gy - g), k(gx + g), k(gy + g)], fill=(255, 255, 255, int(235 * a)))
+    d.arc([k(x - r * 0.72), k(y - r * 0.72), k(x + r * 0.72), k(y + r * 0.72)], 30, 150, fill=(255, 255, 255, int(110 * a)), width=k(max(2, r * 0.1)))
+
+
 def bubble_reveal(t, base, gameplay):
-    """13.0-14.0 s: bubbles swell up from the bottom and pop, revealing gameplay through them."""
-    p = seg(t, 13.0, 14.0)
+    """13.0-14.2 s: the game's bubble transition (no level number). Bubbles flood up from the bottom over the
+    liquid, the gameplay fades in underneath, then the bubbles clear out the top."""
     gp = gameplay.convert("RGBA").resize((k(W), k(H)), Image.LANCZOS)
-    mask = Image.new("L", (k(W), k(H)), 0)
-    rim = Image.new("RGBA", (k(W), k(H)), (0, 0, 0, 0))
-    md, rd = ImageDraw.Draw(mask), ImageDraw.Draw(rim)
-    rnd = random.Random(9)
-    for n in range(16):
-        bx = rnd.uniform(0, W)
-        delay = rnd.uniform(0, 0.45)
-        q = clamp((p - delay) / 0.55)
-        if q <= 0:
+    out = Image.blend(base, gp, ease(seg(t, 13.35, 13.8)))
+    layer = Image.new("RGBA", out.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    rnd = random.Random(21)
+    for n in range(260):
+        start = 13.0 + rnd.uniform(0, 0.55)
+        r = rnd.choice([rnd.uniform(14, 34), rnd.uniform(30, 60), rnd.uniform(55, 110)])
+        speed = rnd.uniform(2600, 3600) * (0.8 + r / 300)
+        x = rnd.uniform(-40, W + 40)
+        y = H + r - (t - start) * speed
+        if t < start or y < -r:
             continue
-        r = 60 + 900 * q ** 1.6
-        by = H + 100 - (rnd.uniform(500, 1900) + 200) * ease(q)
-        md.ellipse([k(bx - r), k(by - r), k(bx + r), k(by + r)], fill=255)
-        rd.ellipse([k(bx - r), k(by - r), k(bx + r), k(by + r)], outline=(255, 255, 255, int(220 * (1 - q))), width=k(8))
-    out = base.copy()
-    out.paste(gp, (0, 0), mask)
-    out.alpha_composite(rim)
+        x += 18 * math.sin((t - start) * 6 + n)
+        game_bubble(d, x, y, r, rnd.choice(BUBBLE_COLORS), 1.0)
+    out.alpha_composite(layer)
     return out
 
 
@@ -551,8 +562,8 @@ def main():
     src = args[0]
     music = args[1] if len(args) > 1 else None
     tmp = tempfile.mkdtemp()
-    # gameplay frames shown inside the bubbles (13-14 s of our timeline = ad105 6.0-7.0 s)
-    subprocess.run(["ffmpeg", "-v", "error", "-ss", str(GP_IN), "-i", src, "-t", "1.0", "-vf", f"fps={FPS}",
+    # gameplay frames under the bubbles (13-14.2 s of our timeline = ad105 6.0-7.2 s)
+    subprocess.run(["ffmpeg", "-v", "error", "-ss", str(GP_IN), "-i", src, "-t", "1.2", "-vf", f"fps={FPS}",
                     os.path.join(tmp, "gp%03d.png")], check=True)
     gp = sorted(os.path.join(tmp, f) for f in os.listdir(tmp) if f.startswith("gp"))
     if "--stills" in sys.argv:
@@ -571,7 +582,7 @@ def main():
     ff.stdin.close()
     ff.wait()
     # stitch: our animation + rest of ad105 gameplay + ad105 end card (held a little)
-    gp_rest = GP_IN + 1.0
+    gp_rest = GP_IN + 1.2
     fc = (f"[0:v]setpts=PTS-STARTPTS[a];"
           f"[1:v]trim={gp_rest}:{GP_OUT},setpts=PTS-STARTPTS[g];"
           f"[1:v]trim={CARD_IN}:{CARD_OUT},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration={CARD_HOLD}[c];"
