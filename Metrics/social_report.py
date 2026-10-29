@@ -637,9 +637,13 @@ def posts_section(posts, phist, now):
         for x in g["posts"]:
             gx = x["views"] - bviews[x["id"]] if x["id"] in bviews else None
             lpk = round(x["likes"] / x["views"] * 1000, 1) if x["likes"] is not None and x["views"] else None
+            if x["likes"] is not None and x["views"] <= 1000:   # Guy, Oct 27 + Oct 28: the actual like count until the site passes 1,000 views, then likes per 1,000 views (restored Oct 28; lost in the 99e496d push)
+                lcell = f"<span style='color:#888'>{num(x['likes'])} like{'' if x['likes'] == 1 else 's'}</span>"
+            else:
+                lcell = num(lpk, 1)
             link = f"<a class='tp' href='{e(x['url'])}' target='_blank' rel='noopener'>{NAME[x['site']]}</a>" if x["url"] else NAME[x["site"]]
             rows += (f"<tr class='{'lead' if x is top and len(g['posts']) > 1 else ''}'><th class='rl'><span class='dot' style='background:{COLOR[x['site']]}'></span>{link}</th>"
-                     f"<td><b>{num(x['views'])}</b></td><td>{sg(gx)}</td><td>{num(lpk, 1)}</td>"
+                     f"<td><b>{num(x['views'])}</b></td><td>{sg(gx)}</td><td>{lcell}</td>"
                      f"<td class='aw'>{num(x['avg_watch_s'], 1) + ' s' if x['avg_watch_s'] is not None else '—'}</td><td>{num(x['watch_pct']) + '%' if x['watch_pct'] is not None else '—'}</td></tr>")
         missing = [NAME[p] for p in PLAT if not any(x["site"] == p for x in g["posts"])]
         pc, pt = perf(g)
@@ -652,7 +656,7 @@ def posts_section(posts, phist, now):
                      f"<table class='vt'><thead><tr><th class='rl'>Site</th><th>Views</th><th>{gain_label}</th><th>Likes / 1K</th><th class='aw'>Avg watch</th><th>Watched</th></tr></thead><tbody>{rows}</tbody></table></div>")
     more = f"<button id='more' class='b gray' type='button'>Show {hidden} older video(s)</button>" if hidden else ""
     return (f"<h2 class='sh' id='sec-videos'>Videos</h2><p class='sub'>One card per video, newest first, with its numbers on each site. {gain_label} = views gained since the check closest to 24 h ago"
-            f"{' (no earlier check yet)' if not base else ''}. Watched = share of the video watched on average; YouTube can pass 100% when Shorts loop. Dot = views vs a typical video at the same age: <span style='color:#1E9E55'>●</span> 1.5× or more, <span style='color:#F5B400'>●</span> 0.5–1.5×, <span style='color:#E5484D'>●</span> under 0.5×, <span style='color:#B8B8B8'>●</span> first 6 hours.</p>"
+            f"{' (no earlier check yet)' if not base else ''}. Likes / 1K = the like count until a site passes 1,000 views, then likes per 1,000 views. Watched = share of the video watched on average; YouTube can pass 100% when Shorts loop. Dot = views vs a typical video at the same age: <span style='color:#1E9E55'>●</span> 1.5× or more, <span style='color:#F5B400'>●</span> 0.5–1.5×, <span style='color:#E5484D'>●</span> under 0.5×, <span style='color:#B8B8B8'>●</span> first 6 hours.</p>"
             f"<div class='vgrid'>{''.join(cards)}</div>{more}")
 
 
@@ -869,6 +873,8 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         tiles = []
         if ASCR.get("d1") is not None and ASC_D1_ON:   # Guy, Oct 27: hidden until Apple's Retention page shows data (opt-in sample too small); Firebase is the day-1 number for now
             tiles.append((f"{ASCR['d1']:.0f}%", "Day-1 return", f"of {ASCR.get('d1_n', 0):,} new devices opened it again the next day (estimate)"))
+        if RET.get("d7") is not None:   # Guy, Oct 27: Day-7 return from Firebase (all players)
+            tiles.append((f"{RET['d7']:.0f}%", "Day-7 return", f"of {int(RET.get('d7_n') or 0):,} new players came back a week later (Firebase)"))
         if ASCR.get("spd") is not None:
             tiles.append((f"{ASCR['spd']:.1f}", "Sessions per device", "app opens per active device per day"))
         if ASCR.get("mins") is not None:
@@ -1046,9 +1052,9 @@ h2.ph{{font-size:18px;font-weight:500;margin:48px 0 4px;padding-top:20px;border-
 #g .tl{{border-right:1px solid var(--line);padding-right:12px}} #g .gpick{{font-size:16px;margin:0 0 14px}} #g .ns{{display:none}}
 
 #g .asc{{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}} #g .ash{{font-size:13px;color:var(--ink2);margin-bottom:8px}} #g .ash small{{display:inline;color:var(--muted)}}
-#g .atg{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}} #g .at{{background:var(--bg);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:1px}}
+#g .atg{{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px}}    #g .at{{background:var(--bg);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:1px}}
 #g .at b{{white-space:pre;font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}} #g .at span{{font-size:13px;color:var(--ink2)}} #g .at small{{display:block;font-size:11px;color:var(--muted);line-height:1.3}}
-@media (max-width:700px){{#g .atg{{grid-template-columns:1fr 1fr}} #g .at b{{font-size:18px}}}}
+@media (max-width:700px){{#g .atg{{grid-auto-flow:row;grid-template-columns:1fr 1fr}} #g .at:last-child:nth-child(odd){{grid-column:1/-1}} #g .at b{{font-size:18px}}}}
 body.editing #g{{display:none}} body:not(.editing) .tw{{display:none}} #m{{display:none !important}}
 @media (max-width:700px){{#g .nf{{display:none}} #g .ns{{display:inline}} #g th,#g td{{padding:7px 3px;font-size:14px}} #g td.lab{{font-size:13px;width:25%}} #g th:first-child{{width:25%}} #g small{{display:block;font-size:11px}} #g .cv{{display:block}} #g .cv>small{{text-align:right}} #g .card{{padding:14px 12px}}}}
 </style></head><body><main>
