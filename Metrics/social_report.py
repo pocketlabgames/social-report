@@ -29,6 +29,7 @@ OUT_XLSX = os.path.join(HERE, "Social Report.xlsx")
 LAYOUT = os.path.join(HERE, "report-layout.json")   # saved from the report's Edit Layout button
 POSTS_HIST = os.path.join(HERE, "posts-history.json")   # per-post views at every complete check (for +24 h per post)
 POSTS = []   # per-post rows from the latest fetch (filled by fetch())
+YSAME = None   # Guy, Oct 29: views gained yesterday by this time of day (gray line left of today's bar)
 INSTALLS = {}   # {date: first downloads} from App Store Connect (filled by fetch(); empty if the key is missing)
 MONEY = {}      # {date: {"ads": usd, "iap": usd}} (filled by fetch(); empty if keys are missing)
 ASCR = {}       # App Store Connect app numbers for the Retention card (asc_ret_lite; Guy, Oct 26)
@@ -912,7 +913,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         earn_series = [day_total((td - dt.timedelta(days=len(labels) - 1 - i)).isoformat()) for i in range(len(labels))]
         earn_partial = [i for i in range(len(labels)) if earn_series[i] is not None and (money_daily.get((td - dt.timedelta(days=len(labels) - 1 - i)).isoformat()) or {}).get("iap") is None]
     spend_series = [GADS.get((dt.date.today() - dt.timedelta(days=len(labels) - 1 - i)).isoformat()) for i in range(len(labels))] if GADS else None
-    data = json.dumps({"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}, "installs": inst_series, "earned": earn_series, "earnPart": earn_partial, "spend": spend_series,
+    data = json.dumps({"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}, "ysame": YSAME, "installs": inst_series, "earned": earn_series, "earnPart": earn_partial, "spend": spend_series,
                        "est": [i for i in range(len(labels)) if (est or {}).get((dt.date.today() - dt.timedelta(days=len(labels) - 1 - i)).isoformat()) is not None] if installs else []})
     if dry:
         return {"stamp": stamp, "table": {"cols": cols, "rows": trows}, "legend": legend,
@@ -1067,7 +1068,7 @@ body.editing #g{{display:none}} body:not(.editing) .tw{{display:none}} #m{{displ
 <div class="lgs" style="margin-top:0">{legend}</div>
 <div class="chart"><canvas id="c" role="img" aria-label="Views gained per day per platform"></canvas></div>
 <div class="rng" id="rng" hidden><canvas class="rng-c"></canvas><div class="rng-w"><i></i><i></i></div></div><div class="rng-l" id="rngl" hidden><span></span><span></span></div>
-<p class="note">Bars: last check of each day vs the day before; the last bar is today so far. Days with no check share the gain evenly. Purple line: App Store first downloads per day (right axis; Apple posts each day by the next morning; a hollow point is a conservative estimate from RevenueCat first opens until Apple posts). Green line: money earned that day, ads + App Store proceeds (hover for $). Dotted with hollow points until Apple posts that day's App Store proceeds; it turns solid once Apple's numbers are in. Gold bar (narrow, next to each day's views): Google Ads spend that day, on the Installs scale ($1 = 1 install), so a gold bar taller than that day's purple point means installs cost more than $1 each.</p>
+<p class="note">Bars: last check of each day vs the day before; the last bar is today so far. Days with no check share the gain evenly. Purple line: App Store first downloads per day (right axis; Apple posts each day by the next morning; a hollow point is a conservative estimate from RevenueCat first opens until Apple posts). Green line: money earned that day, ads + App Store proceeds (hover for $). Dotted with hollow points until Apple posts that day's App Store proceeds; it turns solid once Apple's numbers are in. Thin gray bar just left of today's bar: views gained yesterday by this same time of day, to compare today's pace. Gold bar (narrow, next to each day's views): Google Ads spend that day, on the Installs scale ($1 = 1 install), so a gold bar taller than that day's purple point means installs cost more than $1 each.</p>
 {stale_html}<div id="g"></div>{asc_tpl}<div class="wrap tw"><table id="t"></table></div><div id="m"></div>
 <p class="note">YouTube average uses public posts only. Facebook comments = viewer comments (the Page's own link comments are left out). Comments = viewer comments only (our own replies and pinned comments are left out).</p>
 {posts_html}
@@ -1349,7 +1350,12 @@ function mk(canvas, D) {{ if (!canvas) return;
    const tf = H.toFont(o.titleFont), bf = H.toFont(o.bodyFont), nt = t.title.length;
    let y = t.y + pad.top + nt*tf.lineHeight + Math.max(0, nt - 1)*o.titleSpacing + o.titleMarginBottom + k*(Math.max(bf.lineHeight, o.boxHeight || bf.size) + o.bodySpacing) - o.bodySpacing + bf.lineHeight/2;
    const x = ch.ctx; x.save(); x.strokeStyle = 'rgba(255,255,255,.75)'; x.lineWidth = 1; x.beginPath(); x.moveTo(t.x + pad.left, Math.round(y) + .5); x.lineTo(t.x + t.width - pad.right, Math.round(y) + .5); x.stroke(); x.restore(); }}}};
- const chart = new Chart(canvas, {{type:'bar',
+ const YDL = {{id:'ysame', afterDatasetsDraw(ch) {{   // Guy, Oct 29: medium pale gray line left of today's bar = views at this time yesterday
+   if (D.ysame == null) return; const li = ch.data.labels.length - 1; if (O.v + li !== D.labels.length - 1) return;
+   const el = ch.getDatasetMeta(0).data[li]; if (!el) return; const y = ch.scales.y.getPixelForValue(D.ysame), y0 = ch.scales.y.getPixelForValue(0), w = el.width || 20, bw = 5;   // Guy, Oct 29: 5 px wide
+   const x = ch.ctx; x.save(); x.fillStyle = dark ? 'rgba(160,160,160,.9)' : 'rgba(60,60,60,.75)';   // Guy, Oct 29: thin vertical bar, darker gray
+   x.fillRect(Math.round(el.x - w / 2 - 3 - bw), Math.round(y), bw, Math.max(1, Math.round(y0 - y))); x.restore(); }}}};
+ const chart = new Chart(canvas, {{type:'bar', plugins:[YDL],
  data:{{labels:D.labels, datasets:Object.entries(D.series).map(([n, d]) => ({{label:n, data:d.map(v => v == null ? v : Math.max(0, v)), backgroundColor:C[n][0], borderRadius:3, maxBarThickness:34, stack:'v', barPercentage:0.95, order:2}}))
    .concat(D.spend ? [{{label:'Google Ads', data:D.spend, backgroundColor:'#C9A227', borderRadius:3, maxBarThickness:17, stack:'s', barPercentage:0.475, yAxisID:D.installs ? 'y2' : 'y4', order:3}}] : [])
    .concat(D.installs ? [{{type:'line', label:'Installs', data:D.installs, borderColor:'#7B4FD6', backgroundColor:c => EST.has(c.dataIndex + O.v) ? '#fff' : '#7B4FD6', pointBorderWidth:2, yAxisID:'y2', pointRadius:c => EST.has(c.dataIndex + O.v) ? 4 : 3, segment:{{borderDash:c => EST.has(c.p1DataIndex + O.v) ? [4,3] : undefined}}, borderWidth:2, tension:0.2, spanGaps:true, order:1}}] : [])
@@ -1467,6 +1473,13 @@ def main():
         rows.insert(1, {"label": "Today's views", "vals": tv, "olds": to, "top": ttop,
                         "best": [NAME[q] for q in PLAT if tv[q] == ttop], "total": sum(tv.values()),
                         "ototal": sum(to.values()) if all(v is not None for v in to.values()) else None, "reddit": None})
+    global YSAME
+    YSAME = None
+    if all(v is not None for v in tv.values()) and all(v is not None for v in yv.values()):
+        lv = level_at(hist, None, now - dt.timedelta(days=1), now)   # the check closest to this time yesterday
+        cur = sum((snap.get(q) or {}).get("views") or 0 for q in PLAT)
+        if lv and abs(lv[0] - (now - dt.timedelta(days=1))) <= dt.timedelta(minutes=75):
+            YSAME = max(0, lv[1] - (cur - sum(tv.values()) - sum(yv.values())))   # same start-of-day point as yesterday's bar
     labels[-1] += " (so far)"
     complete = len(snap) == len(PLAT) and not stale   # only record complete checks, so the next deltas stay honest
     if complete:
