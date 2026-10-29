@@ -36,6 +36,7 @@ ASCR = {}       # App Store Connect app numbers for the Retention card (asc_ret_
 ASC_D1_ON = False   # flip to True once ASC Analytics > Retention shows data (Guy wants Apple numbers when reliable)
 RET = {}        # {"d1": %, "d1_n": players, "d7": %, "d7_n": players} from Firebase / GA4 (ga4_lite)
 GADS = {}       # {date: Google Ads spend in USD} (gads_lite; empty if keys are missing)
+ASCSRC = {}     # {date: {pv_ads, pv_search, pv_browse, pv_other, dl_...}} App Store page views + first downloads by source (asc_ret_lite; Guy, Oct 29)
 RCNEW = {}      # {date: RevenueCat new customers (first opens)} for the same-day download estimate
 LAST = os.path.join(HERE, "cache", "report-last.json")   # the previous run's table + chart, shown at the bottom (one run only, not a history)
 SITE = os.environ.get("REPORT_SITE") == "1"   # GitHub Actions build for the website (no local helper, no xlsx)
@@ -112,6 +113,10 @@ def fetch():
                 r0 = got.pop("ASC Retention Lite").iloc[0].to_dict() if len(got.get("ASC Retention Lite", [])) else {}
                 got.pop("ASC Retention Lite", None)
                 ASCR.update({k: (None if pd.isna(v) else (v.item() if hasattr(v, "item") else v)) for k, v in r0.items()})
+            if "ASC Sources Lite" in got:
+                d = got.pop("ASC Sources Lite")
+                for r in d.to_dict("records"):
+                    ASCSRC[r["date"]] = {k: int(v) for k, v in r.items() if k != "date" and pd.notna(v)}
             if "GAds Spend Lite" in got:
                 d = got.pop("GAds Spend Lite")
                 GADS.update({r.date: float(r.spend) for r in d.itertuples() if pd.notna(r.spend)})
@@ -809,6 +814,39 @@ def week_box(snap, hist, posts, phist, installs, now):
 SLOTS = [("Morning", 5, 11), ("Midday", 11, 14), ("Afternoon", 14, 17), ("Evening", 17, 21), ("Late night", 21, 29)]   # 21:00-04:59
 
 
+def sources_section():
+    """Guy, Oct 29: App Store page views and first downloads by where people came from, next to Google Ads spend.
+    App referrer = inside another app (our Google Ads); social posts have no App Store link, so their viewers search."""
+    days = sorted(d for d, r in ASCSRC.items() if any(k.startswith("pv_") for k in r))[-7:]
+    if not days:
+        return ""
+    g = lambda d, k: ASCSRC[d].get(k, 0)
+    tot = lambda k: sum(g(d, k) for d in days)
+    pct = lambda a, b: f"{a / b * 100:.0f}%" if b else "—"
+    def cell(d, k):
+        v, n = g(d, "pv_" + k), g(d, "dl_" + k)
+        return f"<td>{v:,} <span class='dl'>→</span> <b>{n:,}</b></td>"
+    rows = ""
+    for d in reversed(days):
+        sp = GADS.get(d)
+        rows += (f"<tr><th class='rl'><span class='hs'>{dt.date.fromisoformat(d).strftime('%a')} </span>{dt.date.fromisoformat(d).strftime('%b %-d')}</th>{cell(d, 'ads')}"
+                 f"<td class='dl hs'>{pct(g(d, 'dl_ads'), g(d, 'pv_ads'))}</td><td>{'$' + format(sp, ',.2f') if sp is not None else '—'}</td>"
+                 f"{cell(d, 'search')}{cell(d, 'browse')}<td class='gl hs'>{g(d, 'pv_other'):,}</td></tr>")   # phones: conv. + other hidden (both in the summary line)
+    spend = sum(GADS.get(d) or 0 for d in days)
+    ad_dl = tot("dl_ads")
+    per = f", ${spend / ad_dl:.2f} per download" if ad_dl and spend else ""
+    md = lambda d: dt.date.fromisoformat(d).strftime("%b %-d")
+    summ = (f"<b>Google Ads:</b> {tot('pv_ads'):,} page views → <b>{ad_dl:,}</b> downloads ({pct(ad_dl, tot('pv_ads'))}), ${spend:,.2f} spent{per} · "
+            f"<b>Search:</b> {tot('pv_search'):,} → <b>{tot('dl_search'):,}</b> · <b>Browse:</b> {tot('pv_browse'):,} → <b>{tot('dl_browse'):,}</b> · <b>Other:</b> {tot('pv_other'):,} views")
+    return (f"<style>.srct .gl{{border-left:1px solid var(--line)}} @media (max-width:700px){{.srct th,.srct td{{font-size:13px;padding:8px 4px}}}}</style>"
+            f"<h2 class='sh' id='sec-sources'>App Store visits by source</h2><p class='sub'>{md(days[0])} – {md(days[-1])} (the days Apple has posted; 1–2 days behind). "
+            f"Each cell: product page views (unique devices) → first-time downloads. Google Ads = Apple's “App referrer” (visits from inside other apps, which is where the ads run). "
+            f"Search = people who searched the App Store; social posts say “search Beaker Lab”, so post viewers land here, along with anyone else who searched. Browse = found inside the App Store. Other = Apple couldn't tell the source.</p>"
+            f"<p class='sub'>{summ}</p>"
+            f"<div class='wrap srct'><table><thead><tr><th class='rl'>Day</th><th>Google Ads</th><th class='hs'>Ad conv.</th><th>Ad spend</th><th>Search</th><th>Browse</th><th class='gl hs'>Other views</th></tr></thead>"
+            f"<tbody>{rows}</tbody></table></div>")
+
+
 def time_section(posts, now):
     """Which posting time gets the most views: public posts grouped by the hour they went up (Eastern)."""
     rows = []
@@ -1061,7 +1099,7 @@ body.editing #g{{display:none}} body:not(.editing) .tw{{display:none}} #m{{displ
 @media (max-width:700px){{#g .nf{{display:none}} #g .ns{{display:inline}} #g th,#g td{{padding:7px 3px;font-size:14px}} #g td.lab{{font-size:13px;width:25%}} #g th:first-child{{width:25%}} #g small{{display:block;font-size:11px}} #g .cv{{display:block}} #g .cv>small{{text-align:right}} #g .card{{padding:14px 12px}}}}
 </style></head><body><main>
 <h1>Beaker Lab - Social Report</h1><p class="sub">{e(stamp)} · changes in brackets are since the last check ({e(prev.get('checked_at', 'none') if prev else 'none')})</p>
-<div class="bar"><button id="refresh" class="b red">Refresh</button><a class="b gray jump" href="#sec-best"><span class="nf">Best Posting Time</span><span class="ns">Best TOD</span></a><a class="b gray jump" href="#sec-videos">Videos</a><a class="b gray jump" href="#sec-history">History</a><button id="edit" class="b blue">Edit Layout</button>
+<div class="bar"><button id="refresh" class="b red">Refresh</button><a class="b gray jump" href="#sec-sources"><span class="nf">App Store Sources</span><span class="ns">Sources</span></a><a class="b gray jump" href="#sec-best"><span class="nf">Best Posting Time</span><span class="ns">Best TOD</span></a><a class="b gray jump" href="#sec-videos">Videos</a><a class="b gray jump" href="#sec-history">History</a><button id="edit" class="b blue">Edit Layout</button>
 <span id="tools" hidden><select id="addc"></select><select id="addr"></select><button id="cancel" class="b gray">Cancel</button><button id="reset" class="b gray">Reset Layout</button></span>
 <span id="msg" class="note"></span></div>
 {day_html}{week_html}<h2 class="sh" style="margin-top:4px">Views gained per day</h2>
@@ -1504,7 +1542,7 @@ def main():
             old = write_html(day["since"].strftime("%b %-d, %Y · %-I:%M %p"), build_rows(bsnap, bprev, rd), rd, bsnap, bprev,
                              blabels, bser, "history file", [], (), None, None, None, dry=True)
     phist = json.load(open(POSTS_HIST)) if os.path.exists(POSTS_HIST) else []
-    posts_html = time_section(POSTS, now) + posts_section(POSTS, phist, now)
+    posts_html = sources_section() + time_section(POSTS, now) + posts_section(POSTS, phist, now)   # Guy, Oct 29: App Store visits by source first
     if complete and POSTS:
         phist.append({"checked_at": now.strftime("%Y-%m-%d %H:%M"), "posts": {r["id"]: r["views"] for r in POSTS}})
         json.dump(phist, open(POSTS_HIST, "w"))

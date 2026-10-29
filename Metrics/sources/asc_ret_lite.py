@@ -18,7 +18,8 @@ import requests
 API = "https://api.appstoreconnect.apple.com"
 _ROOT = os.environ.get("BEAKERLAB_METRICS_DIR") or ("/Users/guydifa/Library/Mobile Documents/com~apple~CloudDocs/[Projects]/Game Development/Beaker Lab/Metrics" if os.path.isdir("/Users/guydifa/Library/Mobile Documents/com~apple~CloudDocs/[Projects]/Game Development/Beaker Lab/Metrics") else os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CACHE = os.path.join(_ROOT, "cache", "asc")   # same folders as appstore.py (one TSV per report instance)
-WANT = {"App Sessions Standard": "ASC_Sessions", "App Store Installation and Deletion Standard": "ASC_Installs"}
+WANT = {"App Sessions Standard": "ASC_Sessions", "App Store Installation and Deletion Standard": "ASC_Installs",
+        "App Store Discovery and Engagement Standard": "ASC_Discovery", "App Downloads Standard": "ASC_Downloads"}   # Guy, Oct 29: page views + downloads by source
 
 
 class _Client:
@@ -99,6 +100,26 @@ def summary(ses, ins):
     return out
 
 
+SRC = {"App referrer": "ads", "App Store search": "search", "App Store browse": "browse"}   # everything else (Unavailable, Web referrer) = "other"
+
+
+def sources(disc, dls):
+    """Per day: App Store product page views (unique devices) and first-time downloads by source (Guy, Oct 29).
+    App referrer = views from inside another app; ours come from Google Ads (social posts carry no App Store link)."""
+    num = lambda s: pd.to_numeric(s, errors="coerce").fillna(0)
+    out = {}
+    if not disc.empty:
+        pv = disc[disc["Event"] == "Page view"]
+        for (d, st), n in pv.assign(n=num(pv["Unique Counts"])).groupby(["Date", "Source Type"])["n"].sum().items():
+            r = out.setdefault(d, {}); k = "pv_" + SRC.get(st, "other"); r[k] = r.get(k, 0) + int(n)
+    if not dls.empty:
+        fd = dls[dls["Download Type"] == "First-time download"]
+        for (d, st), n in fd.assign(n=num(fd["Counts"])).groupby(["Date", "Source Type"])["n"].sum().items():
+            r = out.setdefault(d, {}); k = "dl_" + SRC.get(st, "other"); r[k] = r.get(k, 0) + int(n)
+    return pd.DataFrame([{"date": d, **r} for d, r in sorted(out.items())])
+
+
 def fetch(keys_dir, today):
     f = _frames(_Client(keys_dir), today)
-    return {"ASC Retention Lite": (pd.DataFrame([summary(f["ASC_Sessions"], f["ASC_Installs"])]), None)}
+    return {"ASC Retention Lite": (pd.DataFrame([summary(f["ASC_Sessions"], f["ASC_Installs"])]), None),
+            "ASC Sources Lite": (sources(f["ASC_Discovery"], f["ASC_Downloads"]), None)}
