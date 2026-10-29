@@ -842,10 +842,12 @@ def sources_section():
  const tt = ({chart: ch, tooltip: t}) => { let el = ch.canvas.parentNode.querySelector('.ctt');
   if (!el) { el = document.createElement('div'); el.className = 'ctt'; ch.canvas.parentNode.appendChild(el); }
   if (!t.opacity || !t.dataPoints.length) { el.style.opacity = 0; return; }
-  const i = t.dataPoints[0].dataIndex, all = X.src.reduce((a, s) => a + X['pv_' + s.k][i], 0);
-  let h = `<div class="ctt-h">${X.full[i]} · ${n(all)} page views</div>`;
-  [...X.src].sort((a, b) => X['pv_' + b.k][i] - X['pv_' + a.k][i]).forEach(s => { const v = X['pv_' + s.k][i], d = X['dl_' + s.k][i];
-   h += `<div class="ctt-r"><i style="background:${s.c}"></i>${s.l}: ${n(v)} view${v === 1 ? '' : 's'}` + (s.k === 'other' ? '' : ` → ${n(d)} download${d === 1 ? '' : 's'}`) + (s.k === 'ads' && v ? ` (${Math.round(d / v * 100)}%)` : '') + '</div>'; });
+  const i = t.dataPoints[0].dataIndex, all = X.src.reduce((a, s) => a + X['pv_' + s.k][i], 0), dall = X.src.reduce((a, s) => a + X['dl_' + s.k][i], 0);
+  const rows = [...X.src].sort((a, b) => X['pv_' + b.k][i] - X['pv_' + a.k][i]), sh = d => dall ? ` (${Math.round(d / dall * 100)}%)` : '';   // Guy, Oct 29: % = share of the day's downloads
+  let h = `<div class="ctt-h">${X.full[i]} · ${n(all)} page views · ${n(dall)} download${dall === 1 ? '' : 's'}</div>`;
+  if (dall) h += '<div class="rtt-bar">' + rows.map(s => X['dl_' + s.k][i] ? `<i style="width:${X['dl_' + s.k][i] / dall * 100}%;background:${s.c}"></i>` : '').join('') + '</div>';
+  rows.forEach(s => { const v = X['pv_' + s.k][i], d = X['dl_' + s.k][i];
+   h += `<div class="ctt-r"><i style="background:${s.c}"></i>${s.l}: ${n(v)} view${v === 1 ? '' : 's'} → ${n(d)} download${d === 1 ? '' : 's'}${sh(d)}</div>`; });
   if (X.spend[i] != null) h += `<div class="ctt-sep"></div><div class="ctt-r"><i style="background:#C9A227"></i>Google Ads spend: $${X.spend[i].toFixed(2)}` + (X.dl_ads[i] ? ` ($${(X.spend[i] / X.dl_ads[i]).toFixed(2)} per download)` : '') + '</div>';
   el.innerHTML = h; el.style.opacity = 1;
   const W = ch.canvas.parentNode.clientWidth, w = el.offsetWidth, hh = el.offsetHeight;
@@ -859,7 +861,7 @@ def sources_section():
     y: {stacked: true, beginAtZero: true, grid: {color: grid}, ticks: {color: muted, callback: v => v.toLocaleString()}, title: {display: true, text: 'Page views', color: muted}}}}});
  const hide = () => { const el = cv.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); };
  document.addEventListener('touchstart', e => { if (e.target !== cv) hide(); }, {passive: true}); }; </script>""".replace("__DATA__", json.dumps(data))
-    return (f"<h2 class='sh' id='sec-sources'>App Store visits by source</h2><p class='sub'>App Store product page views (unique devices) per day, stacked by where people came from; hover or tap a day for downloads, ad conversion and Google Ads spend. "
+    return (f"<h2 class='sh' id='sec-sources'>App Store visits by source</h2><p class='sub'>App Store product page views (unique devices) per day, stacked by where people came from; hover or tap a day for downloads (with each source's share of that day's downloads) and Google Ads spend. "
             f"Apple posts these 1–2 days behind. Google Ads = Apple's “App referrer” (visits from inside other apps, which is where the ads run). "
             f"Search = people who searched the App Store; social posts say “search Beaker Lab”, so post viewers land here, along with anyone else who searched. Browse = found inside the App Store. Other = Apple couldn't tell the source.</p>"
             f"<p class='sub'>{summ}</p><div class='lgs' style='margin-top:6px'>{legend}</div><div class='chart' style='height:300px'><canvas id='srcc' role='img' aria-label='App Store page views per day by source'></canvas></div>{js}")
