@@ -26,7 +26,8 @@ OUT = os.path.join(HERE, "ad107-mirror-maze.mp4")
 FONT = "/usr/share/fonts/opentype/inter/InterDisplay-Black.otf"
 EMOJI = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
 
-ANIM_END = 14.2                           # our animation (maze, hug, fizz, bubble transition) runs 0-14.2 s
+TR = 12.05                                # bubble transition starts (green close-up is on screen alone ~0.35 s)
+ANIM_END = TR + 1.2                       # our animation (maze, hug, fizz, bubble transition) ends here
 GP_IN, GP_OUT = 6.0, 10.6                 # ad105 gameplay: 6.0 s is revealed by the bubbles, then plays on
 CARD_IN, CARD_OUT = 11.0, 13.0            # ad105 end card
 CARD_HOLD = 0.5                           # freeze the end card a little longer
@@ -497,7 +498,7 @@ def fizz_bubble(d, x, y, r):
 
 
 def fizz_frame(t, zoom_src):
-    """11.2-13.0 s: fast push into the cat's tube, then the liquid up close with streams of fizz bubbles rising."""
+    """11.2 s to TR: fast push into the cat's tube, then the liquid up close with streams of fizz bubbles rising."""
     p = seg(t, 11.2, 11.65)
     z = 1 + 9 * p ** 2.2                          # accelerating push, like the zoom-loop ad
     fx, fy = 540 + 80 * CS + 6, FLOOR - 175 * CS   # the cat's liquid, in frame coords
@@ -528,7 +529,7 @@ def fizz_frame(t, zoom_src):
             x = sx + 7 * math.sin(age * 9 + n) + rnd.uniform(-10, 10)
             fizz_bubble(d, x, y, r)
     # keep pushing in slowly while we sit in the liquid
-    zm = 1 + 0.18 * ease(seg(t, 11.5, 13.0))
+    zm = 1 + 0.1 * ease(seg(t, 11.5, TR + 0.4))
     if zm > 1:
         cw2, ch2 = k(W) / zm, k(H) / zm
         macro = macro.crop((int((k(W) - cw2) / 2), int((k(H) - ch2) / 2), int((k(W) + cw2) / 2), int((k(H) + ch2) / 2))).resize((k(W), k(H)), Image.BICUBIC)
@@ -549,15 +550,15 @@ def game_bubble(d, x, y, r, c, a):
 
 
 def bubble_reveal(t, base, gameplay):
-    """13.0-14.2 s: the game's bubble transition (no level number). Bubbles flood up from the bottom over the
+    """TR to TR+1.2 s: the game's bubble transition (no level number). Bubbles flood up from the bottom over the
     liquid, the gameplay fades in underneath, then the bubbles clear out the top."""
     gp = gameplay.convert("RGBA").resize((k(W), k(H)), Image.LANCZOS)
-    out = Image.blend(base, gp, ease(seg(t, 13.35, 13.8)))
+    out = Image.blend(base, gp, ease(seg(t, TR + 0.35, TR + 0.8)))
     layer = Image.new("RGBA", out.size, (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
     rnd = random.Random(21)
     for n in range(260):
-        start = 13.0 + rnd.uniform(0, 0.55)
+        start = TR + rnd.uniform(0, 0.55)
         r = rnd.choice([rnd.uniform(14, 34), rnd.uniform(30, 60), rnd.uniform(55, 110)])
         speed = rnd.uniform(2600, 3600) * (0.8 + r / 300)
         x = rnd.uniform(-40, W + 40)
@@ -578,11 +579,11 @@ def frame(i, gp_frames):
     t = i / FPS
     if t < 11.2:
         img = maze_frame(t)
-    elif t < 13.0:
+    elif t < TR:
         img = fizz_frame(t, maze_frame(11.2))
     else:
         base = fizz_frame(t, maze_frame(11.2))
-        g = min(int((t - 13.0) * FPS), len(gp_frames) - 1)
+        g = min(int((t - TR) * FPS), len(gp_frames) - 1)
         img = bubble_reveal(t, base, Image.open(gp_frames[g]))
     return img.convert("RGB").resize((W, H), Image.LANCZOS)
 
@@ -609,7 +610,7 @@ def main():
     gp = sorted(os.path.join(tmp, f) for f in os.listdir(tmp) if f.startswith("gp"))
     if "--stills" in sys.argv:
         _init(gp)
-        for s in (1.0, 2.8, 5.5, 6.7, 9.2, 10.6, 11.5, 12.4, 13.4):
+        for s in (1.0, 2.8, 5.5, 6.7, 9.2, 10.6, 11.5, 11.9, 12.5):
             frame(int(s * FPS), _GP).save(os.path.join(os.getcwd(), f"still-{s:04.1f}s.png"))
         if "--stills-only" in sys.argv:
             return

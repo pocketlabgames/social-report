@@ -11,6 +11,8 @@ import wave
 
 import numpy as np
 
+TR = 12.05            # bubble transition start, as in render_mirror_maze.py
+
 SR = 44100
 rng = np.random.default_rng(4)
 
@@ -144,21 +146,21 @@ def build(total):
         put(pop(1400 + n * 120) * 0.5, 10.1 + n * 0.19)
     # S4 zoom into the liquid + fizz
     put(whoosh(0.8), 11.15)
-    fizz = np.diff(noise(1.6), prepend=0) * 0.04
+    fizz = np.diff(noise(TR - 11.5), prepend=0) * 0.04
     crack = (rng.random(len(fizz)) < 0.0025) * rng.uniform(-0.5, 0.5, len(fizz))
     put((fizz + crack) * np.sin(np.linspace(0, np.pi, len(fizz))) ** 0.5, 11.6)
-    for i in range(10):
-        put(blip(rng.uniform(300, 700)), 11.8 + i * 0.12)
+    for i in range(4):
+        put(blip(rng.uniform(300, 700)), 11.7 + i * 0.09)
     # S5 bubble transition: a rush of rising bubble blips
-    put(whoosh(1.0) * 0.8, 12.95)
+    put(whoosh(1.0) * 0.8, TR - 0.05)
     for i in range(36):
-        put(blip(rng.uniform(350, 1100)), 13.0 + rng.uniform(0, 0.9))
-    # gameplay (14.2-17.6 = ad105 7.2-10.6): pour + combo ding on each pour
-    for n, tp in enumerate([14.2, 14.6, 15.2, 15.8, 16.4, 16.85]):
-        put(glug(), tp)
-        put(ding(n), tp + 0.35)
+        put(blip(rng.uniform(350, 1100)), TR + rng.uniform(0, 0.9))
+    # gameplay (TR+1.2 onwards = ad105 7.2-10.6): pour + combo ding on each pour
+    for n, tp in enumerate([0.0, 0.4, 1.0, 1.6, 2.2, 2.65]):
+        put(glug(), TR + 1.2 + tp)
+        put(ding(n), TR + 1.2 + tp + 0.35)
     # end card
-    put(chime((1318.5, 1568.0, 2093.0), 0.09, 0.25), 17.65)
+    put(chime((1318.5, 1568.0, 2093.0), 0.09, 0.25), TR + 1.2 + 3.45)
     return out[: int(total * SR)]
 
 
@@ -179,7 +181,7 @@ def main():
     cmd = ["ffmpeg", "-y", "-v", "error", "-i", video, "-i", tmp]
     if music:
         cmd += ["-i", music]
-        fc = (f"[2:a]atrim={start}:{start + total},asetpts=PTS-STARTPTS,volume=0.45,afade=t=out:st={total - 1.5}:d=1.5[m];"
+        fc = (f"[2:a]atrim={start}:{start + total},asetpts=PTS-STARTPTS,volume=0.45,afade=t=in:d=1.5,afade=t=out:st={total - 1.5}:d=1.5[m];"
               f"[1:a]aformat=channel_layouts=stereo[s];[m][s]amix=inputs=2:normalize=0,loudnorm=I=-14:TP=-1.5[a]")
     else:
         fc = "[1:a]aformat=channel_layouts=stereo,loudnorm=I=-16:TP=-1.5[a]"
