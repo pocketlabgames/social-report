@@ -815,36 +815,54 @@ SLOTS = [("Morning", 5, 11), ("Midday", 11, 14), ("Afternoon", 14, 17), ("Evenin
 
 
 def sources_section():
-    """Guy, Oct 29: App Store page views and first downloads by where people came from, next to Google Ads spend.
-    App referrer = inside another app (our Google Ads); social posts have no App Store link, so their viewers search."""
-    days = sorted(d for d, r in ASCSRC.items() if any(k.startswith("pv_") for k in r))[-7:]
+    """Guy, Oct 29: App Store page views by where people came from, as a stacked line chart; hover/tap a day for downloads,
+    ad conversion and Google Ads spend. App referrer = inside another app (our Google Ads); social posts have no App Store
+    link, so their viewers search."""
+    days = sorted(d for d, r in ASCSRC.items() if any(k.startswith("pv_") for k in r))[-14:]
     if not days:
         return ""
     g = lambda d, k: ASCSRC[d].get(k, 0)
-    tot = lambda k: sum(g(d, k) for d in days)
+    tot = lambda k: sum(g(d, k) for d in days[-7:])
     pct = lambda a, b: f"{a / b * 100:.0f}%" if b else "—"
-    def cell(d, k):
-        v, n = g(d, "pv_" + k), g(d, "dl_" + k)
-        return f"<td>{v:,} <span class='dl'>→</span> <b>{n:,}</b></td>"
-    rows = ""
-    for d in reversed(days):
-        sp = GADS.get(d)
-        rows += (f"<tr><th class='rl'><span class='hs'>{dt.date.fromisoformat(d).strftime('%a')} </span>{dt.date.fromisoformat(d).strftime('%b %-d')}</th>{cell(d, 'ads')}"
-                 f"<td class='dl hs'>{pct(g(d, 'dl_ads'), g(d, 'pv_ads'))}</td><td>{'$' + format(sp, ',.2f') if sp is not None else '—'}</td>"
-                 f"{cell(d, 'search')}{cell(d, 'browse')}<td class='gl hs'>{g(d, 'pv_other'):,}</td></tr>")   # phones: conv. + other hidden (both in the summary line)
-    spend = sum(GADS.get(d) or 0 for d in days)
+    wk = days[-7:]
+    spend = sum(GADS.get(d) or 0 for d in wk)
     ad_dl = tot("dl_ads")
     per = f", ${spend / ad_dl:.2f} per download" if ad_dl and spend else ""
     md = lambda d: dt.date.fromisoformat(d).strftime("%b %-d")
-    summ = (f"<b>Google Ads:</b> {tot('pv_ads'):,} page views → <b>{ad_dl:,}</b> downloads ({pct(ad_dl, tot('pv_ads'))}), ${spend:,.2f} spent{per} · "
+    summ = (f"Last 7 days ({md(wk[0])} – {md(wk[-1])}): <b>Google Ads:</b> {tot('pv_ads'):,} page views → <b>{ad_dl:,}</b> downloads ({pct(ad_dl, tot('pv_ads'))}), ${spend:,.2f} spent{per} · "
             f"<b>Search:</b> {tot('pv_search'):,} → <b>{tot('dl_search'):,}</b> · <b>Browse:</b> {tot('pv_browse'):,} → <b>{tot('dl_browse'):,}</b> · <b>Other:</b> {tot('pv_other'):,} views")
-    return (f"<style>.srct .gl{{border-left:1px solid var(--line)}} @media (max-width:700px){{.srct th,.srct td{{font-size:13px;padding:8px 4px}}}}</style>"
-            f"<h2 class='sh' id='sec-sources'>App Store visits by source</h2><p class='sub'>{md(days[0])} – {md(days[-1])} (the days Apple has posted; 1–2 days behind). "
-            f"Each cell: product page views (unique devices) → first-time downloads. Google Ads = Apple's “App referrer” (visits from inside other apps, which is where the ads run). "
+    src = [("ads", "Google Ads", "#C9A227"), ("other", "Other", "#A8A8A8"), ("search", "Search", "#12A4A4"), ("browse", "Browse", "#8E6FD8")]
+    src.sort(key=lambda x: -sum(g(d, "pv_" + x[0]) for d in days))   # most to least (bottom of the stack = biggest)
+    data = {"labels": [md(d) for d in days], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in days],
+            "spend": [GADS.get(d) for d in days], "src": [{"k": k, "l": l, "c": c} for k, l, c in src],
+            **{"pv_" + k: [g(d, "pv_" + k) for d in days] for k, _, _ in src}, **{"dl_" + k: [g(d, "dl_" + k) for d in days] for k, _, _ in src}}
+    legend = "".join(f"<span class='lg'><svg width='22' height='10'><line x1='0' y1='5' x2='22' y2='5' stroke='{c}' stroke-width='3'/></svg>{l} {sum(g(d, 'pv_' + k) for d in days):,}</span>" for k, l, c in src)
+    js = """<script>addEventListener('load', () => { const X = __DATA__, cv = document.getElementById('srcc'); if (!cv || !window.Chart) return;
+ const dark = matchMedia('(prefers-color-scheme: dark)').matches, grid = dark ? '#2c2c2a' : '#e1e0d9', muted = '#898781', n = v => (v || 0).toLocaleString();
+ const tt = ({chart: ch, tooltip: t}) => { let el = ch.canvas.parentNode.querySelector('.ctt');
+  if (!el) { el = document.createElement('div'); el.className = 'ctt'; ch.canvas.parentNode.appendChild(el); }
+  if (!t.opacity || !t.dataPoints.length) { el.style.opacity = 0; return; }
+  const i = t.dataPoints[0].dataIndex, all = X.src.reduce((a, s) => a + X['pv_' + s.k][i], 0);
+  let h = `<div class="ctt-h">${X.full[i]} · ${n(all)} page views</div>`;
+  [...X.src].sort((a, b) => X['pv_' + b.k][i] - X['pv_' + a.k][i]).forEach(s => { const v = X['pv_' + s.k][i], d = X['dl_' + s.k][i];
+   h += `<div class="ctt-r"><i style="background:${s.c}"></i>${s.l}: ${n(v)} view${v === 1 ? '' : 's'}` + (s.k === 'other' ? '' : ` → ${n(d)} download${d === 1 ? '' : 's'}`) + (s.k === 'ads' && v ? ` (${Math.round(d / v * 100)}%)` : '') + '</div>'; });
+  if (X.spend[i] != null) h += `<div class="ctt-sep"></div><div class="ctt-r"><i style="background:#C9A227"></i>Google Ads spend: $${X.spend[i].toFixed(2)}` + (X.dl_ads[i] ? ` ($${(X.spend[i] / X.dl_ads[i]).toFixed(2)} per download)` : '') + '</div>';
+  el.innerHTML = h; el.style.opacity = 1;
+  const W = ch.canvas.parentNode.clientWidth, w = el.offsetWidth, hh = el.offsetHeight;
+  let x = t.caretX + 16; if (x + w > W) x = t.caretX - w - 16; if (x < 0) x = Math.max(0, (W - w) / 2);
+  el.style.left = x + 'px'; el.style.top = Math.max(0, Math.min(t.caretY - hh / 2, ch.canvas.clientHeight - hh)) + 'px'; };
+ const ch = new Chart(cv, {type: 'line', data: {labels: X.labels, datasets: X.src.map((s, j) => ({label: s.l, data: X['pv_' + s.k], borderColor: s.c, backgroundColor: s.c + '40',
+   fill: j ? '-1' : 'origin', tension: 0.25, borderWidth: 2, pointRadius: 3, pointHoverRadius: 5, pointBackgroundColor: s.c}))},
+  options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false},
+   plugins: {legend: {display: false}, tooltip: {enabled: false, external: tt}},
+   scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: 12}}},
+    y: {stacked: true, beginAtZero: true, grid: {color: grid}, ticks: {color: muted, callback: v => v.toLocaleString()}, title: {display: true, text: 'Page views', color: muted}}}}});
+ const hide = () => { const el = cv.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); };
+ document.addEventListener('touchstart', e => { if (e.target !== cv) hide(); }, {passive: true}); }); </script>""".replace("__DATA__", json.dumps(data))
+    return (f"<h2 class='sh' id='sec-sources'>App Store visits by source</h2><p class='sub'>App Store product page views (unique devices) per day, stacked by where people came from; hover or tap a day for downloads, ad conversion and Google Ads spend. "
+            f"Apple posts these 1–2 days behind. Google Ads = Apple's “App referrer” (visits from inside other apps, which is where the ads run). "
             f"Search = people who searched the App Store; social posts say “search Beaker Lab”, so post viewers land here, along with anyone else who searched. Browse = found inside the App Store. Other = Apple couldn't tell the source.</p>"
-            f"<p class='sub'>{summ}</p>"
-            f"<div class='wrap srct'><table><thead><tr><th class='rl'>Day</th><th>Google Ads</th><th class='hs'>Ad conv.</th><th>Ad spend</th><th>Search</th><th>Browse</th><th class='gl hs'>Other views</th></tr></thead>"
-            f"<tbody>{rows}</tbody></table></div>")
+            f"<p class='sub'>{summ}</p><div class='lgs' style='margin-top:6px'>{legend}</div><div class='chart' style='height:300px'><canvas id='srcc' role='img' aria-label='App Store page views per day by source'></canvas></div>{js}")
 
 
 def time_section(posts, now):
