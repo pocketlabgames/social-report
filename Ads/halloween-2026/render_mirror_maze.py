@@ -26,8 +26,9 @@ OUT = os.path.join(HERE, "ad107-mirror-maze.mp4")
 FONT = "/usr/share/fonts/opentype/inter/InterDisplay-Black.otf"
 EMOJI = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
 
-TR = 12.05                                # bubble transition starts (green close-up is on screen alone ~0.35 s)
-ANIM_END = TR + 1.2                       # our animation (maze, hug, fizz, bubble transition) ends here
+TR = 11.6                                 # bubble transition starts as the zoom lands in the liquid
+TD = 0.85                                 # bubble transition length
+ANIM_END = TR + TD                        # our animation (maze, hug, fizz, bubble transition) ends here
 GP_IN, GP_OUT = 6.0, 10.6                 # ad105 gameplay: 6.0 s is revealed by the bubbles, then plays on
 CARD_IN, CARD_OUT = 11.0, 13.0            # ad105 end card
 CARD_HOLD = 0.5                           # freeze the end card a little longer
@@ -550,15 +551,15 @@ def game_bubble(d, x, y, r, c, a):
 
 
 def bubble_reveal(t, base, gameplay):
-    """TR to TR+1.2 s: the game's bubble transition (no level number). Bubbles flood up from the bottom over the
+    """TR to TR+TD s: the game's bubble transition (no level number). Bubbles flood up from the bottom over the
     liquid, the gameplay fades in underneath, then the bubbles clear out the top."""
     gp = gameplay.convert("RGBA").resize((k(W), k(H)), Image.LANCZOS)
-    out = Image.blend(base, gp, ease(seg(t, TR + 0.35, TR + 0.8)))
+    out = Image.blend(base, gp, ease(seg(t, TR + 0.2, TR + 0.55)))
     layer = Image.new("RGBA", out.size, (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
     rnd = random.Random(21)
     for n in range(260):
-        start = TR + rnd.uniform(0, 0.55)
+        start = TR + rnd.uniform(0, 0.3)
         r = rnd.choice([rnd.uniform(14, 34), rnd.uniform(30, 60), rnd.uniform(55, 110)])
         speed = rnd.uniform(2600, 3600) * (0.8 + r / 300)
         x = rnd.uniform(-40, W + 40)
@@ -605,7 +606,7 @@ def main():
     music = args[1] if len(args) > 1 else None
     tmp = tempfile.mkdtemp()
     # gameplay frames under the bubbles (13-14.2 s of our timeline = ad105 6.0-7.2 s)
-    subprocess.run(["ffmpeg", "-v", "error", "-ss", str(GP_IN), "-i", src, "-t", "1.2", "-vf", f"fps={FPS}",
+    subprocess.run(["ffmpeg", "-v", "error", "-ss", str(GP_IN), "-i", src, "-t", str(TD), "-vf", f"fps={FPS}",
                     os.path.join(tmp, "gp%03d.png")], check=True)
     gp = sorted(os.path.join(tmp, f) for f in os.listdir(tmp) if f.startswith("gp"))
     if "--stills" in sys.argv:
@@ -624,7 +625,7 @@ def main():
     ff.stdin.close()
     ff.wait()
     # stitch: our animation + rest of ad105 gameplay + ad105 end card (held a little)
-    gp_rest = GP_IN + 1.2
+    gp_rest = GP_IN + TD
     fc = (f"[0:v]setpts=PTS-STARTPTS[a];"
           f"[1:v]trim={gp_rest}:{GP_OUT},setpts=PTS-STARTPTS[g];"
           f"[1:v]trim={CARD_IN}:{CARD_OUT},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration={CARD_HOLD}[c];"

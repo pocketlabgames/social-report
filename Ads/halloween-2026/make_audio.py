@@ -11,7 +11,7 @@ import wave
 
 import numpy as np
 
-TR = 12.05            # bubble transition start, as in render_mirror_maze.py
+TR, TD = 11.6, 0.85   # bubble transition start + length, as in render_mirror_maze.py
 
 SR = 44100
 rng = np.random.default_rng(4)
@@ -146,7 +146,7 @@ def build(total):
         put(pop(1400 + n * 120) * 0.5, 10.1 + n * 0.19)
     # S4 zoom into the liquid + fizz
     put(whoosh(0.8), 11.15)
-    fizz = np.diff(noise(TR - 11.5), prepend=0) * 0.04
+    fizz = np.diff(noise(0.5), prepend=0) * 0.04
     crack = (rng.random(len(fizz)) < 0.0025) * rng.uniform(-0.5, 0.5, len(fizz))
     put((fizz + crack) * np.sin(np.linspace(0, np.pi, len(fizz))) ** 0.5, 11.6)
     for i in range(4):
@@ -154,13 +154,13 @@ def build(total):
     # S5 bubble transition: a rush of rising bubble blips
     put(whoosh(1.0) * 0.8, TR - 0.05)
     for i in range(36):
-        put(blip(rng.uniform(350, 1100)), TR + rng.uniform(0, 0.9))
-    # gameplay (TR+1.2 onwards = ad105 7.2-10.6): pour + combo ding on each pour
-    for n, tp in enumerate([0.0, 0.4, 1.0, 1.6, 2.2, 2.65]):
-        put(glug(), TR + 1.2 + tp)
-        put(ding(n), TR + 1.2 + tp + 0.35)
+        put(blip(rng.uniform(350, 1100)), TR + rng.uniform(0, 0.6))
+    # gameplay (TR+TD onwards = ad105 6.85-10.6; pours seen at ad105 7.2, 7.6, 8.2, 8.8, 9.4, 9.85): pour + combo ding on each pour
+    for n, tp in enumerate([0.35, 0.75, 1.35, 1.95, 2.55, 3.0]):
+        put(glug(), TR + TD + tp)
+        put(ding(n), TR + TD + tp + 0.35)
     # end card
-    put(chime((1318.5, 1568.0, 2093.0), 0.09, 0.25), TR + 1.2 + 3.45)
+    put(chime((1318.5, 1568.0, 2093.0), 0.09, 0.25), TR + TD + 3.8)
     return out[: int(total * SR)]
 
 
@@ -181,7 +181,7 @@ def main():
     cmd = ["ffmpeg", "-y", "-v", "error", "-i", video, "-i", tmp]
     if music:
         cmd += ["-i", music]
-        fc = (f"[2:a]atrim={start}:{start + total},asetpts=PTS-STARTPTS,volume=0.45,afade=t=in:d=1.5,afade=t=out:st={total - 1.5}:d=1.5[m];"
+        fc = (f"[2:a]atrim={start}:{start + total},asetpts=PTS-STARTPTS,volume=0.45,afade=t=in:d=0.03,afade=t=out:st={total - 1.5}:d=1.5[m];"
               f"[1:a]aformat=channel_layouts=stereo[s];[m][s]amix=inputs=2:normalize=0,loudnorm=I=-14:TP=-1.5[a]")
     else:
         fc = "[1:a]aformat=channel_layouts=stereo,loudnorm=I=-16:TP=-1.5[a]"
