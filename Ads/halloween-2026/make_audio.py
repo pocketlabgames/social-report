@@ -3,7 +3,7 @@ the gameplay, plus music.
 
     python3 make_audio.py <reel>.mp4 ad105-tue-trick-or-treat-spooky-dark.mp4 [music.mp3 [start_seconds [tempo]]]
 Writes <reel>-sound.mp4 (video stream copied, AAC audio, loudness-normalised for social). The cue list is picked from
-the video's name (mirror-maze or last-candy). Both reels use ad105's gameplay, whose audio from 6 s on is only game
+the video's name (mirror-maze, last-candy or pumpkin). Both reels use ad105's gameplay, whose audio from 6 s on is only game
 sounds (pours, combo), so that audio is laid in under our gameplay at the bubble transition, in sync with the footage.
 """
 import os
@@ -202,8 +202,45 @@ def build_mirror_maze(total, tr=11.6):
     return out[: int(total * SR)]
 
 
+def scrape():
+    """Knife scraping pumpkin."""
+    n = int(0.12 * SR)
+    x = np.diff(noise(0.12, 4), prepend=0) * np.sin(np.linspace(0, np.pi, n)) * 0.25
+    return x
+
+
+def build_pumpkin(total, z0=9.4):
+    """Cues for render_pumpkin.py."""
+    tr = z0 + 0.45
+    out = np.zeros(int(total * SR) + SR)
+
+    def put(clip, t):
+        mix_into(out, clip, int(t * SR))
+
+    for i in range(13):                      # carving
+        put(scrape(), 0.42 + i * 0.15)
+        if i % 2:
+            put(pop(rng.uniform(700, 1000)) * 0.5, 0.5 + i * 0.15)
+    put(chime((1046.5, 1318.5, 1568.0), 0.06, 0.22), 2.42)   # done!
+    put(pop(1100), 3.0)                      # "Ready?"
+    put(whoosh(0.6), 4.0)                    # spin them around
+    put(thump(), 4.5)                        # candles on
+    put(chime(), 4.55)                       # ta-da
+    put(stinger(), 6.78)                     # wait... what?!
+    put(boing(), 6.82)
+    put(laugh(), 7.2)                        # both laugh
+    put(laugh(5) * 0.8, 7.32)
+    flick = np.diff(noise(0.6), prepend=0) * 0.05 * (rng.random(int(0.6 * SR)) < 0.02)
+    put(flick, 8.4)                          # candles flicker...
+    put(whoosh(0.5) * 0.7, 8.9)              # ...and go out
+    zoom_fizz(put, z0)
+    transition_and_card(put, tr, 6.45)
+    return out[: int(total * SR)]
+
+
 # cues, bubble transition start, where in ad105 the gameplay (and its game sounds) starts
-REELS = {"mirror-maze": (build_mirror_maze, 11.6, 6.0), "last-candy": (build_last_candy, 10.05, 6.45)}
+REELS = {"mirror-maze": (build_mirror_maze, 11.6, 6.0), "last-candy": (build_last_candy, 10.05, 6.45),
+         "pumpkin": (build_pumpkin, 9.85, 6.45)}
 
 
 def main():

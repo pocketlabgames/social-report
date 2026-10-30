@@ -10,11 +10,11 @@ bubble transition (no level number), gameplay with the game's own sounds, end ca
   embarrassment while the skeleton laughs. Comment bait: "Tag the candy thief in your house".
   Script: `halloween-2026/render_last_candy.py`. ad108, scheduled Fri Oct 30, 2026, 5 PM ET.
 
-## Backup
+## Halloween day
 
-- **Pumpkin carving gone wrong** (Guy may swap it in for "last candy"): both carve jack-o'-lanterns, turn them
-  around at the same time: the skeleton carved a cat face, the cat carved a skull. They laugh, the candle flickers
-  out, zoom into the purple liquid in the dark. Hook: "POV: you carve your bestie's face".
+- **Pumpkin carving** (ad109, provisional; Sat Oct 31, 2026, 5 PM ET): both carve pumpkins, turn them around at the
+  same time: the skeleton carved a cat face, the cat carved a skull. They laugh ("great minds carve alike"), the
+  candles flicker out, zoom into the purple liquid in the dark. Script: `halloween-2026/render_pumpkin.py`.
 
 ## Sunday posting
 

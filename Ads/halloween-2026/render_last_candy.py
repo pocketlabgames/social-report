@@ -36,8 +36,8 @@ WRAP = (CAT_X - 176, FL - 385)             # the wrapper on the cat's tail (cat 
 
 
 # ---------------------------------------------------------------- set
-def room():
-    """Cosy Halloween living room at night: purple walls, moonlit window, string lights, table with the candy bucket."""
+def room(bucket=True):
+    """Cosy Halloween living room at night: purple walls, moonlit window, string lights, table (with the candy bucket)."""
     bg = Image.new("RGBA", (k(W), k(H)))
     d = ImageDraw.Draw(bg)
     for y in range(0, k(H), 2):
@@ -81,6 +81,8 @@ def room():
     d.rectangle([k(370), k(1360), k(390), k(FL - 10)], fill=(90, 50, 40, 255))
     d.rectangle([k(690), k(1360), k(710), k(FL - 10)], fill=(90, 50, 40, 255))
     d.rounded_rectangle([k(330), k(1330), k(750), k(1370)], k(12), fill=(130, 76, 56, 255))
+    if not bucket:
+        return bg
     # jack-o'-lantern candy bucket (empty)
     bx, by = 540, 1330
     d.arc([k(bx - 95), k(by - 260), k(bx + 95), k(by - 90)], 190, 350, fill=INK + (255,), width=k(8))   # handle
@@ -112,10 +114,10 @@ CAM = [(6.4, *WIDE), (7.1, CAT_X, FL - 420, 1.45), (8.4, CAT_X, FL - 420, 1.45),
        (9.85, *WRAP, 3.2), (10.35, *WIDE)]
 
 
-def cam_at(t):
-    if t <= CAM[0][0] or t >= CAM[-1][0]:
+def cam_at(t, keys=CAM):
+    if t <= keys[0][0] or t >= keys[-1][0]:
         return WIDE
-    for (t0, x0, y0, z0), (t1, x1, y1, z1) in zip(CAM, CAM[1:]):
+    for (t0, x0, y0, z0), (t1, x1, y1, z1) in zip(keys, keys[1:]):
         if t0 <= t < t1:
             p = ease(seg(t, t0, t1))
             return x0 + (x1 - x0) * p, y0 + (y1 - y0) * p, z0 * (z1 / z0) ** p    # zoom eases in log space
@@ -258,11 +260,11 @@ GP_END = TR + mm.GP_OUT - GP_IN             # gameplay is rendered through Pytho
 PUNCHES = [7.4, 8.0, 8.6, 9.8]              # ad105 times where the combo goes up (x6, x7, x8, x9)
 
 
-def punch(img, t):
+def punch(img, t, tr=TR, gp_in=GP_IN):
     """10pm-post combo 'punch': on each combo bump the frame jumps ~12% bigger and eases back while soft white rays
     burst from the centre and fade (matches test-10pm-punch-deepsea)."""
     for a in PUNCHES:
-        dt = t - (TR + a - GP_IN)
+        dt = t - (tr + a - gp_in)
         if not (0 <= dt < 0.45):
             continue
         z = 1 + 0.12 * seg(dt, 0, 0.05) * (1 - ease(seg(dt, 0.05, 0.42)))

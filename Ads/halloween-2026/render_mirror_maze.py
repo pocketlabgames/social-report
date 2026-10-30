@@ -527,19 +527,24 @@ def maze_frame(t):
     return img
 
 
-_LIQUID = None
+# liquid close-ups: background gradient (light left, dark right), bubble fill, rim, lower crescent
+LIQUIDS = {
+    "green": ((126, 222, 66), (54, 150, 26), (70, 160, 40), (40, 110, 20), (225, 255, 205)),
+    "purple": ((176, 110, 246), (84, 36, 160), (110, 56, 190), (70, 30, 130), (235, 215, 255)),
+}
+_LIQUID = {}
 
 
-def liquid_bg():
-    """Close-up of the cat's green liquid behind glass (as in the zoom-loop ad): lighter left, darker right,
+def liquid_bg(name="green"):
+    """Close-up of a beaker's liquid behind glass (as in the zoom-loop ad): lighter left, darker right,
     soft vertical streaks and a bright glass highlight band."""
-    global _LIQUID
-    if _LIQUID is None:
+    if name not in _LIQUID:
+        left, right = LIQUIDS[name][:2]
         bg = Image.new("RGBA", (k(W), k(H)))
         d = ImageDraw.Draw(bg)
         for x in range(0, k(W), 2):
             u = x / k(W)
-            d.line([(x, 0), (x, k(H))], fill=mix((126, 222, 66), (54, 150, 26), u ** 0.8) + (255,), width=2)
+            d.line([(x, 0), (x, k(H))], fill=mix(left, right, u ** 0.8) + (255,), width=2)
         streaks = Image.new("RGBA", bg.size, (0, 0, 0, 0))
         sd = ImageDraw.Draw(streaks)
         rnd = random.Random(3)
@@ -549,19 +554,20 @@ def liquid_bg():
         sd.rectangle([k(205), 0, k(262), k(H)], fill=(255, 255, 255, 120))     # glass highlight
         sd.rectangle([k(300), 0, k(318), k(H)], fill=(255, 255, 255, 50))
         bg.alpha_composite(streaks.filter(ImageFilter.GaussianBlur(k(10))))
-        _LIQUID = bg
-    return _LIQUID
+        _LIQUID[name] = bg
+    return _LIQUID[name]
 
 
-def fizz_bubble(d, x, y, r):
+def fizz_bubble(d, x, y, r, name="green"):
     """Small soda bubble from the zoom-loop ad: tinted disc, thin darker rim, white glint, light lower crescent."""
-    d.ellipse([k(x - r), k(y - r), k(x + r), k(y + r)], fill=(70, 160, 40, 90), outline=(40, 110, 20, 170), width=k(max(1.5, r * 0.08)))
-    d.arc([k(x - r * 0.78), k(y - r * 0.78), k(x + r * 0.78), k(y + r * 0.78)], 25, 155, fill=(225, 255, 205, 115), width=k(max(2, r * 0.14)))
+    fill, rim, cres = LIQUIDS[name][2:]
+    d.ellipse([k(x - r), k(y - r), k(x + r), k(y + r)], fill=fill + (90,), outline=rim + (170,), width=k(max(1.5, r * 0.08)))
+    d.arc([k(x - r * 0.78), k(y - r * 0.78), k(x + r * 0.78), k(y + r * 0.78)], 25, 155, fill=cres + (115,), width=k(max(2, r * 0.14)))
     g = r * 0.3
     d.ellipse([k(x - r * 0.4 - g), k(y - r * 0.4 - g), k(x - r * 0.4 + g), k(y - r * 0.4 + g)], fill=(255, 255, 255, 245))
 
 
-def fizz_frame(t, zoom_src, z0=11.2, tr=TR, focus=None):
+def fizz_frame(t, zoom_src, z0=11.2, tr=TR, focus=None, liquid="green"):
     """z0 to tr: fast push into the cat's tube, then the liquid up close with streams of fizz bubbles rising.
     focus: the cat's liquid in frame coords (defaults to its spot in the mirror-maze hug)."""
     p = seg(t, z0, z0 + 0.45)
@@ -577,7 +583,7 @@ def fizz_frame(t, zoom_src, z0=11.2, tr=TR, focus=None):
         zoomed = zoom_src.resize((k(W), k(H)), Image.BICUBIC, box=(k(x0), k(y0), k(x0 + cw), k(y0 + ch))).convert("RGBA")   # float box: no jitter
         if m <= 0:
             return zoomed
-    macro = liquid_bg().copy()
+    macro = liquid_bg(liquid).copy()
     d = ImageDraw.Draw(macro)
     rnd = random.Random(5)
     tt = t - z0
@@ -592,7 +598,7 @@ def fizz_frame(t, zoom_src, z0=11.2, tr=TR, focus=None):
                 continue
             r = rnd.uniform(13, 30)
             x = sx + 7 * math.sin(age * 9 + n) + rnd.uniform(-10, 10)
-            fizz_bubble(d, x, y, r)
+            fizz_bubble(d, x, y, r, liquid)
     # keep pushing in slowly while we sit in the liquid
     zm = 1 + 0.1 * ease(seg(t, z0 + 0.3, tr + 0.4))
     if zm > 1:
