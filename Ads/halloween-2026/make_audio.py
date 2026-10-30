@@ -223,7 +223,8 @@ REELS = {"mirror-maze": (build_mirror_maze, 11.6), "last-candy": (build_last_can
 def main():
     video, game = sys.argv[1], sys.argv[2]
     music = sys.argv[3] if len(sys.argv) > 3 else None
-    start = float(sys.argv[4]) if len(sys.argv) > 4 else 0.0   # where in the music track the video begins
+    start = float(sys.argv[4]) if len(sys.argv) > 4 else 0.0   # where in the music track the video begins;
+    # negative = the music starts that many seconds into the video (e.g. to land a track's ending on the end card)
     build, tr = next(v for name, v in REELS.items() if name in os.path.basename(video))
     total = float(subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", video]))
     sfx = build(total)
@@ -243,7 +244,8 @@ def main():
     cmd = ["ffmpeg", "-y", "-v", "error", "-i", video, "-i", tmp, "-i", game]
     if music:
         cmd += ["-i", music]
-        fc = gfc + (f"[3:a]atrim={start}:{start + total},asetpts=PTS-STARTPTS,volume=0.45,afade=t=in:d=0.03,"
+        delay = int(-start * 1000) if start < 0 else 0
+        fc = gfc + (f"[3:a]atrim={max(start, 0)}:{max(start, 0) + total},asetpts=PTS-STARTPTS,adelay={delay}|{delay},volume=0.45,afade=t=in:d=0.03,"
                     f"afade=t=out:st={total - 1.5}:d=1.5[m];[m][s][g]amix=inputs=3:normalize=0:duration=first,loudnorm=I=-14:TP=-1.5[a]")
     else:
         fc = gfc + "[s][g]amix=inputs=2:normalize=0:duration=first,loudnorm=I=-16:TP=-1.5[a]"
