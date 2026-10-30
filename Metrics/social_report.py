@@ -1064,19 +1064,22 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
             parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> <span class='nf'>{NAME[p]}</span><span class='ns'>{SHORT[p]}</span> {'+' if today['per'][p] >= 0 else '−'}{abs(today['per'][p]):,}" for p in sorted(PLAT, key=lambda q: -today['per'][q]))   # Guy, Oct 28: most to least
         allv = sum((snap.get(p) or {}).get("views") or 0 for p in PLAT)
         tot_dl = sum(v for v in installs.values() if v is not None) if installs else None
-        right = f"<div class='dayt'>{allv:,} <small>total views</small></div>" + (f"<div class='dayt'>{tot_dl:,} <small>total downloads</small></div>" if tot_dl is not None else "")
-        if COUNTRIES:   # Guy, Oct 29: countries with at least one App Store first download since launch; hover for the top ones
-            top = ", ".join(f"{c} {n:,}" for c, n in sorted(COUNTRIES.items(), key=lambda x: -x[1])[:10])
-            right += f"<div class='dayt' title='{html.escape(top)} (App Store first downloads since launch)'>{len(COUNTRIES):,} <small>countries</small></div>"
+        lab = lambda full, short: f"<small><span class='nf'>{full}</span><span class='ns'>{short}</span></small>"   # Guy, Oct 30: short labels on phones
+        top = ", ".join(f"{c} {n:,}" for c, n in sorted(COUNTRIES.items(), key=lambda x: -x[1])[:10])
+        ctip = f" title='{html.escape(top)} (App Store first downloads since launch)'" if COUNTRIES else ""
+        cn = f"<span class='ns'> ({len(COUNTRIES):,})</span>" if COUNTRIES else ""   # phones: countries in parentheses after downloads
+        right = f"<div class='dayt'>{allv:,} {lab('total views', 'Views')}</div>" + (f"<div class='dayt'{ctip}>{tot_dl:,}{cn} {lab('total downloads', 'Downloads')}</div>" if tot_dl is not None else "")
+        if COUNTRIES:   # Guy, Oct 29: countries with at least one App Store first download since launch; hover for the top ones (own tile on wide screens only)
+            right += f"<div class='dayt nf'{ctip}>{len(COUNTRIES):,} <small>countries</small></div>"
         if REVIEWS.get("app_id"):   # Guy, Oct 30: App Store star ratings (every country with a download) + written reviews; no link
             avg = f" · {REVIEWS['avg']:.1f}★" if REVIEWS.get("avg") is not None else ""
             tip = f"Star ratings by country: {REVIEWS.get('top') or 'none yet'}. Written reviews: {int(REVIEWS.get('reviews') or 0):,}. Ratings refresh once a day."
             right += f"<div class='dayt' title='{html.escape(tip)}'>{int(REVIEWS['n']):,}{avg} <small>Ratings</small></div>"
         if RET.get("d1") is not None:   # Guy, Oct 26: Firebase next-day return of new players (last 7 complete days)
             tip = f"Day-1: {RET['d1']:.0f}% of {int(RET.get('d1_n') or 0):,} new players came back the next day" + (f" · Day-7: {RET['d7']:.0f}%" if RET.get("d7") is not None else "") + " (Firebase, last 7 complete days)"
-            right += f"<div class='dayt' title='{tip}'>{RET['d1']:.0f}% <small>day-1 retention</small></div>"
+            right += f"<div class='dayt' title='{tip}'>{RET['d1']:.0f}% {lab('day-1 retention', 'D-1')}</div>"
         if money:
-            right += f"<div class='dayt'>${money['all']:,.2f} <small>total earned</small></div>"
+            right += f"<div class='dayt'>${money['all']:,.2f} {lab('total earned', 'Earned')}</div>"
             inst += (f"<div class='dayp daym'>Earned: <b>${money['t']:,.2f}</b> today · <b>${money['y']:,.2f}</b> yesterday · <b>${money['w']:,.2f}</b> last 7 days · <b>${money['m']:,.2f}</b> in {money['month']}"
                      f" · ads ${money['ads']:,.2f} + App Store ${money['iap']:,.2f} since launch {' <small>(Apple hasn’t posted yesterday yet)</small>' if money['y_missing'] else ''}</div>")
         v3now = {p: (snap.get(p) or {}).get("views_3s") for p in PLAT}
