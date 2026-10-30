@@ -1071,7 +1071,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         if REVIEWS.get("app_id"):   # Guy, Oct 30: App Store star ratings (every country with a download) + written reviews; no link
             avg = f" · {REVIEWS['avg']:.1f}★" if REVIEWS.get("avg") is not None else ""
             tip = f"Star ratings by country: {REVIEWS.get('top') or 'none yet'}. Written reviews: {int(REVIEWS.get('reviews') or 0):,}. Ratings refresh once a day."
-            right += f"<div class='dayt' title='{html.escape(tip)}'>{int(REVIEWS['n']):,}{avg} <small>App Store ratings</small></div>"
+            right += f"<div class='dayt' title='{html.escape(tip)}'>{int(REVIEWS['n']):,}{avg} <small>Ratings</small></div>"
         if RET.get("d1") is not None:   # Guy, Oct 26: Firebase next-day return of new players (last 7 complete days)
             tip = f"Day-1: {RET['d1']:.0f}% of {int(RET.get('d1_n') or 0):,} new players came back the next day" + (f" · Day-7: {RET['d7']:.0f}%" if RET.get("d7") is not None else "") + " (Firebase, last 7 complete days)"
             right += f"<div class='dayt' title='{tip}'>{RET['d1']:.0f}% <small>day-1 retention</small></div>"
