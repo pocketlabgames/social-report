@@ -5,10 +5,10 @@ bubble transition (no level number), gameplay with the game's own sounds, end ca
 
 ## In production
 
-- **Who ate the last candy?** (Halloween 2026, Guy picked Oct 30): empty candy bowl; spotlight on the skeleton
-  ("Not me!"), spotlight on the cat (whistling, "Wasn't me"), a candy wrapper stuck to the cat's tail gives it away;
-  the cat corks itself out of embarrassment. Comment bait: "Who's the candy thief in your house?"
-  Script: `halloween-2026/render_last_candy.py`. Posted as ad108, Fri Oct 30, 2026, 5 PM ET.
+- **Who ate the last candy?** (Halloween 2026, Guy picked Oct 30): empty candy bowl; spotlight on the cat
+  (whistling, "Wasn't me"), a candy wrapper stuck to the cat's tail gives it away; the cat corks itself out of
+  embarrassment while the skeleton laughs. Comment bait: "Tag the candy thief in your house".
+  Script: `halloween-2026/render_last_candy.py`. ad108, scheduled Fri Oct 30, 2026, 5 PM ET.
 
 ## Backup
 
