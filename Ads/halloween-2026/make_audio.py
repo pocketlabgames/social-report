@@ -1,7 +1,7 @@
 """Sound for the Halloween reels: synthesized cartoon SFX timed to each render script, the game's own sounds under
 the gameplay, plus music.
 
-    python3 make_audio.py <reel>.mp4 ad105-tue-trick-or-treat-spooky-dark.mp4 [music.mp3 [start_seconds]]
+    python3 make_audio.py <reel>.mp4 ad105-tue-trick-or-treat-spooky-dark.mp4 [music.mp3 [start_seconds [tempo]]]
 Writes <reel>-sound.mp4 (video stream copied, AAC audio, loudness-normalised for social). The cue list is picked from
 the video's name (mirror-maze or last-candy). Both reels use ad105's gameplay, whose audio from 6 s on is only game
 sounds (pours, combo), so that audio is laid in under our gameplay at the bubble transition, in sync with the footage.
@@ -210,6 +210,7 @@ def main():
     music = sys.argv[3] if len(sys.argv) > 3 else None
     start = float(sys.argv[4]) if len(sys.argv) > 4 else 0.0   # where in the music track the video begins;
     # negative = the music starts that many seconds into the video (e.g. to land a track's ending on the end card)
+    tempo = float(sys.argv[5]) if len(sys.argv) > 5 else 1.0   # <1 slows the music (pitch kept) to move its ending later
     build, tr = next(v for name, v in REELS.items() if name in os.path.basename(video))
     total = float(subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", video]))
     sfx = build(total)
@@ -230,7 +231,8 @@ def main():
     if music:
         cmd += ["-i", music]
         delay = int(-start * 1000) if start < 0 else 0
-        fc = gfc + (f"[3:a]atrim={max(start, 0)}:{max(start, 0) + total},asetpts=PTS-STARTPTS,adelay={delay}|{delay},volume=0.45,afade=t=in:d=0.03,"
+        fc = gfc + (f"[3:a]atrim={max(start, 0)}:{max(start, 0) + total * tempo},asetpts=PTS-STARTPTS,atempo={tempo},"
+                    f"adelay={delay}|{delay},volume=0.45,afade=t=in:d=0.03,"
                     f"afade=t=out:st={total - 1.5}:d=1.5[m];[m][s][g]amix=inputs=3:normalize=0:duration=first,loudnorm=I=-14:TP=-1.5[a]")
     else:
         fc = gfc + "[s][g]amix=inputs=2:normalize=0:duration=first,loudnorm=I=-16:TP=-1.5[a]"
