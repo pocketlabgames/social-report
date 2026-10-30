@@ -146,8 +146,8 @@ def zoom_fizz(put, z0):
         put(blip(rng.uniform(300, 700)), z0 + 0.5 + i * 0.09)
 
 
-def build_last_candy(total, z0=11.6):
-    """Cues for render_last_candy.py."""
+def build_last_candy(total, z0=9.6):
+    """Cues for render_last_candy.py (video time, after the 2 s "Not me!" cut)."""
     tr = z0 + 0.45
     out = np.zeros(int(total * SR) + SR)
 
@@ -161,22 +161,18 @@ def build_last_candy(total, z0=11.6):
     for i in range(4):                       # cat strolls in...
         put(step(0.9), 2.7 + i * 0.3125)
     put(whistle([784, 988, 880, 784, 659, 784, 880]), 2.85)   # ...whistling innocently
-    put(thump(), 4.4)                        # spotlight on the skeleton
-    put(pop(1100), 4.6)                      # "Not me!"
-    for i in range(6):                       # head shake
-        put(tone((300, 260), 0.07, 0.03) * 0.25, 4.75 + i * 0.11)
-    put(thump(), 6.4)                        # spotlight on the cat
-    put(pop(1100), 6.65)                     # "Wasn't me!"
-    put(whistle([659, 784, 988, 784, 659, 523, 659, 784]), 6.8)
-    put(dun(110, 0.22), 8.5)                 # dun... dun... DUN: the wrapper
-    put(dun(104, 0.22), 8.8)
-    put(dun(98, 0.9, 0.5), 9.1)
-    put(chime((1568.0, 2093.0, 2637.0), 0.06, 0.18), 9.0)    # wrapper sparkle
-    put(stinger(), 9.98)                     # CAUGHT!
-    put(boing(), 10.02)
-    put(pop(520) * 1.4, 10.72)               # cork!
-    put(chime((1318.5, 1568.0, 2093.0), 0.05, 0.2), 10.78)
-    put(laugh(), 10.85)                      # skeleton laughs
+    put(thump(), 4.4)                        # spotlight on the cat
+    put(pop(1100), 4.65)                     # "Wasn't me!"
+    put(whistle([659, 784, 988, 784, 659, 523, 659, 784]), 4.8)
+    put(dun(110, 0.22), 6.5)                 # dun... dun... DUN: the wrapper
+    put(dun(104, 0.22), 6.8)
+    put(dun(98, 0.9, 0.5), 7.1)
+    put(chime((1568.0, 2093.0, 2637.0), 0.06, 0.18), 7.0)    # wrapper sparkle
+    put(stinger(), 7.98)                     # CAUGHT!
+    put(boing(), 8.02)
+    put(pop(520) * 1.4, 8.72)                # cork!
+    put(chime((1318.5, 1568.0, 2093.0), 0.05, 0.2), 8.78)
+    put(laugh(), 8.85)                       # skeleton laughs
     zoom_fizz(put, z0)
     transition_and_card(put, tr)
     return out[: int(total * SR)]
@@ -221,7 +217,7 @@ def build_mirror_maze(total, tr=11.6):
     return out[: int(total * SR)]
 
 
-REELS = {"mirror-maze": (build_mirror_maze, 11.6), "last-candy": (build_last_candy, 12.05)}   # cues, bubble transition start
+REELS = {"mirror-maze": (build_mirror_maze, 11.6), "last-candy": (build_last_candy, 10.05)}   # cues, bubble transition start
 
 
 def main():

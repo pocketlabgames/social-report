@@ -1,7 +1,7 @@
 """Beaker Lab Halloween reel "Who ate the last candy?": 1080x1920, 30 fps, ~19.2 s.
 
-Story (Guy, Oct 30): the candy bowl is empty. Spotlight on the purple skeleton beaker ("Not me!"), spotlight on the
-green cat beaker (whistling, "Wasn't me"), but a candy wrapper is stuck to the cat's tail. Caught, the cat corks
+Story (Guy, Oct 30): the candy bowl is empty. Spotlight on the green cat beaker (whistling, "Wasn't me"), but a
+candy wrapper is stuck to the cat's tail. Caught, the cat corks
 itself out of embarrassment while the skeleton laughs. Zoom into the cat's liquid, the game's bubble transition,
 ad105 gameplay (with its own game sounds, see make_audio.py), ad105 end card.
 
@@ -27,7 +27,8 @@ NOTE_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
 FL = 1690                                  # floor line the beakers stand on
 SKEL_X, CAT_X = 230, 850
-Z0 = 11.6                                  # zoom into the cat's liquid starts
+CUT_AT, CUT_LEN = 4.4, 2.0                 # story 4.4-6.4 s (the skeleton's "Not me!") was cut (Guy, Oct 30)
+Z0 = 11.6 - CUT_LEN                        # zoom into the cat's liquid starts (video time)
 TR = Z0 + 0.45                             # bubble transition starts
 TD = mm.TD
 ANIM_END = TR + TD
@@ -166,6 +167,7 @@ def stars(img, x, y, p, n=8, spread=200):
 
 # ---------------------------------------------------------------- the story
 def story_frame(t):
+    """t is story time (before the cut)."""
     global ROOM
     if ROOM is None:
         ROOM = room()
@@ -179,9 +181,6 @@ def story_frame(t):
     if 1.7 <= t < 2.6:
         s_mood = "scared"
         s_jump = -80 * math.sin(math.pi * seg(t, 1.7, 2.0)) if t < 2.0 else 0
-    if 4.4 <= t < 6.4:                                         # "Not me!"
-        s_look = math.sin(t * 14)
-        s_tilt = 5 * math.sin(t * 14)
     if 10.0 <= t < 10.8:
         s_mood = "scared"
     if t >= 10.8:                                              # laughing
@@ -213,9 +212,7 @@ def story_frame(t):
     exclaim(img, sx + 40, FL - 780, 10.0, t, 0.6)
 
     # spotlights
-    spotlight(img, SKEL_X, seg(t, 4.4, 4.6) * (1 - seg(t, 6.3, 6.4)))
     spotlight(img, CAT_X, seg(t, 6.4, 6.5) * (1 - seg(t, 8.9, 9.2)))
-    speech(img, "Not me!", SKEL_X + 40, FL - 860, 4.6, t) if 4.6 <= t < 6.4 else None
     speech(img, "Wasn't me!", CAT_X - 90, FL - 860, 6.65, t, emoji="\U0001f607") if 6.65 <= t < 8.5 else None
 
     # wrapper sparkle while the camera finds it
@@ -229,9 +226,7 @@ def story_frame(t):
             d.polygon([(k(x - r), k(y)), (k(x), k(y + r * 0.3)), (k(x + r), k(y)), (k(x), k(y - r * 0.3))], fill=(255, 250, 200))
 
     # camera
-    if 4.4 <= t < 6.4:
-        img = camera(img, SKEL_X, FL - 420, 1 + 0.45 * ease(seg(t, 4.4, 4.8)))
-    elif 6.4 <= t < 8.4:
+    if 6.4 <= t < 8.4:
         img = camera(img, CAT_X, FL - 420, 1 + 0.45 * ease(seg(t, 6.4, 6.8)))
     elif 8.4 <= t < 10.0:
         p = ease(seg(t, 8.4, 9.0))
@@ -248,9 +243,9 @@ def story_frame(t):
 def frame(i, gp_frames):
     t = i / FPS
     if t < Z0:
-        img = story_frame(t)
+        img = story_frame(t if t < CUT_AT else t + CUT_LEN)
     else:
-        base = fizz_frame(t, story_frame(Z0), z0=Z0, tr=TR, focus=(CAT_X - 6, FL - 175 * CS))
+        base = fizz_frame(t, story_frame(Z0 + CUT_LEN), z0=Z0, tr=TR, focus=(CAT_X - 6, FL - 175 * CS))
         if t < TR:
             img = base
         else:
@@ -278,7 +273,7 @@ def main():
     gp = sorted(os.path.join(tmp, f) for f in os.listdir(tmp) if f.startswith("gp"))
     if any(a.startswith("--stills") for a in sys.argv):
         _init(gp)
-        for s in (1.0, 1.85, 3.4, 5.2, 7.2, 9.3, 10.2, 11.2, 11.9, 12.4):
+        for s in (1.0, 1.85, 3.4, 4.6, 5.2, 7.3, 8.2, 9.2, 9.9, 10.4):
             frame(int(s * FPS), _GP).save(os.path.join(os.getcwd(), f"still-{s:04.1f}s.png"))
         if "--stills-only" in sys.argv:
             return
