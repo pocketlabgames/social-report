@@ -1,8 +1,10 @@
-"""Sound for the Mirror Maze reel (ad107): synthesized cartoon SFX timed to render_mirror_maze.py, plus music.
+"""Sound for the Halloween reels: synthesized cartoon SFX timed to each render script, the game's own sounds under
+the gameplay, plus music.
 
-    python3 make_audio.py ad107-mirror-maze.mp4 [music.mp3 [start_seconds]]
-Writes ad107-mirror-maze-sound.mp4 (video stream copied, AAC audio, loudness-normalised for social).
-Timings below follow the scene times in render_mirror_maze.py; gameplay pours were read off the ad105 footage.
+    python3 make_audio.py <reel>.mp4 ad105-tue-trick-or-treat-spooky-dark.mp4 [music.mp3 [start_seconds]]
+Writes <reel>-sound.mp4 (video stream copied, AAC audio, loudness-normalised for social). The cue list is picked from
+the video's name (mirror-maze or last-candy). Both reels use ad105's gameplay, whose audio from 6 s on is only game
+sounds (pours, combo), so that audio is laid in under our gameplay at the bubble transition, in sync with the footage.
 """
 import os
 import subprocess
@@ -11,7 +13,8 @@ import wave
 
 import numpy as np
 
-TR, TD = 11.6, 0.85   # bubble transition start + length, as in render_mirror_maze.py
+TD = 0.85             # bubble transition length (render_mirror_maze.TD)
+GP_IN, GAME_END = 6.0, 10.0   # ad105: gameplay starts at 6.0 s; its end-card music starts ~10.0 s
 
 SR = 44100
 rng = np.random.default_rng(4)
@@ -87,20 +90,34 @@ def squish():
     return tone((320, 140), 0.3, 0.12, ((1, 1.0), (2, 0.3))) * 0.4
 
 
-def glug():
-    n = int(0.45 * SR)
-    t = np.arange(n) / SR
-    am = 0.5 + 0.5 * np.sin(2 * np.pi * 16 * t)
-    f = 170 + 60 * np.sin(2 * np.pi * 5 * t)
-    g = np.sin(2 * np.pi * np.cumsum(f) / SR) * am * env(n, 0.02, 0.25) * 0.35
-    for i in range(4):
-        mix_into(g, blip(500 + 150 * i) * 0.6, int((0.05 + i * 0.08) * SR))
-    return g
+def whistle(notes, each=0.22, vol=0.22):
+    """Innocent little whistle: sine with vibrato and a breath of noise."""
+    out = np.zeros(int((each * len(notes) + 0.2) * SR))
+    for i, f in enumerate(notes):
+        n = int(each * 0.95 * SR)
+        t = np.arange(n) / SR
+        fr = f * (1 + 0.012 * np.sin(2 * np.pi * 6 * t))
+        x = np.sin(2 * np.pi * np.cumsum(fr) / SR) + 0.03 * rng.standard_normal(n)
+        x *= np.clip(t / 0.03, 0, 1) * np.clip((each * 0.95 - t) / 0.04, 0, 1)
+        mix_into(out, x * vol, int(i * each * SR))
+    return out
 
 
-def ding(step_n):
-    f = 880 * 2 ** (step_n / 12)
-    return tone((f, f), 0.4, 0.14, ((1, 1.0), (2, 0.35), (3, 0.1))) * 0.28
+def dun(f, dur, vol=0.4):
+    """Brassy 'dun' for the dun-dun-DUN reveal."""
+    return tone((f, f * 0.98), dur, dur * 0.6, ((1, 1.0), (2, 0.6), (3, 0.4), (4, 0.25), (5, 0.15))) * vol
+
+
+def thump():
+    """Spotlight switching on."""
+    return tone((90, 45), 0.25, 0.08) * 0.6 + np.concatenate([noise(0.03, 2) * 0.2, np.zeros(int(0.22 * SR))])[: int(0.25 * SR)]
+
+
+def laugh(n=6):
+    out = np.zeros(int((0.13 * n + 0.2) * SR))
+    for i in range(n):
+        mix_into(out, tone((560 - i * 30, 480 - i * 30), 0.11, 0.05, ((1, 1.0), (2, 0.5), (3, 0.2))) * 0.3, int(i * 0.13 * SR))
+    return out
 
 
 def mix_into(out, clip, at):
@@ -111,7 +128,61 @@ def mix_into(out, clip, at):
     return out
 
 
-def build(total):
+def transition_and_card(put, tr):
+    """Bubble transition rush; the gameplay itself gets ad105's real game sounds (see main); end-card chime."""
+    put(whoosh(1.0) * 0.8, tr - 0.05)
+    for i in range(36):
+        put(blip(rng.uniform(350, 1100)), tr + rng.uniform(0, 0.6))
+    put(chime((1318.5, 1568.0, 2093.0), 0.09, 0.25), tr + TD + 3.8)
+
+
+def zoom_fizz(put, z0):
+    """Whoosh into the liquid + fizz."""
+    put(whoosh(0.8), z0 - 0.05)
+    fizz = np.diff(noise(0.5), prepend=0) * 0.04
+    crack = (rng.random(len(fizz)) < 0.0025) * rng.uniform(-0.5, 0.5, len(fizz))
+    put((fizz + crack) * np.sin(np.linspace(0, np.pi, len(fizz))) ** 0.5, z0 + 0.4)
+    for i in range(4):
+        put(blip(rng.uniform(300, 700)), z0 + 0.5 + i * 0.09)
+
+
+def build_last_candy(total, z0=11.6):
+    """Cues for render_last_candy.py."""
+    tr = z0 + 0.45
+    out = np.zeros(int(total * SR) + SR)
+
+    def put(clip, t):
+        mix_into(out, clip, int(t * SR))
+
+    for i in range(4):                       # skeleton walks in
+        put(step(), 0.3 + i * 0.278)
+    put(stinger(), 1.65)                     # the bowl is empty!
+    put(boing(), 1.72)
+    for i in range(4):                       # cat strolls in...
+        put(step(0.9), 2.7 + i * 0.3125)
+    put(whistle([784, 988, 880, 784, 659, 784, 880]), 2.85)   # ...whistling innocently
+    put(thump(), 4.4)                        # spotlight on the skeleton
+    put(pop(1100), 4.6)                      # "Not me!"
+    for i in range(6):                       # head shake
+        put(tone((300, 260), 0.07, 0.03) * 0.25, 4.75 + i * 0.11)
+    put(thump(), 6.4)                        # spotlight on the cat
+    put(pop(1100), 6.65)                     # "Wasn't me!"
+    put(whistle([659, 784, 988, 784, 659, 523, 659, 784]), 6.8)
+    put(dun(110, 0.22), 8.5)                 # dun... dun... DUN: the wrapper
+    put(dun(104, 0.22), 8.8)
+    put(dun(98, 0.9, 0.5), 9.1)
+    put(chime((1568.0, 2093.0, 2637.0), 0.06, 0.18), 9.0)    # wrapper sparkle
+    put(stinger(), 9.98)                     # CAUGHT!
+    put(boing(), 10.02)
+    put(pop(520) * 1.4, 10.72)               # cork!
+    put(chime((1318.5, 1568.0, 2093.0), 0.05, 0.2), 10.78)
+    put(laugh(), 10.85)                      # skeleton laughs
+    zoom_fizz(put, z0)
+    transition_and_card(put, tr)
+    return out[: int(total * SR)]
+
+
+def build_mirror_maze(total, tr=11.6):
     out = np.zeros(int(total * SR) + SR)
 
     def put(clip, t):
@@ -145,29 +216,19 @@ def build(total):
     for n in range(5):
         put(pop(1400 + n * 120) * 0.5, 10.1 + n * 0.19)
     # S4 zoom into the liquid + fizz
-    put(whoosh(0.8), 11.15)
-    fizz = np.diff(noise(0.5), prepend=0) * 0.04
-    crack = (rng.random(len(fizz)) < 0.0025) * rng.uniform(-0.5, 0.5, len(fizz))
-    put((fizz + crack) * np.sin(np.linspace(0, np.pi, len(fizz))) ** 0.5, 11.6)
-    for i in range(4):
-        put(blip(rng.uniform(300, 700)), 11.7 + i * 0.09)
-    # S5 bubble transition: a rush of rising bubble blips
-    put(whoosh(1.0) * 0.8, TR - 0.05)
-    for i in range(36):
-        put(blip(rng.uniform(350, 1100)), TR + rng.uniform(0, 0.6))
-    # gameplay (TR+TD onwards = ad105 6.85-10.6; pours seen at ad105 7.2, 7.6, 8.2, 8.8, 9.4, 9.85): pour + combo ding on each pour
-    for n, tp in enumerate([0.35, 0.75, 1.35, 1.95, 2.55, 3.0]):
-        put(glug(), TR + TD + tp)
-        put(ding(n), TR + TD + tp + 0.35)
-    # end card
-    put(chime((1318.5, 1568.0, 2093.0), 0.09, 0.25), TR + TD + 3.8)
+    zoom_fizz(put, 11.2)
+    transition_and_card(put, tr)
     return out[: int(total * SR)]
 
 
+REELS = {"mirror-maze": (build_mirror_maze, 11.6), "last-candy": (build_last_candy, 12.05)}   # cues, bubble transition start
+
+
 def main():
-    video = sys.argv[1]
-    music = sys.argv[2] if len(sys.argv) > 2 else None
-    start = float(sys.argv[3]) if len(sys.argv) > 3 else 0.0   # where in the music track the video begins
+    video, game = sys.argv[1], sys.argv[2]
+    music = sys.argv[3] if len(sys.argv) > 3 else None
+    start = float(sys.argv[4]) if len(sys.argv) > 4 else 0.0   # where in the music track the video begins
+    build, tr = next(v for name, v in REELS.items() if name in os.path.basename(video))
     total = float(subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", video]))
     sfx = build(total)
     sfx = sfx / max(1e-6, np.abs(sfx).max()) * 0.9
@@ -178,13 +239,18 @@ def main():
         w.setframerate(SR)
         w.writeframes((sfx * 32767).astype(np.int16).tobytes())
     out = os.path.splitext(video)[0] + "-sound.mp4"
-    cmd = ["ffmpeg", "-y", "-v", "error", "-i", video, "-i", tmp]
+    # the game's own sounds: ad105 audio from GP_IN lands at the bubble transition, like its picture
+    delay = int(tr * 1000)
+    gfc = (f"[2:a]atrim={GP_IN}:{GAME_END},asetpts=PTS-STARTPTS,aformat=channel_layouts=stereo,volume=10,"
+           f"afade=t=out:st={GAME_END - GP_IN - 0.3}:d=0.3,adelay={delay}|{delay},apad[g];"
+           f"[1:a]aformat=channel_layouts=stereo[s];")
+    cmd = ["ffmpeg", "-y", "-v", "error", "-i", video, "-i", tmp, "-i", game]
     if music:
         cmd += ["-i", music]
-        fc = (f"[2:a]atrim={start}:{start + total},asetpts=PTS-STARTPTS,volume=0.45,afade=t=in:d=0.03,afade=t=out:st={total - 1.5}:d=1.5[m];"
-              f"[1:a]aformat=channel_layouts=stereo[s];[m][s]amix=inputs=2:normalize=0,loudnorm=I=-14:TP=-1.5[a]")
+        fc = gfc + (f"[3:a]atrim={start}:{start + total},asetpts=PTS-STARTPTS,volume=0.45,afade=t=in:d=0.03,"
+                    f"afade=t=out:st={total - 1.5}:d=1.5[m];[m][s][g]amix=inputs=3:normalize=0:duration=first,loudnorm=I=-14:TP=-1.5[a]")
     else:
-        fc = "[1:a]aformat=channel_layouts=stereo,loudnorm=I=-16:TP=-1.5[a]"
+        fc = gfc + "[s][g]amix=inputs=2:normalize=0:duration=first,loudnorm=I=-16:TP=-1.5[a]"
     cmd += ["-filter_complex", fc, "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
             "-ar", "44100", "-shortest", "-movflags", "+faststart", out]
     subprocess.run(cmd, check=True)

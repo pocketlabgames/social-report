@@ -76,10 +76,11 @@ def font(size):
 
 
 # ---------------------------------------------------------------- characters
-def tube(costume, t, mood="calm", walk=0.0, look=0.0, blink=False):
+def tube(costume, t, mood="calm", walk=0.0, look=0.0, blink=False, wrapper=False, blush=False):
     """One beaker character on its own RGBA layer. Returns (layer, foot_x, foot_y) in layer pixels.
 
-    costume: "skeleton" (purple) or "cat" (green). mood: calm | scared | happy.
+    costume: "skeleton" (purple) or "cat" (green). mood: calm | scared | happy | whistle (cat: eyes shut, "o" mouth).
+    wrapper: a candy wrapper stuck near the cat's tail tip. blush: pink cheeks.
     walk: walk-cycle phase in cycles (0 = standing). look: -1..1 pupil direction.
     """
     lw, lh = k(420), k(560)
@@ -111,6 +112,13 @@ def tube(costume, t, mood="calm", walk=0.0, look=0.0, blink=False):
             pts.append((px, py))
         d.line(pts, fill=INK + (255,), width=k(14 if mood == "scared" else 11), joint="curve")
         d.ellipse([pts[-1][0] - k(8), pts[-1][1] - k(8), pts[-1][0] + k(8), pts[-1][1] + k(8)], fill=INK + (255,))
+        if wrapper:   # crinkly pink-and-yellow candy wrapper stuck near the tip
+            wx, wy = pts[-5]
+            for sgn in (-1, 1):
+                d.polygon([(wx + sgn * k(14), wy), (wx + sgn * k(34), wy - k(14)), (wx + sgn * k(34), wy + k(14))], fill=(255, 214, 60, 255))
+            d.ellipse([wx - k(18), wy - k(13), wx + k(18), wy + k(13)], fill=(255, 92, 178, 255))
+            for i in (-1, 0, 1):
+                d.line([(wx + i * k(9) - k(4), wy - k(12)), (wx + i * k(9) + k(4), wy + k(12))], fill=(255, 255, 255, 220), width=k(3))
     # glass body + liquid
     body = Image.new("L", (lw, lh), 0)
     ImageDraw.Draw(body).rounded_rectangle([x0, y0, x1, yb], tw // 2, fill=255)
@@ -186,7 +194,7 @@ def tube(costume, t, mood="calm", walk=0.0, look=0.0, blink=False):
             ex = cx + sgn * k(22)
             if blink:
                 d.line([(ex - k(10), fy), (ex + k(10), fy)], fill=INK + (255,), width=k(5))
-            elif mood == "happy":
+            elif mood in ("happy", "whistle"):
                 d.arc([ex - k(11), fy - k(8), ex + k(11), fy + k(12)], 200, 340, fill=INK + (255,), width=k(5))
             else:
                 er = k(14) if mood == "scared" else k(11)
@@ -197,7 +205,12 @@ def tube(costume, t, mood="calm", walk=0.0, look=0.0, blink=False):
                 else:
                     d.ellipse([ex - k(4) + k(look * 3), fy - k(8), ex + k(2) + k(look * 3), fy - k(2)], fill=WHITE + (255,))
         d.polygon([(cx - k(6), fy + k(14)), (cx + k(6), fy + k(14)), (cx, fy + k(21))], fill=(255, 130, 170, 255))
-        if mood == "scared":
+        if blush:
+            for sgn in (-1, 1):
+                d.ellipse([cx + sgn * k(36) - k(12), fy + k(6), cx + sgn * k(36) + k(12), fy + k(18)], fill=(255, 110, 150, 200))
+        if mood == "whistle":
+            d.ellipse([cx - k(6), fy + k(24), cx + k(6), fy + k(36)], fill=INK + (255,))
+        elif mood == "scared":
             d.line([(cx - k(12), fy + k(32)), (cx - k(6), fy + k(28)), (cx, fy + k(32)), (cx + k(6), fy + k(28)), (cx + k(12), fy + k(32))],
                    fill=INK + (255,), width=k(3))
         else:
@@ -548,15 +561,16 @@ def fizz_bubble(d, x, y, r):
     d.ellipse([k(x - r * 0.4 - g), k(y - r * 0.4 - g), k(x - r * 0.4 + g), k(y - r * 0.4 + g)], fill=(255, 255, 255, 245))
 
 
-def fizz_frame(t, zoom_src):
-    """11.2 s to TR: fast push into the cat's tube, then the liquid up close with streams of fizz bubbles rising."""
-    p = seg(t, 11.2, 11.65)
+def fizz_frame(t, zoom_src, z0=11.2, tr=TR, focus=None):
+    """z0 to tr: fast push into the cat's tube, then the liquid up close with streams of fizz bubbles rising.
+    focus: the cat's liquid in frame coords (defaults to its spot in the mirror-maze hug)."""
+    p = seg(t, z0, z0 + 0.45)
     z = 1 + 9 * p ** 2.2                          # accelerating push, like the zoom-loop ad
-    fx, fy = 540 + 80 * CS + 6, FLOOR - 175 * CS   # the cat's liquid, in frame coords
+    fx, fy = focus or (540 + 80 * CS + 6, FLOOR - 175 * CS)
     cw, ch = W / z, H / z
     x0 = clamp(fx - cw / 2, 0, W - cw)
     y0 = clamp(fy - ch / 2, 0, H - ch)
-    m = ease(seg(t, 11.5, 11.7))
+    m = ease(seg(t, z0 + 0.3, z0 + 0.5))
     if m >= 1:
         zoomed = None
     else:
@@ -566,7 +580,7 @@ def fizz_frame(t, zoom_src):
     macro = liquid_bg().copy()
     d = ImageDraw.Draw(macro)
     rnd = random.Random(5)
-    tt = t - 11.2
+    tt = t - z0
     for sx in [150, 330, 420, 560, 640, 780, 860, 990] + [rnd.uniform(60, 1020) for _ in range(5)]:
         sp = rnd.uniform(520, 760)
         every = rnd.uniform(0.16, 0.3)
@@ -580,7 +594,7 @@ def fizz_frame(t, zoom_src):
             x = sx + 7 * math.sin(age * 9 + n) + rnd.uniform(-10, 10)
             fizz_bubble(d, x, y, r)
     # keep pushing in slowly while we sit in the liquid
-    zm = 1 + 0.1 * ease(seg(t, 11.5, TR + 0.4))
+    zm = 1 + 0.1 * ease(seg(t, z0 + 0.3, tr + 0.4))
     if zm > 1:
         cw2, ch2 = k(W) / zm, k(H) / zm
         macro = macro.crop((int((k(W) - cw2) / 2), int((k(H) - ch2) / 2), int((k(W) + cw2) / 2), int((k(H) + ch2) / 2))).resize((k(W), k(H)), Image.BICUBIC)
@@ -600,16 +614,16 @@ def game_bubble(d, x, y, r, c, a):
     d.arc([k(x - r * 0.72), k(y - r * 0.72), k(x + r * 0.72), k(y + r * 0.72)], 30, 150, fill=(255, 255, 255, int(110 * a)), width=k(max(2, r * 0.1)))
 
 
-def bubble_reveal(t, base, gameplay):
-    """TR to TR+TD s: the game's bubble transition (no level number). Bubbles flood up from the bottom over the
+def bubble_reveal(t, base, gameplay, tr=TR):
+    """tr to tr+TD s: the game's bubble transition (no level number). Bubbles flood up from the bottom over the
     liquid, the gameplay fades in underneath, then the bubbles clear out the top."""
     gp = gameplay.convert("RGBA").resize((k(W), k(H)), Image.LANCZOS)
-    out = Image.blend(base, gp, ease(seg(t, TR + 0.2, TR + 0.55)))
+    out = Image.blend(base, gp, ease(seg(t, tr + 0.2, tr + 0.55)))
     layer = Image.new("RGBA", out.size, (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
     rnd = random.Random(21)
     for n in range(260):
-        start = TR + rnd.uniform(0, 0.3)
+        start = tr + rnd.uniform(0, 0.3)
         r = rnd.choice([rnd.uniform(14, 34), rnd.uniform(30, 60), rnd.uniform(55, 110)])
         speed = rnd.uniform(2600, 3600) * (0.8 + r / 300)
         x = rnd.uniform(-40, W + 40)
