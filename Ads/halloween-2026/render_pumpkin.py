@@ -1,9 +1,9 @@
-"""Beaker Lab Halloween reel "Pumpkin carving" (Halloween day post): 1080x1920, 60 fps, ~16.5 s.
+"""Beaker Lab Halloween reel "Pumpkin carving" (Halloween day post): 1080x1920, 60 fps, ~14.5 s.
 
 Story (Guy, Oct 30): pumpkin carving night. The purple skeleton beaker and the green cat beaker each carve a
 jack-o'-lantern, spin them around to show off the glowing faces (a classic toothy grin and a cute smiley one), cheer
 "Happy Halloween!", the candles flicker out, and we zoom into the skeleton's purple liquid in the dark; the game's
-bubble transition, ad105 gameplay with combo punches, ad105 end card. (~14.5 s after the close-up cut)
+bubble transition, ad105 gameplay with combo punches, ad105 end card.
 
 Reuses the room and gameplay helpers from render_last_candy.py:
     python3 render_pumpkin.py /path/to/ad105-tue-trick-or-treat-spooky-dark.mp4 [--stills[-only]]
