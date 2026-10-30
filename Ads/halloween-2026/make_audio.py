@@ -90,19 +90,6 @@ def squish():
     return tone((320, 140), 0.3, 0.12, ((1, 1.0), (2, 0.3))) * 0.4
 
 
-def whistle(notes, each=0.22, vol=0.22):
-    """Innocent little whistle: sine with vibrato and a breath of noise."""
-    out = np.zeros(int((each * len(notes) + 0.2) * SR))
-    for i, f in enumerate(notes):
-        n = int(each * 0.95 * SR)
-        t = np.arange(n) / SR
-        fr = f * (1 + 0.012 * np.sin(2 * np.pi * 6 * t))
-        x = np.sin(2 * np.pi * np.cumsum(fr) / SR) + 0.03 * rng.standard_normal(n)
-        x *= np.clip(t / 0.03, 0, 1) * np.clip((each * 0.95 - t) / 0.04, 0, 1)
-        mix_into(out, x * vol, int(i * each * SR))
-    return out
-
-
 def dun(f, dur, vol=0.4):
     """Brassy 'dun' for the dun-dun-DUN reveal."""
     return tone((f, f * 0.98), dur, dur * 0.6, ((1, 1.0), (2, 0.6), (3, 0.4), (4, 0.25), (5, 0.15))) * vol
@@ -158,12 +145,10 @@ def build_last_candy(total, z0=9.6):
         put(step(), 0.3 + i * 0.278)
     put(stinger(), 1.65)                     # the bowl is empty!
     put(boing(), 1.72)
-    for i in range(4):                       # cat strolls in...
+    for i in range(4):                       # cat strolls in (no whistle sound: Guy, Oct 30)
         put(step(0.9), 2.7 + i * 0.3125)
-    put(whistle([784, 988, 880, 784, 659, 784, 880]), 2.85)   # ...whistling innocently
     put(thump(), 4.4)                        # spotlight on the cat
     put(pop(1100), 4.65)                     # "Wasn't me!"
-    put(whistle([659, 784, 988, 784, 659, 523, 659, 784]), 4.8)
     put(dun(110, 0.22), 6.5)                 # dun... dun... DUN: the wrapper
     put(dun(104, 0.22), 6.8)
     put(dun(98, 0.9, 0.5), 7.1)
