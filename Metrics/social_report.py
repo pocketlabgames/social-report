@@ -1391,7 +1391,7 @@ function renderG() {{   // Oct 26: Reach / Engagement / Retention cards, best ce
     if (!tot) return false;
     const share = tr.dataset.g === 'Reach' && !/^Avg|^Top/.test(d.label), mx = Math.max(...vals.filter((v, i) => ok[i]));
     const ord = sites.map((c, i) => i).filter(i => ok[i]).sort((a, b) => vals[b] - vals[a]);   // Guy, Oct 27: most to least
-    let h = `<div class="ctt-h">${{esc(d.label)}}</div>`;
+    let h = `<div class="ctt-h">${{esc(d.label)}}${{d.label === 'Top post views' ? ' <small>(change vs 24 h ago)</small>' : ''}}</div>`;
     if (share) h += '<div class="rtt-bar">' + ord.map(i => vals[i] ? `<i style="width:${{vals[i] / tot * 100}}%;background:${{PC[sites[i].id]}}"></i>` : '').join('') + '</div>';
     ord.forEach(i => {{ const c = sites[i], v = parse(d.cells[c.id]).v, tt = (String(d.cells[c.id] ?? '').match(/data-t=['"]([^'"]*)['"]/) || [])[1];
       h += `<div class="ctt-r ${{share ? 'rs' : 'rb'}}"><i style="background:${{PC[c.id]}}"></i><span class="rtt-n">${{esc(cid(c.id).label)}}</span>` + (share ? `<b>${{esc(v)}}</b><small>${{Math.round(vals[i] / tot * 100)}}%</small>` : `<span class="rtt-m"><em style="width:${{mx ? vals[i] / mx * 100 : 0}}%;background:${{PC[c.id]}}"></em></span><b>${{esc(v)}}</b>`) + '</div>'
@@ -1619,10 +1619,14 @@ def main():
     if complete and POSTS:
         phist.append({"checked_at": now.strftime("%Y-%m-%d %H:%M"), "posts": {r["id"]: r["views"] for r in POSTS}})
         json.dump(phist, open(POSTS_HIST, "w"))
+    base = next((h for h in before if day and h["checked_at"] == day["since"].strftime("%Y-%m-%d %H:%M")), None)
+    for r in rows:   # Guy, Oct 30: Top post views change = vs the check closest to 24 h ago, not the last refresh
+        if r["label"] == "Top post views":
+            r["olds"] = {p: ((base or {}).get(p) or {}).get("top_views") for p in PLAT}
     week_html = week_box(snap, before, POSTS, phist[:-1] if (complete and POSTS) else phist, INSTALLS, now)
     write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist, stale, day, old, posts_html=posts_html,
                week_html=week_html, installs=dict(INSTALLS) or None, today=today,
-               day_base=next((h for h in before if day and h["checked_at"] == day["since"].strftime("%Y-%m-%d %H:%M")), None),
+               day_base=base,
                money=money_bits(dict(MONEY), now), money_daily=dict(MONEY), est=dl_estimate(dict(INSTALLS), dict(RCNEW), now))
     if not SITE:
         write_xlsx(stamp, rows, labels, series)
