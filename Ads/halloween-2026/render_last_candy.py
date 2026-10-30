@@ -252,7 +252,9 @@ def story_frame(t):
 
 
 GP_FPS = 30                                 # ad105 gameplay frames (source rate)
-GP_END = TR + mm.GP_OUT - mm.GP_IN          # gameplay is rendered through Python too (for the combo punches)
+GP_IN = 6.45                                # ad105 gameplay start: its non-combo pour happens under the bubbles, so the
+                                            # first pour you see is the x6 combo, punching as the bubbles clear (Guy, Oct 30)
+GP_END = TR + mm.GP_OUT - GP_IN             # gameplay is rendered through Python too (for the combo punches)
 PUNCHES = [7.4, 8.0, 8.6, 9.8]              # ad105 times where the combo goes up (x6, x7, x8, x9)
 
 
@@ -260,7 +262,7 @@ def punch(img, t):
     """10pm-post combo 'punch': on each combo bump the frame jumps ~12% bigger and eases back while soft white rays
     burst from the centre and fade (matches test-10pm-punch-deepsea)."""
     for a in PUNCHES:
-        dt = t - (TR + a - mm.GP_IN)
+        dt = t - (TR + a - GP_IN)
         if not (0 <= dt < 0.45):
             continue
         z = 1 + 0.12 * seg(dt, 0, 0.05) * (1 - ease(seg(dt, 0.05, 0.42)))
@@ -313,7 +315,7 @@ def _render(i):
 def main():
     src = [a for a in sys.argv[1:] if not a.startswith("--")][0]
     tmp = tempfile.mkdtemp()
-    subprocess.run(["ffmpeg", "-v", "error", "-ss", str(mm.GP_IN), "-i", src, "-t", str(mm.GP_OUT - mm.GP_IN),
+    subprocess.run(["ffmpeg", "-v", "error", "-ss", str(GP_IN), "-i", src, "-t", str(mm.GP_OUT - GP_IN),
                     "-vf", f"fps={GP_FPS}", "-q:v", "2", os.path.join(tmp, "gp%03d.jpg")], check=True)
     gp = sorted(os.path.join(tmp, f) for f in os.listdir(tmp) if f.startswith("gp"))
     if any(a.startswith("--stills") for a in sys.argv):

@@ -14,7 +14,7 @@ import wave
 import numpy as np
 
 TD = 0.85             # bubble transition length (render_mirror_maze.TD)
-GP_IN, GAME_END = 6.0, 10.0   # ad105: gameplay starts at 6.0 s; its end-card music starts ~10.0 s
+GAME_END = 10.0       # ad105's end-card music starts ~10.0 s; its gameplay audio before that is only game sounds
 
 SR = 44100
 rng = np.random.default_rng(4)
@@ -115,12 +115,12 @@ def mix_into(out, clip, at):
     return out
 
 
-def transition_and_card(put, tr):
+def transition_and_card(put, tr, gp_in=6.0):
     """Bubble transition rush; the gameplay itself gets ad105's real game sounds (see main); end-card chime."""
     put(whoosh(1.0) * 0.8, tr - 0.05)
     for i in range(36):
         put(blip(rng.uniform(350, 1100)), tr + rng.uniform(0, 0.6))
-    put(chime((1318.5, 1568.0, 2093.0), 0.09, 0.25), tr + TD + 3.8)
+    put(chime((1318.5, 1568.0, 2093.0), 0.09, 0.25), tr + 10.65 - gp_in)   # ad105 gameplay ends at 10.6 s
 
 
 def zoom_fizz(put, z0):
@@ -159,7 +159,7 @@ def build_last_candy(total, z0=9.6):
     put(chime((1318.5, 1568.0, 2093.0), 0.05, 0.2), 8.78)
     put(laugh(), 8.85)                       # skeleton laughs
     zoom_fizz(put, z0)
-    transition_and_card(put, tr)
+    transition_and_card(put, tr, 6.45)
     return out[: int(total * SR)]
 
 
@@ -202,7 +202,8 @@ def build_mirror_maze(total, tr=11.6):
     return out[: int(total * SR)]
 
 
-REELS = {"mirror-maze": (build_mirror_maze, 11.6), "last-candy": (build_last_candy, 10.05)}   # cues, bubble transition start
+# cues, bubble transition start, where in ad105 the gameplay (and its game sounds) starts
+REELS = {"mirror-maze": (build_mirror_maze, 11.6, 6.0), "last-candy": (build_last_candy, 10.05, 6.45)}
 
 
 def main():
@@ -211,7 +212,7 @@ def main():
     start = float(sys.argv[4]) if len(sys.argv) > 4 else 0.0   # where in the music track the video begins;
     # negative = the music starts that many seconds into the video (e.g. to land a track's ending on the end card)
     tempo = float(sys.argv[5]) if len(sys.argv) > 5 else 1.0   # <1 slows the music (pitch kept) to move its ending later
-    build, tr = next(v for name, v in REELS.items() if name in os.path.basename(video))
+    build, tr, gp_in = next(v for name, v in REELS.items() if name in os.path.basename(video))
     total = float(subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", video]))
     sfx = build(total)
     sfx = sfx / max(1e-6, np.abs(sfx).max()) * 0.9
@@ -222,10 +223,10 @@ def main():
         w.setframerate(SR)
         w.writeframes((sfx * 32767).astype(np.int16).tobytes())
     out = os.path.splitext(video)[0] + "-sound.mp4"
-    # the game's own sounds: ad105 audio from GP_IN lands at the bubble transition, like its picture
+    # the game's own sounds: ad105 audio from gp_in lands at the bubble transition, like its picture
     delay = int(tr * 1000)
-    gfc = (f"[2:a]atrim={GP_IN}:{GAME_END},asetpts=PTS-STARTPTS,aformat=channel_layouts=stereo,volume=10,"
-           f"afade=t=out:st={GAME_END - GP_IN - 0.3}:d=0.3,adelay={delay}|{delay},apad[g];"
+    gfc = (f"[2:a]atrim={gp_in}:{GAME_END},asetpts=PTS-STARTPTS,aformat=channel_layouts=stereo,volume=10,"
+           f"afade=t=out:st={GAME_END - gp_in - 0.3}:d=0.3,adelay={delay}|{delay},apad[g];"
            f"[1:a]aformat=channel_layouts=stereo[s];")
     cmd = ["ffmpeg", "-y", "-v", "error", "-i", video, "-i", tmp, "-i", game]
     if music:
