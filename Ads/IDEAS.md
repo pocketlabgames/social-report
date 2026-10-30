@@ -12,9 +12,10 @@ bubble transition (no level number), gameplay with the game's own sounds, end ca
 
 ## Halloween day
 
-- **Pumpkin carving** (ad109, provisional; Sat Oct 31, 2026, 5 PM ET): both carve pumpkins, turn them around at the
-  same time: the skeleton carved a cat face, the cat carved a skull. They laugh ("great minds carve alike"), the
-  candles flicker out, zoom into the purple liquid in the dark. Script: `halloween-2026/render_pumpkin.py`.
+- **Pumpkin carving** (ad109, provisional; Sat Oct 31, 2026, 5 PM ET): both carve jack-o'-lanterns (a classic toothy
+  grin and a cute smiley one), spin them around as the candles light, cheer "Happy Halloween!", the candles flicker
+  out, zoom into the purple liquid in the dark. Script: `halloween-2026/render_pumpkin.py`.
+  (Guy dropped the "carved each other's costume" twist, Oct 30.)
 
 ## Sunday posting
 

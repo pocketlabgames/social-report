@@ -1,9 +1,9 @@
 """Beaker Lab Halloween reel "Pumpkin carving" (Halloween day post): 1080x1920, 60 fps, ~16.5 s.
 
 Story (Guy, Oct 30): pumpkin carving night. The purple skeleton beaker and the green cat beaker each carve a
-pumpkin, then turn them around at the same moment: the skeleton carved a cat face, the cat carved a skull. They
-laugh ("great minds carve alike"), the candles flicker out, and we zoom into the skeleton's purple liquid in the
-dark; the game's bubble transition, ad105 gameplay with combo punches, ad105 end card.
+jack-o'-lantern, spin them around to show off the glowing faces (a classic toothy grin and a cute smiley one), cheer
+"Happy Halloween!", the candles flicker out, and we zoom into the skeleton's purple liquid in the dark; the game's
+bubble transition, ad105 gameplay with combo punches, ad105 end card.
 
 Reuses the room, camera and gameplay helpers from render_last_candy.py:
     python3 render_pumpkin.py /path/to/ad105-tue-trick-or-treat-spooky-dark.mp4 [--stills[-only]]
@@ -21,7 +21,7 @@ from PIL import Image, ImageDraw, ImageFilter
 import render_last_candy as lc
 import render_mirror_maze as mm
 from render_last_candy import FL, FPS, GP_FPS, WIDE, cam_at, camera, punch, room, stars
-from render_mirror_maze import (CS, H, W, bubble_reveal, caption, ease, exclaim, fizz_frame, k, mix, place, seg,
+from render_mirror_maze import (CS, H, W, bubble_reveal, caption, ease, fizz_frame, k, mix, place, seg,
                                 speech, tube)
 
 OUT = os.path.join(mm.HERE, "pumpkin.mp4")
@@ -66,22 +66,19 @@ def pumpkin(img, x, face, spin, glow, shake=0.0):
     c = mix(CUT, GLOW, glow)
     def P(px, py):                               # face coords (relative to pumpkin centre) -> canvas
         return k(x + px * 1.15 * wv), k(TABLE - h / 2 + py * 1.15)
-    if face == "cat":
+    if face == "classic":                        # triangle eyes and nose, toothy zigzag grin
         for sgn in (-1, 1):
-            d.polygon([P(sgn * 18, -22), P(sgn * 50, -30), P(sgn * 44, -6), P(sgn * 22, -6)], fill=c)       # eyes
-            for n in (-1, 0, 1):                                                                            # whiskers
-                d.line([P(sgn * 24, 20 + n * 9), P(sgn * 70, 14 + n * 14)], fill=c, width=k(4))
-            d.polygon([P(sgn * 30, -h / 2.3 + 8), P(sgn * 50, -h / 2.3 + 22), P(sgn * 18, -h / 2.3 + 22)], fill=c)  # ears
-        d.polygon([P(-9, 6), P(9, 6), P(0, 16)], fill=c)                                                    # nose
-        d.polygon([P(-22, 24), P(-11, 34), P(0, 26), P(11, 34), P(22, 24), P(11, 40), P(0, 33), P(-11, 40)], fill=c)
-    else:   # skull
+            d.polygon([P(sgn * 14, -6), P(sgn * 50, -6), P(sgn * 32, -36)], fill=c)
+        d.polygon([P(-10, 14), P(10, 14), P(0, 0)], fill=c)
+        grin = [P(-52, 22), P(-36, 30), P(-26, 24), P(-14, 34), P(0, 26), P(14, 34), P(26, 24), P(36, 30), P(52, 22),
+                P(40, 46), P(20, 56), P(0, 52), P(-20, 56), P(-40, 46)]
+        d.polygon(grin, fill=c)
+    else:                                        # cute: round eyes, little nose, big smile with one tooth
         for sgn in (-1, 1):
-            ex, ey = sgn * 30, -14
-            d.ellipse([*P(ex - 20, ey - 20), *P(ex + 20, ey + 20)], fill=c)
-        d.polygon([P(-9, 18), P(9, 18), P(0, 4)], fill=c)
-        d.rounded_rectangle([*P(-40, 30), *P(40, 54)], k(6), fill=c)
-        for n in range(-3, 4):
-            d.line([P(n * 11, 28), P(n * 11, 56)], fill=ORANGE, width=k(4))
+            d.ellipse([*P(sgn * 30 - 15, -34), *P(sgn * 30 + 15, -4)], fill=c)
+        d.ellipse([*P(-7, 4), *P(7, 14)], fill=c)
+        d.chord([*P(-46, 2), *P(46, 58)], 0, 180, fill=c)
+        d.rectangle([*P(8, 30), *P(20, 42)], fill=ORANGE)
 
 
 def chunks(img, t):
@@ -108,16 +105,16 @@ def story_frame(t):
     img = ROOM.copy()
     blink = int(t * 10) % 37 == 0
     carving = 0.4 <= t < 2.4
-    mood = "happy" if (2.4 <= t < 6.8 or t >= 7.2) else "calm"
-    if 6.8 <= t < 7.2:
-        mood = "scared"                                       # wait... what?!
-    laugh = 7.2 <= t < 8.6
-    jump = -60 * math.sin(math.pi * seg(t, 6.8, 7.05)) if 6.8 <= t < 7.05 else 0
-    bob = -12 * abs(math.sin(t * 20)) if laugh else 0
-    lean = 8 * math.sin(t * 16) if carving else 0
+    mood = "happy" if t >= 2.4 else "calm"
+    cheer = 6.9 <= t < 8.5
+    # two happy hops for "Happy Halloween!", then a gentle sway
+    jump = -70 * abs(math.sin(math.pi * seg(t, 6.9, 7.7) * 2)) if 6.9 <= t < 7.7 else 0
+    bob = -6 * math.sin(t * 6) if cheer and t >= 7.7 else 0
+    # lean in to carve (eased in/out), with a small working wiggle
+    lean = 7 * ease(seg(t, 0.3, 0.6)) * (1 - ease(seg(t, 2.3, 2.6))) + (1.5 * math.sin(t * 18) if carving else 0)
     sk, sfx, sfy = tube("skeleton", t, mood, look=1, blink=blink and mood == "calm")
     ct, cfx, cfy = tube("cat", t, mood, look=-1, blink=blink and mood == "calm")
-    sq = 1 + 0.05 * math.sin(t * 40) if laugh else 1.0
+    sq = 1 + 0.06 * math.sin(math.pi * seg(t, 6.9, 7.7) * 4) if 6.9 <= t < 7.7 else 1.0
 
     # candles: on at the reveal, flicker, out at 9.0
     glow = 0.0
@@ -127,16 +124,16 @@ def story_frame(t):
         glow *= max(0.0, 1 - seg(t, 8.4, 9.0)) * (0.5 + 0.5 * abs(math.sin(t * 40)))
     spin = ease(seg(t, 4.0, 4.6))
     shake = 4 * math.sin(t * 50) if carving else 0
-    pumpkin(img, PUMP["skeleton"], "cat", spin, glow, shake)
-    pumpkin(img, PUMP["cat"], "skull", spin, glow, -shake)
+    pumpkin(img, PUMP["skeleton"], "classic", spin, glow, shake)
+    pumpkin(img, PUMP["cat"], "cute", spin, glow, -shake)
     chunks(img, t)
-    place(img, sk, sfx, sfy, SKEL_X, FL + jump + bob, tilt=-abs(lean), squash=sq)
-    place(img, ct, cfx, cfy, CAT_X, FL + jump + bob, tilt=abs(lean), squash=sq)
+    place(img, sk, sfx, sfy, SKEL_X, FL + jump + bob, tilt=-lean, squash=sq)
+    place(img, ct, cfx, cfy, CAT_X, FL + jump + bob, tilt=lean, squash=sq)
     stars(img, PUMP["skeleton"], TABLE - 200, seg(t, 2.4, 3.0), n=6, spread=120)
     stars(img, PUMP["cat"], TABLE - 200, seg(t, 2.45, 3.05), n=6, spread=120)
     speech(img, "Ready?", CAT_X - 60, FL - 860, 3.0, t) if 3.0 <= t < 4.0 else None
-    exclaim(img, SKEL_X + 40, FL - 780, 6.8, t, 0.5)
-    exclaim(img, CAT_X - 40, FL - 780, 6.8, t, 0.5)
+    stars(img, SKEL_X, FL - 760, seg(t, 6.95, 7.6), n=7, spread=150)
+    stars(img, CAT_X, FL - 760, seg(t, 6.95, 7.6), n=7, spread=150)
 
     # lights out
     dark = seg(t, 8.6, 9.2)
@@ -144,7 +141,7 @@ def story_frame(t):
         img.alpha_composite(Image.new("RGBA", img.size, (6, 2, 14, int(170 * ease(dark)))))
     img = camera(img, *cam_at(t, CAM))
     caption(img, "Pumpkin carving night...", 250, 0.2, 3.0, t)
-    caption(img, "...great minds carve alike", 250, 7.15, 8.6, t, size=70)
+    caption(img, "Happy Halloween!", 280, 6.9, 8.6, t, size=110)
     return img
 
 

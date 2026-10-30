@@ -226,10 +226,9 @@ def build_pumpkin(total, z0=9.4):
     put(whoosh(0.6), 4.0)                    # spin them around
     put(thump(), 4.5)                        # candles on
     put(chime(), 4.55)                       # ta-da
-    put(stinger(), 6.78)                     # wait... what?!
-    put(boing(), 6.82)
-    put(laugh(), 7.2)                        # both laugh
-    put(laugh(5) * 0.8, 7.32)
+    put(boing() * 0.7, 6.9)                  # "Happy Halloween!": two happy hops
+    put(boing() * 0.7, 7.3)
+    put(chime((1318.5, 1568.0, 2093.0, 2637.0), 0.06, 0.25), 6.95)
     flick = np.diff(noise(0.6), prepend=0) * 0.05 * (rng.random(int(0.6 * SR)) < 0.02)
     put(flick, 8.4)                          # candles flicker...
     put(whoosh(0.5) * 0.7, 8.9)              # ...and go out
