@@ -209,8 +209,8 @@ def scrape():
     return x
 
 
-def build_pumpkin(total, z0=9.4):
-    """Cues for render_pumpkin.py."""
+def build_pumpkin(total, z0=7.4):
+    """Cues for render_pumpkin.py (video time, after the 2 s pumpkin close-up cut)."""
     tr = z0 + 0.45
     out = np.zeros(int(total * SR) + SR)
 
@@ -226,12 +226,12 @@ def build_pumpkin(total, z0=9.4):
     put(whoosh(0.6), 4.0)                    # spin them around
     put(thump(), 4.5)                        # candles on
     put(chime(), 4.55)                       # ta-da
-    put(boing() * 0.7, 6.9)                  # "Happy Halloween!": two happy hops
-    put(boing() * 0.7, 7.3)
-    put(chime((1318.5, 1568.0, 2093.0, 2637.0), 0.06, 0.25), 6.95)
+    put(boing() * 0.7, 4.9)                  # "Happy Halloween!": two happy hops
+    put(boing() * 0.7, 5.3)
+    put(chime((1318.5, 1568.0, 2093.0, 2637.0), 0.06, 0.25), 4.95)
     flick = np.diff(noise(0.6), prepend=0) * 0.05 * (rng.random(int(0.6 * SR)) < 0.02)
-    put(flick, 8.4)                          # candles flicker...
-    put(whoosh(0.5) * 0.7, 8.9)              # ...and go out
+    put(flick, 6.4)                          # candles flicker...
+    put(whoosh(0.5) * 0.7, 6.9)              # ...and go out
     zoom_fizz(put, z0)
     transition_and_card(put, tr, 6.45)
     return out[: int(total * SR)]
@@ -239,7 +239,7 @@ def build_pumpkin(total, z0=9.4):
 
 # cues, bubble transition start, where in ad105 the gameplay (and its game sounds) starts
 REELS = {"mirror-maze": (build_mirror_maze, 11.6, 6.0), "last-candy": (build_last_candy, 10.05, 6.45),
-         "pumpkin": (build_pumpkin, 9.85, 6.45)}
+         "pumpkin": (build_pumpkin, 7.85, 6.45)}
 
 
 def main():

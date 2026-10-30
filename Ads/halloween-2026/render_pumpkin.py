@@ -3,9 +3,9 @@
 Story (Guy, Oct 30): pumpkin carving night. The purple skeleton beaker and the green cat beaker each carve a
 jack-o'-lantern, spin them around to show off the glowing faces (a classic toothy grin and a cute smiley one), cheer
 "Happy Halloween!", the candles flicker out, and we zoom into the skeleton's purple liquid in the dark; the game's
-bubble transition, ad105 gameplay with combo punches, ad105 end card.
+bubble transition, ad105 gameplay with combo punches, ad105 end card. (~14.5 s after the close-up cut)
 
-Reuses the room, camera and gameplay helpers from render_last_candy.py:
+Reuses the room and gameplay helpers from render_last_candy.py:
     python3 render_pumpkin.py /path/to/ad105-tue-trick-or-treat-spooky-dark.mp4 [--stills[-only]]
 """
 import math
@@ -20,7 +20,7 @@ from PIL import Image, ImageDraw, ImageFilter
 
 import render_last_candy as lc
 import render_mirror_maze as mm
-from render_last_candy import FL, FPS, GP_FPS, WIDE, cam_at, camera, punch, room, stars
+from render_last_candy import FL, FPS, GP_FPS, punch, room, stars
 from render_mirror_maze import (CS, H, W, bubble_reveal, caption, ease, fizz_frame, k, mix, place, seg,
                                 speech, tube)
 
@@ -28,18 +28,14 @@ OUT = os.path.join(mm.HERE, "pumpkin.mp4")
 SKEL_X, CAT_X = 200, 880
 PUMP = {"skeleton": 425, "cat": 655}       # each beaker's pumpkin on the table (x); table top at y 1330
 TABLE = 1330
-Z0 = 9.4                                   # zoom into the skeleton's liquid
+CUT_AT, CUT_LEN = 4.8, 2.0                 # story 4.8-6.8 s (camera glides to each pumpkin) was cut (Guy, Oct 30)
+Z0 = 9.4 - CUT_LEN                         # zoom into the skeleton's liquid (video time)
 TR = Z0 + 0.45                             # bubble transition
 GP_IN = lc.GP_IN                           # first pour you see is a combo
 GP_END = TR + mm.GP_OUT - GP_IN
 
 ORANGE, RIB, CUT = (240, 120, 24), (206, 92, 14), (60, 26, 6)
 GLOW = (255, 206, 90)
-
-# camera: hold wide, glide to each carved pumpkin after the reveal, back out for the laugh
-CAM = [(4.7, *WIDE), (5.25, PUMP["skeleton"], TABLE - 100, 2.3), (5.6, PUMP["skeleton"], TABLE - 100, 2.3),
-       (6.1, PUMP["cat"], TABLE - 100, 2.3), (6.6, PUMP["cat"], TABLE - 100, 2.3), (7.1, *WIDE)]
-
 
 def pumpkin(img, x, face, spin, glow, shake=0.0):
     """Pumpkin on the table. spin 0..1 turns it around (back -> carved face); glow 0..1 is the candle inside."""
@@ -99,6 +95,7 @@ def chunks(img, t):
 
 
 def story_frame(t):
+    """t is story time (before the cut)."""
     global ROOM
     if ROOM is None:
         ROOM = room(bucket=False)
@@ -139,7 +136,6 @@ def story_frame(t):
     dark = seg(t, 8.6, 9.2)
     if dark > 0:
         img.alpha_composite(Image.new("RGBA", img.size, (6, 2, 14, int(170 * ease(dark)))))
-    img = camera(img, *cam_at(t, CAM))
     caption(img, "Pumpkin carving night...", 250, 0.2, 3.0, t)
     caption(img, "Happy Halloween!", 280, 6.9, 8.6, t, size=110)
     return img
@@ -154,9 +150,9 @@ def frame(i, gp_frames):
         g = min(int((t - TR) * GP_FPS), len(gp_frames) - 1)
         return punch(Image.open(gp_frames[g]).convert("RGB"), t, TR, GP_IN)
     if t < Z0:
-        img = story_frame(t)
+        img = story_frame(t if t < CUT_AT else t + CUT_LEN)
     else:
-        base = fizz_frame(t, story_frame(Z0), z0=Z0, tr=TR, focus=(SKEL_X + 6, FL - 175 * CS), liquid="purple")
+        base = fizz_frame(t, story_frame(Z0 + CUT_LEN), z0=Z0, tr=TR, focus=(SKEL_X + 6, FL - 175 * CS), liquid="purple")
         if t < TR:
             img = base
         else:
@@ -184,7 +180,7 @@ def main():
     gp = sorted(os.path.join(tmp, f) for f in os.listdir(tmp) if f.startswith("gp"))
     if any(a.startswith("--stills") for a in sys.argv):
         _init(gp)
-        for s in (1.0, 2.7, 3.5, 4.3, 5.4, 6.4, 6.9, 7.8, 8.8, 9.3, 9.7, 10.2):
+        for s in (1.0, 2.7, 3.5, 4.3, 4.7, 4.85, 5.2, 6.0, 6.8, 7.3, 7.7, 8.2):
             frame(int(s * FPS), _GP).save(os.path.join(os.getcwd(), f"still-{s:05.2f}s.png"))
         if "--stills-only" in sys.argv:
             return
