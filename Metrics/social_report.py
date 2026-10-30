@@ -1147,7 +1147,7 @@ body.editing #g{{display:none}} body:not(.editing) .tw{{display:none}} #m{{displ
 @media (max-width:700px){{#g .nf{{display:none}} #g .ns{{display:inline}} #g th,#g td{{padding:7px 3px;font-size:14px}} #g td.lab{{font-size:13px;width:25%}} #g th:first-child{{width:25%}} #g small{{display:block;font-size:11px}} #g .cv{{display:block}} #g .cv>small{{text-align:right}} #g .card{{padding:14px 12px}}}}
 </style></head><body><main>
 <h1>Beaker Lab - Social Report</h1><p class="sub">{e(stamp)} · changes in brackets are since the last check ({e(prev.get('checked_at', 'none') if prev else 'none')})</p>
-<div class="bar"><button id="refresh" class="b red">Refresh</button><a class="b gray jump" href="#sec-sources"><span class="nf">App Store Sources</span><span class="ns">Sources</span></a><a class="b gray jump" href="#sec-best"><span class="nf">Best Posting Time</span><span class="ns">Best TOD</span></a><a class="b gray jump" href="#sec-videos">Videos</a><a class="b gray jump" href="#sec-history">History</a><button id="edit" class="b blue">Edit Layout</button>
+<div class="bar"><button id="refresh" class="b red" aria-label="Refresh"><span class="nf">Refresh</span><span class="ns"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg></span></button><a class="b gray jump" href="#sec-sources"><span class="nf">App Store Sources</span><span class="ns">Sources</span></a><a class="b gray jump" href="#sec-best"><span class="nf">Best Posting Time</span><span class="ns">Best TOD</span></a><a class="b gray jump" href="#sec-videos">Videos</a><a class="b gray jump" href="#sec-history">History</a><button id="edit" class="b blue">Edit Layout</button>
 <span id="tools" hidden><select id="addc"></select><select id="addr"></select><button id="cancel" class="b gray">Cancel</button><button id="reset" class="b gray">Reset Layout</button></span>
 <span id="msg" class="note"></span></div>
 {day_html}{week_html}<h2 class="sh" style="margin-top:4px">Views gained per day</h2>
@@ -1282,12 +1282,12 @@ $('t').addEventListener('mousedown', e => {{   // resize: right edge of a header
 $('refresh').onclick = async () => {{
   if (SITE) {{ window.open(ACT, '_blank'); return msg('On GitHub, tap Run workflow. This page updates about 10 minutes later.'); }}
   if (!served) return msg('Refresh needs the report helper. Run "Refresh Social Report" once, then use the report it opens.');
-  const b = $('refresh'); b.disabled = true; b.textContent = 'Refreshing…'; msg('Pulling Instagram, Facebook, YouTube and TikTok (a few minutes). This page reloads when it’s done.');
+  const b = $('refresh'), lbl = b.innerHTML; b.disabled = true; b.textContent = 'Refreshing…'; msg('Pulling Instagram, Facebook, YouTube and TikTok (a few minutes). This page reloads when it’s done.');
   try {{ await fetch('/refresh', {{method: 'POST'}});
     while (true) {{ await new Promise(r => setTimeout(r, 3000)); const s = await (await fetch('/status')).json();
       if (!s.running) {{ if (!s.error) {{ location.reload(); return; }} msg(s.error); break; }} }} }}
   catch (e) {{ msg('Refresh failed: the report helper stopped. Run "Refresh Social Report" again.'); }}
-  b.disabled = false; b.textContent = 'Refresh';
+  b.disabled = false; b.innerHTML = lbl;
 }};
 function renderPrev() {{   // previous run's table, in the current layout's order (no editing)
   if (!OLD || !$('pt')) return; const P = OLD.table, pc = id => P.cols.find(c => c.id === id), pr = id => P.rows.find(r => r.id === id);
