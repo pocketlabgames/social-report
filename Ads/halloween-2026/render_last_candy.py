@@ -32,7 +32,6 @@ CUT_AT, CUT_LEN = 4.4, 2.0                 # story 4.4-6.4 s (the skeleton's "No
 Z0 = 11.6 - CUT_LEN                        # zoom into the cat's liquid starts (video time)
 TR = Z0 + 0.45                             # bubble transition starts
 TD = mm.TD
-ANIM_END = TR + TD
 WRAP = (CAT_X - 176, FL - 385)             # the wrapper on the cat's tail (cat is flipped: tail points at the bowl)
 
 
@@ -252,8 +251,42 @@ def story_frame(t):
     return img
 
 
+GP_FPS = 30                                 # ad105 gameplay frames (source rate)
+GP_END = TR + mm.GP_OUT - mm.GP_IN          # gameplay is rendered through Python too (for the combo punches)
+PUNCHES = [7.4, 8.0, 8.6, 9.8]              # ad105 times where the combo goes up (x6, x7, x8, x9)
+
+
+def punch(img, t):
+    """10pm-post combo 'punch': on each combo bump the frame jumps ~12% bigger and eases back while soft white rays
+    burst from the centre and fade (matches test-10pm-punch-deepsea)."""
+    for a in PUNCHES:
+        dt = t - (TR + a - mm.GP_IN)
+        if not (0 <= dt < 0.45):
+            continue
+        z = 1 + 0.12 * seg(dt, 0, 0.05) * (1 - ease(seg(dt, 0.05, 0.42)))
+        cw, ch = W / z, H / z
+        img = img.resize((W, H), Image.BICUBIC, box=((W - cw) / 2, (H - ch) / 2, (W + cw) / 2, (H + ch) / 2))
+        fade = 1 - ease(seg(dt, 0.1, 0.45))
+        rays = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d = ImageDraw.Draw(rays)
+        cx, cy, R = W / 2, H * 0.55, 2600
+        for n in range(28):
+            th = n * 2 * math.pi / 28 + 0.05
+            w = 0.035 if n % 2 else 0.02
+            d.polygon([(cx + 120 * math.cos(th), cy + 120 * math.sin(th)),
+                       (cx + R * math.cos(th - w), cy + R * math.sin(th - w)),
+                       (cx + R * math.cos(th + w), cy + R * math.sin(th + w))], fill=(255, 255, 255, int(34 * fade)))
+        img = img.convert("RGBA")
+        img.alpha_composite(rays)
+        return img.convert("RGB")
+    return img
+
+
 def frame(i, gp_frames):
     t = i / FPS
+    if t >= TR + TD:                            # gameplay, with the combo punches
+        g = min(int((t - TR) * GP_FPS), len(gp_frames) - 1)
+        return punch(Image.open(gp_frames[g]).convert("RGB"), t)
     if t < Z0:
         img = story_frame(t if t < CUT_AT else t + CUT_LEN)
     else:
@@ -261,7 +294,7 @@ def frame(i, gp_frames):
         if t < TR:
             img = base
         else:
-            g = min(int((t - TR) * FPS), len(gp_frames) - 1)
+            g = min(int((t - TR) * GP_FPS), len(gp_frames) - 1)
             img = bubble_reveal(t, base, Image.open(gp_frames[g]), tr=TR)
     return img.convert("RGB").resize((W, H), Image.LANCZOS)
 
@@ -280,32 +313,31 @@ def _render(i):
 def main():
     src = [a for a in sys.argv[1:] if not a.startswith("--")][0]
     tmp = tempfile.mkdtemp()
-    subprocess.run(["ffmpeg", "-v", "error", "-ss", str(mm.GP_IN), "-i", src, "-t", str(TD), "-vf", f"fps={FPS}",
-                    os.path.join(tmp, "gp%03d.png")], check=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-ss", str(mm.GP_IN), "-i", src, "-t", str(mm.GP_OUT - mm.GP_IN),
+                    "-vf", f"fps={GP_FPS}", "-q:v", "2", os.path.join(tmp, "gp%03d.jpg")], check=True)
     gp = sorted(os.path.join(tmp, f) for f in os.listdir(tmp) if f.startswith("gp"))
     if any(a.startswith("--stills") for a in sys.argv):
         _init(gp)
-        for s in (1.0, 1.85, 3.4, 4.6, 5.2, 7.3, 8.2, 9.2, 9.9, 10.4):
-            frame(int(s * FPS), _GP).save(os.path.join(os.getcwd(), f"still-{s:04.1f}s.png"))
+        for s in (1.0, 1.85, 3.4, 4.6, 5.2, 7.3, 8.2, 9.2, 9.9, 10.4, 11.5, 11.65):
+            frame(int(s * FPS), _GP).save(os.path.join(os.getcwd(), f"still-{s:05.2f}s.png"))
         if "--stills-only" in sys.argv:
             return
     anim = os.path.join(tmp, "anim.mp4")
     ff = subprocess.Popen(["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS),
                            "-i", "-", "-c:v", "libx264", "-crf", "16", "-pix_fmt", "yuv420p", anim], stdin=subprocess.PIPE)
     with Pool(initializer=_init, initargs=(gp,)) as pool:
-        for b in pool.imap(_render, range(int(ANIM_END * FPS)), chunksize=3):
+        for b in pool.imap(_render, range(int(GP_END * FPS)), chunksize=3):
             ff.stdin.write(b)
     ff.stdin.close()
     ff.wait()
-    gp_rest = mm.GP_IN + TD
+    # stitch: our animation + gameplay + ad105 end card (held a little)
     fc = (f"[0:v]setpts=PTS-STARTPTS[a];"
-          f"[1:v]trim={gp_rest}:{mm.GP_OUT},setpts=PTS-STARTPTS[g];"
           f"[1:v]trim={mm.CARD_IN}:{mm.CARD_OUT},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration={mm.CARD_HOLD}[c];"
-          f"[a][g][c]concat=n=3:v=1:a=0[v]")
+          f"[a][c]concat=n=2:v=1:a=0[v]")
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", anim, "-i", src, "-filter_complex", fc, "-map", "[v]",
                     "-c:v", "libx264", "-crf", "19", "-preset", "slow", "-pix_fmt", "yuv420p", "-r", str(FPS),
                     "-movflags", "+faststart", OUT], check=True)
-    total = ANIM_END + (mm.GP_OUT - gp_rest) + (mm.CARD_OUT - mm.CARD_IN) + mm.CARD_HOLD
+    total = GP_END + (mm.CARD_OUT - mm.CARD_IN) + mm.CARD_HOLD
     print(f"wrote {OUT} ({total:.1f} s)")
 
 
