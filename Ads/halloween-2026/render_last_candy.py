@@ -19,10 +19,11 @@ from multiprocessing import Pool
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 import render_mirror_maze as mm
-from render_mirror_maze import (CS, FPS, H, INK, W, bubble_reveal, caption, ease, exclaim, fizz_frame, k, mix, place,
+from render_mirror_maze import (CS, H, INK, W, bubble_reveal, caption, ease, exclaim, fizz_frame, k, mix, place,
                                 seg, speech, tube)
 
 OUT = os.path.join(mm.HERE, "last-candy.mp4")
+FPS = 60                                   # smoother than the 30 fps mirror maze; ad105 footage is frame-doubled
 NOTE_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
 FL = 1690                                  # floor line the beakers stand on
@@ -97,13 +98,28 @@ ROOM = None
 
 
 def camera(img, cx, cy, z):
-    """Crop around (cx, cy) at zoom z and scale back to full frame (1x coords)."""
+    """Frame (cx, cy) at zoom z and scale back to full frame (1x coords). Float crop box, so slow moves don't jitter."""
     if z <= 1.001:
         return img
     cw, ch = W / z, H / z
     x0 = min(max(cx - cw / 2, 0), W - cw)
     y0 = min(max(cy - ch / 2, 0), H - ch)
-    return img.crop((k(x0), k(y0), k(x0 + cw), k(y0 + ch))).resize(img.size, Image.BICUBIC)
+    return img.resize(img.size, Image.BICUBIC, box=(k(x0), k(y0), k(x0 + cw), k(y0 + ch)))
+
+
+# camera keyframes in story time: (t, centre x, centre y, zoom); eased glides between them, no hard cuts
+WIDE = (W / 2, H / 2, 1.0)
+CAM = [(6.4, *WIDE), (7.1, CAT_X, FL - 420, 1.45), (8.4, CAT_X, FL - 420, 1.45), (9.1, *WRAP, 3.2),
+       (9.85, *WRAP, 3.2), (10.35, *WIDE)]
+
+
+def cam_at(t):
+    if t <= CAM[0][0] or t >= CAM[-1][0]:
+        return WIDE
+    for (t0, x0, y0, z0), (t1, x1, y1, z1) in zip(CAM, CAM[1:]):
+        if t0 <= t < t1:
+            p = ease(seg(t, t0, t1))
+            return x0 + (x1 - x0) * p, y0 + (y1 - y0) * p, z0 * (z1 / z0) ** p    # zoom eases in log space
 
 
 def spotlight(img, x, on):
@@ -212,7 +228,7 @@ def story_frame(t):
     exclaim(img, sx + 40, FL - 780, 10.0, t, 0.6)
 
     # spotlights
-    spotlight(img, CAT_X, seg(t, 6.4, 6.5) * (1 - seg(t, 8.9, 9.2)))
+    spotlight(img, CAT_X, ease(seg(t, 6.4, 6.9)) * (1 - ease(seg(t, 8.8, 9.4))))
     speech(img, "Wasn't me!", CAT_X - 90, FL - 860, 6.65, t, emoji="\U0001f607") if 6.65 <= t < 8.5 else None
 
     # wrapper sparkle while the camera finds it
@@ -226,11 +242,7 @@ def story_frame(t):
             d.polygon([(k(x - r), k(y)), (k(x), k(y + r * 0.3)), (k(x + r), k(y)), (k(x), k(y - r * 0.3))], fill=(255, 250, 200))
 
     # camera
-    if 6.4 <= t < 8.4:
-        img = camera(img, CAT_X, FL - 420, 1 + 0.45 * ease(seg(t, 6.4, 6.8)))
-    elif 8.4 <= t < 10.0:
-        p = ease(seg(t, 8.4, 9.0))
-        img = camera(img, CAT_X + (WRAP[0] - CAT_X) * p, FL - 420 + (WRAP[1] - FL + 420) * p, 1.45 + 1.75 * p)
+    img = camera(img, *cam_at(t))
 
     # captions (drawn after the camera so they stay put)
     caption(img, "Someone ate the\nlast candy...", 250, 0.2, 4.3, t)

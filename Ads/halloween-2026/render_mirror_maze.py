@@ -574,7 +574,7 @@ def fizz_frame(t, zoom_src, z0=11.2, tr=TR, focus=None):
     if m >= 1:
         zoomed = None
     else:
-        zoomed = zoom_src.crop((k(x0), k(y0), k(x0 + cw), k(y0 + ch))).resize((k(W), k(H)), Image.BICUBIC).convert("RGBA")
+        zoomed = zoom_src.resize((k(W), k(H)), Image.BICUBIC, box=(k(x0), k(y0), k(x0 + cw), k(y0 + ch))).convert("RGBA")   # float box: no jitter
         if m <= 0:
             return zoomed
     macro = liquid_bg().copy()
@@ -597,7 +597,7 @@ def fizz_frame(t, zoom_src, z0=11.2, tr=TR, focus=None):
     zm = 1 + 0.1 * ease(seg(t, z0 + 0.3, tr + 0.4))
     if zm > 1:
         cw2, ch2 = k(W) / zm, k(H) / zm
-        macro = macro.crop((int((k(W) - cw2) / 2), int((k(H) - ch2) / 2), int((k(W) + cw2) / 2), int((k(H) + ch2) / 2))).resize((k(W), k(H)), Image.BICUBIC)
+        macro = macro.resize((k(W), k(H)), Image.BICUBIC, box=((k(W) - cw2) / 2, (k(H) - ch2) / 2, (k(W) + cw2) / 2, (k(H) + ch2) / 2))
     return macro if zoomed is None else Image.blend(zoomed, macro, m)
 
 
