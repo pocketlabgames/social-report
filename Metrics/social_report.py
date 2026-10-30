@@ -1133,7 +1133,7 @@ table.vt tr.lead td,table.vt tr.lead th{{background:rgba(42,120,214,.10)}} table
  .week ul{{margin:0;padding-left:18px;color:var(--ink)}} .week li{{margin:3px 0;line-height:1.4}} tr.bestrow th,tr.bestrow td{{background:rgba(42,120,214,.12)}} table.slots small{{color:var(--muted);font-weight:400}}
 @media (max-width:700px){{.hsn{{display:none}} table.slots th,table.slots td{{padding:8px 5px;font-size:13px}} table.slots small{{display:block;font-size:11px}}
 .day{{grid-template-columns:1fr;grid-template-areas:"l" "v" "p" "t" "i" "m" "r"}} .day .dayp{{grid-column:1/-1}}
-.dayr{{display:flex;justify-content:space-between;align-items:flex-end;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}} .dayr .dayt{{font-size:19px}} .dayr .dayt small{{font-size:12px}} .dayr .dayt{{margin:0 !important}} .dayr .dayt:first-child{{text-align:left}} .dayr .dayt:last-child{{text-align:right}}}}
+.dayr{{display:flex;justify-content:space-between;align-items:flex-end;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}} .dayr .dayt{{font-size:19px}} .dayr .dayt small{{font-size:12px}} .dayr .dayt{{margin:0 !important;text-align:center !important}}}}
 tr.pick td{{text-align:left}} .warn{{margin:0 0 10px;padding:8px 12px;border-radius:8px;background:#FFF4CC;color:#5c4a00;font-size:14px}} .hist td,.hist th{{color:var(--ink2);font-size:14px}} .dl{{color:var(--muted);font-size:12px}} b{{font-weight:600}}
 .lgs{{display:flex;flex-wrap:wrap;gap:16px;margin:28px 0 8px;font-size:12px;color:var(--ink2)}} .lg{{display:flex;align-items:center;gap:6px}}
 .chart{{position:relative;height:340px}}
