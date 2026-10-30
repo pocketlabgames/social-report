@@ -1,6 +1,7 @@
 """Facebook Page + Instagram (Graph API, system-user token in Private Keys/meta-token.txt)."""
 import datetime as dt
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 import requests
@@ -34,6 +35,7 @@ IG_DEMOGRAPHICS = [("engaged_audience_demographics", "this_month"), ("reached_au
 # Website build (REPORT_SITE=1, GitHub Actions): skip the per-post insights, daily history, audience, stories and inbox
 # that only the Mac Metrics workbook uses; the report needs just the per-post totals, comments and follower counts.
 LITE = __import__("os").environ.get("REPORT_SITE") == "1"
+WORKERS = 8   # Guy, Oct 30: per-post requests in parallel (one at a time took ~100 s for ~130 posts)
 
 
 def _et(ts):
@@ -122,12 +124,17 @@ def fetch(keys_dir, today):
     reel_ids, fb, retention = set(), [], []
     reels = _all(f"{pid}/video_reels", pt, fields="id,description,created_time,permalink_url,length,views,post_id,"
                                                   "content_category,updated_time", limit=50)
-    for v in reels:
-        reel_ids.add(str(v.get("post_id")))
+    def reel_extra(v):
         ins = {m["name"]: m["values"][0]["value"] for m in _get(f"{v['id']}/video_insights", pt).get("data", [])}
+        post = (_post_insights(f"{pid}_{v['post_id']}", pt) if not LITE else _post_insights_lite(f"{pid}_{v['post_id']}", pt)) if v.get("post_id") else {}
+        return ins, post
+
+    with ThreadPoolExecutor(WORKERS) as ex:
+        extras = list(ex.map(reel_extra, reels))
+    for v, (ins, post) in zip(reels, extras):
+        reel_ids.add(str(v.get("post_id")))
         social = ins.get("post_video_social_actions") or {}
         reacts = ins.get("post_video_likes_by_reaction_type") or {}
-        post = (_post_insights(f"{pid}_{v['post_id']}", pt) if not LITE else _post_insights_lite(f"{pid}_{v['post_id']}", pt)) if v.get("post_id") else {}
         row = {
             "snapshot_date": snap, "video_id": v["id"], "post_id": v.get("post_id"), "type": "Reel",
             "created": _et(v["created_time"]), "caption": (v.get("description") or "").split("\n")[0][:120],
@@ -152,10 +159,11 @@ def fetch(keys_dir, today):
             retention.append({"snapshot_date": snap, "video_id": v["id"], "interval": int(k), "pct_still_watching": pct})
 
     other = []
-    for p in _all(f"{pid}/posts", pt, fields="id,message,created_time,permalink_url,status_type", limit=50):
-        if p["id"].split("_")[-1] in reel_ids or p.get("status_type") == "added_video":
-            continue
-        post = {} if LITE else _post_insights(p["id"], pt)
+    posts = [p for p in _all(f"{pid}/posts", pt, fields="id,message,created_time,permalink_url,status_type", limit=50)
+             if p["id"].split("_")[-1] not in reel_ids and p.get("status_type") != "added_video"]
+    with ThreadPoolExecutor(WORKERS) as ex:
+        pins = list(ex.map(lambda p: {} if LITE else _post_insights(p["id"], pt), posts))
+    for p, post in zip(posts, pins):
         other.append({"snapshot_date": snap, "post_id": p["id"].split("_")[-1], "type": p.get("status_type"),
                       "created": _et(p["created_time"]), "caption": (p.get("message") or "").split("\n")[0][:120],
                       "full_caption": p.get("message"), "views": post.get("post_media_view"),
@@ -165,18 +173,25 @@ def fetch(keys_dir, today):
     # Facebook comments (needs pages_read_user_content; skipped until the token has it)
     comments, notes = [], []
     post_ids = [r["post_id"] for r in fb if r.get("post_id")] + [r["post_id"] for r in other]
-    for post in post_ids:
+    def fb_comments(post):
         try:
-            for c in _all(f"{pid}_{post}/comments", pt, fields="id,message,created_time,like_count,comment_count,"
-                                                                 "from{name,id},parent{id}", filter="stream", limit=100):
-                comments.append({"comment_id": c["id"], "post_id": post, "created": _et(c["created_time"]),
-                                 "author": (c.get("from") or {}).get("name"),
-                                 "from_page": (c.get("from") or {}).get("id") == pid,
-                                 "reply_to": (c.get("parent") or {}).get("id"), "message": c.get("message"),
-                                 "likes": c.get("like_count"), "replies": c.get("comment_count"), "as_of": snap})
+            return _all(f"{pid}_{post}/comments", pt, fields="id,message,created_time,like_count,comment_count,"
+                                                              "from{name,id},parent{id}", filter="stream", limit=100), None
         except RuntimeError as e:
-            notes.append(str(e))
+            return [], e
+
+    with ThreadPoolExecutor(WORKERS) as ex:
+        fbc = list(ex.map(fb_comments, post_ids))
+    for post, (cs, err) in zip(post_ids, fbc):
+        if err:   # same as before: stop at the first post whose comments can't be read
+            notes.append(str(err))
             break
+        for c in cs:
+            comments.append({"comment_id": c["id"], "post_id": post, "created": _et(c["created_time"]),
+                             "author": (c.get("from") or {}).get("name"),
+                             "from_page": (c.get("from") or {}).get("id") == pid,
+                             "reply_to": (c.get("parent") or {}).get("id"), "message": c.get("message"),
+                             "likes": c.get("like_count"), "replies": c.get("comment_count"), "as_of": snap})
 
     # Facebook Stories
     stories = [{"story_id": st.get("post_id"), "created": _et(st["creation_time"]) if st.get("creation_time") else None,
@@ -205,14 +220,26 @@ def fetch(keys_dir, today):
 
     # Instagram media (Reels and posts) + comments
     igm, ig_comments = [], []
-    for m in _all(f"{ig}/media", token, fields="id,caption,media_type,media_product_type,timestamp,permalink,shortcode,"
-                                               "thumbnail_url,is_shared_to_feed,like_count,comments_count", limit=50):
+    media = _all(f"{ig}/media", token, fields="id,caption,media_type,media_product_type,timestamp,permalink,shortcode,"
+                                              "thumbnail_url,is_shared_to_feed,like_count,comments_count", limit=50)
+
+    def ig_extra(m):
+        try:
+            cs, err = _all(f"{m['id']}/comments", token, fields="id,text,timestamp,username,like_count,"
+                                                                "replies{id,text,timestamp,username,like_count}", limit=50), None
+        except RuntimeError as e:
+            cs, err = [], e
+        return _media_insights(m["id"], token), cs, err
+
+    with ThreadPoolExecutor(WORKERS) as ex:
+        igx = list(ex.map(ig_extra, media))
+    for m, (mins, cs, err) in zip(media, igx):
         row = {"snapshot_date": snap, "media_id": m["id"], "created": _et(m["timestamp"]),
                "type": m.get("media_product_type"), "media_type": m.get("media_type"),
                "caption": (m.get("caption") or "").split("\n")[0][:120], "full_caption": m.get("caption"),
                "shortcode": m.get("shortcode"), "shared_to_feed": m.get("is_shared_to_feed"),
                "thumbnail_url": m.get("thumbnail_url")}
-        row.update(_media_insights(m["id"], token))
+        row.update(mins)
         for k in ("ig_reels_avg_watch_time", "ig_reels_video_view_total_time"):
             if row.get(k) is not None:
                 row[k] = round(row[k] / 1000, 2)
@@ -220,15 +247,14 @@ def fetch(keys_dir, today):
                 else "skip_rate_pct" if k == "reels_skip_rate" else k): v for k, v in row.items()}
         row["url"] = m.get("permalink")
         igm.append(row)
-        try:
-            for c in _all(f"{m['id']}/comments", token, fields="id,text,timestamp,username,like_count,"
-                                                               "replies{id,text,timestamp,username,like_count}", limit=50):
+        if err:
+            notes.append(str(err))
+        else:
+            for c in cs:
                 for x, parent in [(c, None)] + [(r, c["id"]) for r in (c.get("replies") or {}).get("data", [])]:
                     ig_comments.append({"comment_id": x["id"], "media_id": m["id"], "created": _et(x["timestamp"]),
                                         "author": x.get("username"), "reply_to": parent, "message": x.get("text"),
                                         "likes": x.get("like_count"), "as_of": snap})
-        except RuntimeError as e:
-            notes.append(str(e))
 
     # Instagram Stories (only live ones, last 24 h; the daily run keeps them)
     ig_stories = []
