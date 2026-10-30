@@ -1068,12 +1068,10 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         if COUNTRIES:   # Guy, Oct 29: countries with at least one App Store first download since launch; hover for the top ones
             top = ", ".join(f"{c} {n:,}" for c, n in sorted(COUNTRIES.items(), key=lambda x: -x[1])[:10])
             right += f"<div class='dayt' title='{html.escape(top)} (App Store first downloads since launch)'>{len(COUNTRIES):,} <small>countries</small></div>"
-        if REVIEWS.get("app_id"):   # Guy, Oct 30: App Store star ratings (every country with a download) + written reviews; opens Ratings and Reviews in App Store Connect
+        if REVIEWS.get("app_id"):   # Guy, Oct 30: App Store star ratings (every country with a download) + written reviews; no link
             avg = f" · {REVIEWS['avg']:.1f}★" if REVIEWS.get("avg") is not None else ""
-            url = f"https://appstoreconnect.apple.com/apps/{REVIEWS['app_id']}/distribution/activity/ios/ratingsResponses"
-            tip = f"Star ratings by country: {REVIEWS.get('top') or 'none yet'}. Written reviews: {int(REVIEWS.get('reviews') or 0):,}. Ratings refresh once a day. Opens App Store Connect."
-            right += (f"<a class='dayt dayln' href='{html.escape(url)}' target='_blank' rel='noopener' title='{html.escape(tip)}'>"
-                      f"{int(REVIEWS['n']):,}{avg} <small>App Store ratings ↗</small></a>")
+            tip = f"Star ratings by country: {REVIEWS.get('top') or 'none yet'}. Written reviews: {int(REVIEWS.get('reviews') or 0):,}. Ratings refresh once a day."
+            right += f"<div class='dayt' title='{html.escape(tip)}'>{int(REVIEWS['n']):,}{avg} <small>App Store ratings</small></div>"
         if RET.get("d1") is not None:   # Guy, Oct 26: Firebase next-day return of new players (last 7 complete days)
             tip = f"Day-1: {RET['d1']:.0f}% of {int(RET.get('d1_n') or 0):,} new players came back the next day" + (f" · Day-7: {RET['d7']:.0f}%" if RET.get("d7") is not None else "") + " (Firebase, last 7 complete days)"
             right += f"<div class='dayt' title='{tip}'>{RET['d1']:.0f}% <small>day-1 retention</small></div>"
@@ -1118,7 +1116,7 @@ th{{font-weight:500;color:var(--ink2)}} th.rl{{text-align:left}} thead th{{borde
 .day{{display:grid;grid-template-columns:1fr auto;grid-template-areas:"l r" "v r" "p r" "t r" "i r" "m r";align-items:start;column-gap:16px;row-gap:4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:0 0 14px}}
 .dayv .sub2{{display:block;font-size:13px}} .dayt{{font-size:26px;font-weight:600;color:#5f5e5a;font-variant-numeric:tabular-nums;margin-top:6px;text-align:right}} .dayt small{{font-size:14px;color:var(--muted);font-weight:400}}
 @media (prefers-color-scheme: dark){{.dayt{{color:#a9a89f}}}} .day{{position:sticky;top:8px;z-index:5;box-shadow:0 4px 14px rgba(0,0,0,.14)}} .dayl{{color:var(--ink2);font-weight:500}} .dayl small{{color:var(--muted);font-weight:400;font-size:12px}} .dayl{{grid-area:l}} .dayv{{grid-area:v;font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;text-align:left;margin-top:2px;line-height:1.15}}
-.dayr{{grid-area:r;text-align:right;margin-top:2px;align-self:start}} .day .dayp.dayps{{grid-area:p}} .day .dayp.dayi{{grid-area:i}} .day .dayp.day3{{grid-area:t}} .day .dayp.daym{{grid-area:m}} .dayr .dayt{{margin-top:0;line-height:1.15}} .dayr .dayt small{{display:block;font-size:13px}} .dayr .dayt+.dayt{{margin-top:8px}} a.dayt{{display:block;text-decoration:none}} a.dayt small{{color:var(--accent,#007AFF)}} .day .dayp{{grid-column:auto}} .dayv small{{font-size:14px;color:var(--muted);font-weight:400}}
+.dayr{{grid-area:r;text-align:right;margin-top:2px;align-self:start}} .day .dayp.dayps{{grid-area:p}} .day .dayp.dayi{{grid-area:i}} .day .dayp.day3{{grid-area:t}} .day .dayp.daym{{grid-area:m}} .dayr .dayt{{margin-top:0;line-height:1.15}} .dayr .dayt small{{display:block;font-size:13px}} .dayr .dayt+.dayt{{margin-top:8px}} .day .dayp{{grid-column:auto}} .dayv small{{font-size:14px;color:var(--muted);font-weight:400}}
 .dayp{{grid-column:1/-1;font-size:13px;color:var(--ink2)}} a.tp{{color:inherit;text-decoration:underline;text-decoration-color:#2A78D6;text-underline-offset:3px}}
 h2.sh{{font-size:18px;font-weight:500;margin:36px 0 10px}} .dot{{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}}
 .old{{display:none}} .showold .old{{display:revert}} .vgrid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}} @media (max-width:900px){{.vgrid{{grid-template-columns:1fr}}}}
