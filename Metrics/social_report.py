@@ -32,7 +32,7 @@ POSTS_HIST = os.path.join(HERE, "posts-history.json")   # per-post views at ever
 POSTS = []   # per-post rows from the latest fetch (filled by fetch())
 YSAME = None   # Guy, Oct 29: views gained yesterday by this time of day (gray line left of today's bar)
 INSTALLS = {}   # {date: first downloads} from App Store Connect (filled by fetch(); empty if the key is missing)
-REVIEWS = {}    # {app_id, n, avg} App Store customer reviews, all countries (asc_reviews_lite; Guy, Oct 29)
+REVIEWS = {}    # {app_id, n, avg, top, reviews} App Store star ratings + written reviews (asc_reviews_lite; Guy, Oct 30)
 COUNTRIES = {}  # {country code: first downloads since launch} from App Store Connect (asc_lite; Guy, Oct 29)
 MONEY = {}      # {date: {"ads": usd, "iap": usd}} (filled by fetch(); empty if keys are missing)
 ASCR = {}       # App Store Connect app numbers for the Retention card (asc_ret_lite; Guy, Oct 26)
@@ -1068,11 +1068,12 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         if COUNTRIES:   # Guy, Oct 29: countries with at least one App Store first download since launch; hover for the top ones
             top = ", ".join(f"{c} {n:,}" for c, n in sorted(COUNTRIES.items(), key=lambda x: -x[1])[:10])
             right += f"<div class='dayt' title='{html.escape(top)} (App Store first downloads since launch)'>{len(COUNTRIES):,} <small>countries</small></div>"
-        if REVIEWS.get("app_id"):   # Guy, Oct 29: written App Store reviews, all countries; opens Ratings and Reviews in App Store Connect
+        if REVIEWS.get("app_id"):   # Guy, Oct 30: App Store star ratings (every country with a download) + written reviews; opens Ratings and Reviews in App Store Connect
             avg = f" · {REVIEWS['avg']:.1f}★" if REVIEWS.get("avg") is not None else ""
             url = f"https://appstoreconnect.apple.com/apps/{REVIEWS['app_id']}/distribution/activity/ios/ratingsResponses"
-            right += (f"<a class='dayt dayln' href='{html.escape(url)}' target='_blank' rel='noopener' title='Written reviews from every country (star-only ratings not included). Opens App Store Connect.'>"
-                      f"{int(REVIEWS['n']):,}{avg} <small>App Store reviews ↗</small></a>")
+            tip = f"Star ratings by country: {REVIEWS.get('top') or 'none yet'}. Written reviews: {int(REVIEWS.get('reviews') or 0):,}. Ratings refresh once a day. Opens App Store Connect."
+            right += (f"<a class='dayt dayln' href='{html.escape(url)}' target='_blank' rel='noopener' title='{html.escape(tip)}'>"
+                      f"{int(REVIEWS['n']):,}{avg} <small>App Store ratings ↗</small></a>")
         if RET.get("d1") is not None:   # Guy, Oct 26: Firebase next-day return of new players (last 7 complete days)
             tip = f"Day-1: {RET['d1']:.0f}% of {int(RET.get('d1_n') or 0):,} new players came back the next day" + (f" · Day-7: {RET['d7']:.0f}%" if RET.get("d7") is not None else "") + " (Firebase, last 7 complete days)"
             right += f"<div class='dayt' title='{tip}'>{RET['d1']:.0f}% <small>day-1 retention</small></div>"
