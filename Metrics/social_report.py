@@ -948,6 +948,111 @@ def time_section(posts, now):
 SHORT = {"instagram": "IG", "facebook": "FB", "youtube": "YT", "tiktok": "TT"}   # phone labels (Guy, Oct 25)
 
 
+
+# Guy, Oct 31: click the countries total -> world map (green, darker = more downloads) + every country by region; hover a region for its countries
+# ISO alpha-2 + ISO numeric (world-atlas map id; 000 = not on the map) + region: N North America, L Latin America & Caribbean,
+# E Europe & Central Asia, M Middle East & North Africa, S South Asia, P East Asia & Pacific, F Sub-Saharan Africa
+GEO = """US840N CA124N BM060N GL304N PM666N
+MX484L GT320L BZ084L SV222L HN340L NI558L CR188L PA591L CU192L JM388L HT332L DO214L PR630L BS044L BB052L TT780L AG028L DM212L GD308L KN659L LC662L VC670L AI660L KY136L VG092L VI850L TC796L MS500L AW533L CW531L SX534L MF663L BL652L CO170L VE862L GY328L SR740L EC218L PE604L BO068L BR076L PY600L UY858L AR032L CL152L FK238L GF254L GP312L MQ474L BQ535L
+GB826E IE372E FR250E DE276E NL528E BE056E LU442E CH756E AT040E IT380E ES724E PT620E AD020E MC492E SM674E VA336E MT470E LI438E DK208E NO578E SE752E FI246E IS352E FO234E AX248E EE233E LV428E LT440E PL616E CZ203E SK703E HU348E SI705E HR191E BA070E RS688E ME499E MK807E AL008E XK000E GR300E BG100E RO642E MD498E UA804E BY112E RU643E CY196E TR792E GE268E AM051E AZ031E KZ398E UZ860E TM795E KG417E TJ762E JE832E GG831E IM833E GI292E
+MA504M DZ012M TN788M LY434M EG818M EH732M IL376M PS275M LB422M SY760M JO400M IQ368M IR364M SA682M YE887M OM512M AE784M QA634M BH048M KW414M DJ262M
+IN356S PK586S BD050S NP524S BT064S LK144S MV462S AF004S
+CN156P HK344P MO446P TW158P JP392P KR410P KP408P MN496P VN704P LA418P KH116P TH764P MM104P MY458P SG702P BN096P ID360P PH608P TL626P PG598P AU036P NZ554P FJ242P SB090P VU548P NC540P PF258P WS882P TO776P KI296P FM583P MH584P PW585P NR520P TV798P GU316P MP580P AS016P CK184P NU570P WF876P NF574P
+NG566F GH288F CI384F SN686F ML466F BF854F NE562F TD148F CM120F CF140F GA266F CG178F CD180F GQ226F ST678F CV132F GM270F GW624F GN324F SL694F LR430F TG768F BJ204F MR478F SD729F SS728F ET231F ER232F SO706F KE404F UG800F TZ834F RW646F BI108F MW454F ZM894F ZW716F MZ508F AO024F NA516F BW072F ZA710F LS426F SZ748F MG450F MU480F SC690F KM174F RE638F YT175F SH654F"""
+
+CMAP_CSS = """
+.cclick{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+.cmo{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.45);display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 16px}
+.cmo[hidden]{display:none}
+.cmc{background:var(--card);color:var(--ink);border-radius:16px;max-width:980px;width:100%;padding:18px 20px 22px;box-shadow:0 12px 40px rgba(0,0,0,.3);position:relative}
+.cmh{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding-right:40px}
+.cmh h2{margin:0;font-size:22px} .cmh small{color:var(--muted);font-size:13px}
+.cmx{position:absolute;top:12px;right:14px;border:0;background:none;color:var(--ink2);font-size:26px;line-height:1;cursor:pointer;padding:4px 8px}
+#cmsvg{width:100%;height:auto;display:block;margin:10px 0 4px}
+#cmsvg path{stroke:var(--card);stroke-width:.4}
+.cmleg{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-bottom:14px}
+.cmleg i{display:block;width:140px;height:9px;border-radius:5px}
+.cmreg{border-top:1px solid var(--line);padding:10px 0 6px}
+.cmrh{display:inline-flex;gap:8px;align-items:baseline;font-weight:700;font-size:16px;cursor:default}
+.cmrh small{color:var(--muted);font-weight:500;font-size:13px}
+.cmg{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:2px 18px;margin-top:6px;font-size:14px}
+.cmg div{display:flex;justify-content:space-between;gap:8px;padding:2px 0;border-bottom:1px dashed var(--line)}
+.cmg b{font-weight:600;font-variant-numeric:tabular-nums}
+.cmtt{position:fixed;z-index:60;pointer-events:none;background:rgba(18,18,20,.82);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);color:#fff;border-radius:12px;padding:10px 14px;font-size:14px;line-height:1.5;box-shadow:0 8px 28px rgba(0,0,0,.28);max-width:300px}
+.cmtt[hidden]{display:none}
+.cmtt h4{margin:0 0 4px;font-size:15px}
+.cmtt div{display:flex;justify-content:space-between;gap:16px}
+@media (max-width:700px){.cmo{padding:10px 8px}.cmc{padding:14px 12px 18px}.cmh h2{font-size:19px}.cmg{grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 12px;font-size:13px}.cmg span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+"""
+
+CMAP_JS = """
+(() => {
+  const REG = {N:'North America', L:'Latin America & Caribbean', E:'Europe & Central Asia', M:'Middle East & North Africa', S:'South Asia', P:'East Asia & Pacific', F:'Sub-Saharan Africa'};
+  const G = {}; CM_GEO.trim().split(/\\s+/).forEach(e => G[e.slice(0, 2)] = {id: e.slice(2, 5), r: e[5]});
+  const dn = (() => { try { return new Intl.DisplayNames(['en'], {type: 'region'}); } catch (e) { return null; } })();
+  const nm = c => { try { return (dn && dn.of(c)) || c; } catch (e) { return c; } };
+  const ov = document.getElementById('cmap'), tt = document.getElementById('cmtt'), tot = Object.values(CM).reduce((a, b) => a + b, 0);
+  const max = Math.max(...Object.values(CM));
+  const t = v => Math.log(v) / Math.log(Math.max(max, 2));   // log scale: the US would wash out everyone else
+  const green = v => { const k = max <= 1 ? 1 : 0.25 + 0.75 * t(v); return `hsl(145, ${45 + 20 * k}%, ${82 - 58 * k}%)`; };
+  const fmt = n => n.toLocaleString();
+  // list by region (most downloads first), countries most to least
+  const by = {}; Object.entries(CM).forEach(([c, n]) => { const r = (G[c] || {}).r || '?'; (by[r] = by[r] || []).push([c, n]); });
+  const regs = Object.entries(by).map(([r, l]) => [r, l.sort((a, b) => b[1] - a[1] || nm(a[0]).localeCompare(nm(b[0]))), l.reduce((a, x) => a + x[1], 0)]).sort((a, b) => b[2] - a[2]);
+  document.getElementById('cmlist').innerHTML = regs.map(([r, l, s]) => `<div class="cmreg"><span class="cmrh" data-r="${r}">${REG[r] || 'Other'} <small>${fmt(s)} downloads · ${l.length} ${l.length === 1 ? 'country' : 'countries'} · ${Math.round(s / tot * 100)}%</small></span>`
+    + `<div class="cmg">${l.map(([c, n]) => `<div><span>${nm(c)}</span><b>${fmt(n)}</b></div>`).join('')}</div></div>`).join('');
+  const show = (h, x, y) => { tt.innerHTML = h; tt.hidden = false; const w = tt.offsetWidth, ht = tt.offsetHeight;
+    tt.style.left = Math.max(8, Math.min(innerWidth - w - 8, x + 14)) + 'px'; tt.style.top = Math.max(8, Math.min(innerHeight - ht - 8, y + 14)) + 'px'; };
+  const hide = () => { tt.hidden = true; };
+  const regTip = r => { const g = regs.find(x => x[0] === r); return `<h4>${REG[r] || 'Other'} · ${fmt(g[2])}</h4>` + g[1].map(([c, n]) => `<div><span>${nm(c)}</span><b>${fmt(n)}</b></div>`).join(''); };
+  document.querySelectorAll('.cmrh').forEach(h => {
+    h.addEventListener('mousemove', e => show(regTip(h.dataset.r), e.clientX, e.clientY));
+    h.addEventListener('mouseleave', hide);
+    h.addEventListener('click', e => { e.stopPropagation(); tt.hidden ? show(regTip(h.dataset.r), e.clientX, e.clientY) : hide(); });   // phones: tap
+  });
+  let drawn = false;
+  const load = src => new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
+  const draw = async () => {
+    if (drawn) return; drawn = true;
+    const svg = document.getElementById('cmsvg');
+    try {
+      if (!window.d3) await load('https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js');
+      if (!window.topojson) await load('https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js');
+      const w = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-50m.json').then(r => r.json());
+      const f = topojson.feature(w, w.objects.countries).features.filter(x => x.id !== '010');   // no Antarctica
+      const byId = {}; Object.entries(CM).forEach(([c, n]) => { const g = G[c]; if (g && g.id !== '000') byId[g.id] = n; });
+      const kosovo = CM.XK || 0;
+      const proj = d3.geoNaturalEarth1().fitSize([960, 470], {type: 'FeatureCollection', features: f}), path = d3.geoPath(proj);
+      const empty = getComputedStyle(document.documentElement).getPropertyValue('--line').trim() || '#e1e0d9';
+      svg.innerHTML = f.map(x => { const n = x.id ? byId[x.id] : (x.properties.name === 'Kosovo' ? kosovo : 0);
+        return `<path d="${path(x)}" fill="${n ? green(n) : empty}"></path>`; }).join('');
+    } catch (e) { svg.outerHTML = '<p style="color:var(--muted)">Map could not load (no connection?). The list below has every country.</p>'; }
+  };
+  window.openCMap = () => { ov.hidden = false; document.body.style.overflow = 'hidden'; draw(); };
+  const close = () => { ov.hidden = true; hide(); document.body.style.overflow = ''; };
+  document.getElementById('cmx').onclick = close;
+  ov.addEventListener('click', e => { if (e.target === ov) close(); else if (!e.target.closest('.cmrh')) hide(); });
+  addEventListener('keydown', e => { if (e.key === 'Escape' && !ov.hidden) close(); });
+  document.querySelectorAll('.cclick').forEach(el => el.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); openCMap(); }));
+})();
+"""
+
+
+def cmap_html():
+    """Overlay + data + script for the countries map (empty without country data)."""
+    if not COUNTRIES:
+        return ""
+    tot = sum(COUNTRIES.values())
+    lo = "hsl(145, 49%, 77%)"; hi = "hsl(145, 65%, 24%)"
+    return (f"<style>{CMAP_CSS}</style>"
+            f"<div class='cmo' id='cmap' hidden><div class='cmc'><button class='cmx' id='cmx' aria-label='Close'>×</button>"
+            f"<div class='cmh'><h2>{len(COUNTRIES):,} countries</h2><small>{tot:,} App Store first downloads since launch</small></div>"
+            f"<svg id='cmsvg' viewBox='0 0 960 470' role='img' aria-label='World map of downloads'></svg>"
+            f"<div class='cmleg'>1<i style='background:linear-gradient(90deg,{lo},{hi})'></i>{max(COUNTRIES.values()):,} downloads</div>"
+            f"<div id='cmlist'></div></div></div><div class='cmtt' id='cmtt' hidden></div>"
+            f"<script>const CM = {json.dumps(COUNTRIES, sort_keys=True)}; const CM_GEO = {json.dumps(GEO)};{CMAP_JS}</script>")
+
+
 def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None, old=None, dry=False, posts_html="", week_html="", installs=None, today=None, day_base=None, money=None, money_daily=None, est=None):
     e = html.escape
     cols = [{"id": "label", "label": stamp}] + [{"id": p, "label": NAME[p]} for p in PLAT] + [
@@ -1067,10 +1172,10 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         lab = lambda full, short: f"<small><span class='nf'>{full}</span><span class='ns'>{short}</span></small>"   # Guy, Oct 30: short labels on phones
         top = ", ".join(f"{c} {n:,}" for c, n in sorted(COUNTRIES.items(), key=lambda x: -x[1])[:10])
         ctip = f" title='{html.escape(top)} (App Store first downloads since launch)'" if COUNTRIES else ""
-        cn = f"<span class='ns'> ({len(COUNTRIES):,})</span>" if COUNTRIES else ""   # phones: countries in parentheses after downloads
+        cn = f"<span class='ns'> (<span class='cclick'>{len(COUNTRIES):,}</span>)</span>" if COUNTRIES else ""   # phones: countries in parentheses after downloads
         right = f"<div class='dayt'>{allv:,} {lab('total views', 'Views')}</div>" + (f"<div class='dayt'{ctip}>{tot_dl:,}{cn} {lab('total downloads', 'Downloads')}</div>" if tot_dl is not None else "")
         if COUNTRIES:   # Guy, Oct 29: countries with at least one App Store first download since launch; hover for the top ones (own tile on wide screens only)
-            right += f"<div class='dayt nf'{ctip}>{len(COUNTRIES):,} <small>countries</small></div>"
+            right += f"<div class='dayt nf cclick'{ctip}>{len(COUNTRIES):,} <small>countries</small></div>"
         if REVIEWS.get("app_id"):   # Guy, Oct 30: App Store star ratings (every country with a download) + written reviews; no link
             avg = f" · {REVIEWS['avg']:.1f}★" if REVIEWS.get("avg") is not None else ""
             tip = f"Star ratings by country: {REVIEWS.get('top') or 'none yet'}. Written reviews: {int(REVIEWS.get('reviews') or 0):,}. Ratings refresh once a day."
@@ -1451,7 +1556,7 @@ function mk(canvas, D) {{ if (!canvas) return;
    const di = t.dataPoints.length ? t.dataPoints[0].dataIndex + O.v : -1;   // Guy, Oct 29: today's pop-up compares with this time yesterday
    if (D.ysame != null && di === D.labels.length - 1) {{ const tv = t.dataPoints.filter(p => p.dataset.stack === 'v').reduce((a, p) => a + (p.parsed.y || 0), 0), dd = tv - D.ysame, pc = D.ysame ? Math.round(dd / D.ysame * 100) : null;
      h += `<div class="ctt-y">This time yesterday: ${{D.ysame.toLocaleString()}}` + (pc == null ? '' : ' ' + ARW(pc)) + '</div>'; }}
-   rows.forEach(r => {{ if (!r.v && !sep && rows.some(x => x.v)) {{ h += '<div class="ctt-sep"></div>'; sep = true; }} h += `<div class="ctt-r"><i style="background:${{r.c}}"></i>${{r.txt}}</div>`; }});
+   rows.forEach(r => {{ if (!r.v && !sep && rows.some(x => x.v)) {{ h += '<div class="ctt-sep"></div>'; sep = true; }} h += `<div class="ctt-r"><i style="background:${{r.c}}"></i><span>${{r.txt}}</span></div>`; }});
    el.innerHTML = h; el.style.opacity = 1;
    const W = ch.canvas.parentNode.clientWidth, w = el.offsetWidth, hh = el.offsetHeight;
    let x = t.caretX + 16; if (x + w > W) x = t.caretX - w - 16; if (x < 0) x = Math.max(0, (W - w) / 2);
@@ -1511,7 +1616,7 @@ function rangeSlider(chart, D, O) {{   // Guy, Oct 27: drag the blue window to l
  const up = () => {{ x0 = null; box.classList.remove('drag'); }}; box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up); }}
 mk(document.getElementById('c'), D);
 if (window.SRCCHART) SRCCHART();   // Guy, Oct 29: App Store sources chart
-</script></body></html>"""
+</script>{cmap_html()}</body></html>"""
     open(OUT_HTML, "w").write(doc)
     return {"stamp": stamp, "table": {"cols": cols, "rows": trows}, "legend": legend,
             "data": {"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}}}
