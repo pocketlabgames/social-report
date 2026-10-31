@@ -1450,7 +1450,7 @@ function mk(canvas, D) {{ if (!canvas) return;
    let h = `<div class="ctt-h">${{t.title.join(' ')}}</div>`, sep = false;
    const di = t.dataPoints.length ? t.dataPoints[0].dataIndex + O.v : -1;   // Guy, Oct 29: today's pop-up compares with this time yesterday
    if (D.ysame != null && di === D.labels.length - 1) {{ const tv = t.dataPoints.filter(p => p.dataset.stack === 'v').reduce((a, p) => a + (p.parsed.y || 0), 0), dd = tv - D.ysame, pc = D.ysame ? Math.round(dd / D.ysame * 100) : null;
-     h += `<div class="ctt-y">This time yesterday: ${{D.ysame.toLocaleString()}} (${{dd >= 0 ? '+' : '−'}}${{Math.abs(dd).toLocaleString()}})` + (pc == null ? '' : ` (${{pc >= 0 ? '+' : '−'}}${{Math.abs(pc)}}%)`) + '</div>'; }}
+     h += `<div class="ctt-y">This time yesterday: ${{D.ysame.toLocaleString()}}` + (pc == null ? '' : ' ' + ARW(pc)) + '</div>'; }}
    rows.forEach(r => {{ if (!r.v && !sep && rows.some(x => x.v)) {{ h += '<div class="ctt-sep"></div>'; sep = true; }} h += `<div class="ctt-r"><i style="background:${{r.c}}"></i>${{r.txt}}</div>`; }});
    el.innerHTML = h; el.style.opacity = 1;
    const W = ch.canvas.parentNode.clientWidth, w = el.offsetWidth, hh = el.offsetHeight;
@@ -1464,7 +1464,9 @@ function mk(canvas, D) {{ if (!canvas) return;
    const tf = H.toFont(o.titleFont), bf = H.toFont(o.bodyFont), nt = t.title.length;
    let y = t.y + pad.top + nt*tf.lineHeight + Math.max(0, nt - 1)*o.titleSpacing + o.titleMarginBottom + k*(Math.max(bf.lineHeight, o.boxHeight || bf.size) + o.bodySpacing) - o.bodySpacing + bf.lineHeight/2;
    const x = ch.ctx; x.save(); x.strokeStyle = 'rgba(255,255,255,.75)'; x.lineWidth = 1; x.beginPath(); x.moveTo(t.x + pad.left, Math.round(y) + .5); x.lineTo(t.x + t.width - pad.right, Math.round(y) + .5); x.stroke(); x.restore(); }}}};
- const YDL = {{id:'ysame', afterDatasetsDraw(ch) {{   // Guy, Oct 29: medium pale gray line left of today's bar = views at this time yesterday
+ const ARW = pc => `(<span style="color:${{pc >= 0 ? '#34c759' : '#ff453a'}}">${{pc >= 0 ? '▲' : '▼'}}</span>${{pc >= 0 ? '+' : '−'}}${{Math.abs(pc)}}%)`;   // Guy, Oct 31: percent only, green up / red down arrow
+const VSP = (a, i) => {{ const c = a && a[i], p = a && i > 0 ? a[i - 1] : null; return c == null || !p ? '' : ' ' + ARW(Math.round((c - p) / p * 100)); }};   // installs/earned vs the day before
+const YDL = {{id:'ysame', afterDatasetsDraw(ch) {{   // Guy, Oct 29: medium pale gray line left of today's bar = views at this time yesterday
    if (D.ysame == null) return; const li = ch.data.labels.length - 1; if (O.v + li !== D.labels.length - 1) return;
    const el = ch.getDatasetMeta(0).data[li]; if (!el) return; const y = ch.scales.y.getPixelForValue(D.ysame), y0 = ch.scales.y.getPixelForValue(0), w = el.width || 20, bw = 5;   // Guy, Oct 29: 5 px wide
    const x = ch.ctx; x.save(); x.fillStyle = dark ? 'rgba(160,160,160,.9)' : 'rgba(60,60,60,.75)';   // Guy, Oct 29: thin vertical bar, darker gray
@@ -1478,7 +1480,7 @@ function mk(canvas, D) {{ if (!canvas) return;
   plugins:{{legend:{{display:false}}, tooltip:{{enabled:false, external:TT, itemSort:(a, b) => TTR(a) - TTR(b), callbacks:{{
    labelColor: c => ({{borderColor:'rgba(0,0,0,0)', backgroundColor: c.dataset.type === 'line' ? c.dataset.borderColor : c.dataset.backgroundColor, borderWidth:1, borderRadius:2}}),
    title: it => {{ const t = it.filter(c => c.dataset.type !== 'line' && c.dataset.stack !== 's').reduce((s, c) => s + (c.parsed.y || 0), 0); return it[0].label + ' · ' + sg(t) + ' views'; }},
-   label: c => c.dataset.stack === 's' ? 'Google Ads spend: $' + (c.parsed.y || 0).toFixed(2) : c.dataset.label === 'Earned' ? 'Earned: $' + c.parsed.y.toFixed(2) + (EP.has(c.dataIndex + O.v) ? ' (Ads only)' : '') : c.dataset.type === 'line' ? 'Installs: ' + (EST.has(c.dataIndex + O.v) ? '~' : '') + fmt(c.parsed.y) + (EST.has(c.dataIndex + O.v) ? ' (estimate)' : '') : c.dataset.label + ': ' + sg(c.parsed.y) }}}}}},
+   label: c => c.dataset.stack === 's' ? 'Google Ads spend: $' + (c.parsed.y || 0).toFixed(2) : c.dataset.label === 'Earned' ? 'Earned: $' + c.parsed.y.toFixed(2) + (EP.has(c.dataIndex + O.v) ? ' (Ads only)' : '') + VSP(D.earned, c.dataIndex + O.v) : c.dataset.type === 'line' ? 'Installs: ' + (EST.has(c.dataIndex + O.v) ? '~' : '') + fmt(c.parsed.y) + (EST.has(c.dataIndex + O.v) ? ' (estimate)' : '') + VSP(D.installs, c.dataIndex + O.v) : c.dataset.label + ': ' + sg(c.parsed.y) }}}}}},
   scales:{{x:{{stacked:true, grid:{{display:false}}, ticks:{{color:muted, maxRotation:0, autoSkip:false, font:{{size:12}}, callback(v) {{ return this.getLabelForValue(v).split(' ')[0]; }}}}}}, y:{{stacked:true, beginAtZero:true, min:0, grid:{{color:grid}}, ticks:{{color:muted, callback:v => v.toLocaleString()}}, title:{{display:true, text:'Views gained', color:muted}}}},
    ...(D.installs ? {{y2:{{position:'right', beginAtZero:true, grid:{{display:false}}, ticks:{{color:'#7B4FD6', precision:0}}, title:{{display:true, text:'Installs', color:'#7B4FD6'}}}}}} : {{}}),
    ...(D.earned ? {{y3:{{display:false, beginAtZero:true}}}} : {{}}),
