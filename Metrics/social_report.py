@@ -973,7 +973,8 @@ CMAP_CSS = """
 .cmleg{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-bottom:14px}
 .cmleg i{display:block;width:140px;height:9px;border-radius:5px}
 .cmreg{border-top:1px solid var(--line);padding:10px 0 6px}
-.cmrh{display:inline-flex;gap:8px;align-items:baseline;font-weight:700;font-size:16px;cursor:default}
+.cmrh{display:inline-flex;gap:8px;align-items:baseline;font-weight:700;font-size:16px}
+#cmsvg path[data-r]{cursor:pointer}
 .cmrh small{color:var(--muted);font-weight:500;font-size:13px}
 .cmg{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:2px 18px;margin-top:6px;font-size:14px}
 .cmg div{display:flex;justify-content:space-between;gap:8px;padding:2px 0;border-bottom:1px dashed var(--line)}
@@ -1004,12 +1005,7 @@ CMAP_JS = """
   const show = (h, x, y) => { tt.innerHTML = h; tt.hidden = false; const w = tt.offsetWidth, ht = tt.offsetHeight;
     tt.style.left = Math.max(8, Math.min(innerWidth - w - 8, x + 14)) + 'px'; tt.style.top = Math.max(8, Math.min(innerHeight - ht - 8, y + 14)) + 'px'; };
   const hide = () => { tt.hidden = true; };
-  const regTip = r => { const g = regs.find(x => x[0] === r); return `<h4>${REG[r] || 'Other'} · ${fmt(g[2])}</h4>` + g[1].map(([c, n]) => `<div><span>${nm(c)}</span><b>${fmt(n)}</b></div>`).join(''); };
-  document.querySelectorAll('.cmrh').forEach(h => {
-    h.addEventListener('mousemove', e => show(regTip(h.dataset.r), e.clientX, e.clientY));
-    h.addEventListener('mouseleave', hide);
-    h.addEventListener('click', e => { e.stopPropagation(); tt.hidden ? show(regTip(h.dataset.r), e.clientX, e.clientY) : hide(); });   // phones: tap
-  });
+  const regTip = r => { const g = regs.find(x => x[0] === r); return g ? `<h4>${REG[r]} · ${fmt(g[2])}</h4>` + g[1].map(([c, n]) => `<div><span>${nm(c)}</span><b>${fmt(n)}</b></div>`).join('') : `<h4>${REG[r]}</h4>No downloads yet`; };
   let drawn = false;
   const load = src => new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
   const draw = async () => {
@@ -1021,17 +1017,22 @@ CMAP_JS = """
       const w = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-50m.json').then(r => r.json());
       const f = topojson.feature(w, w.objects.countries).features.filter(x => x.id !== '010');   // no Antarctica
       const byId = {}; Object.entries(CM).forEach(([c, n]) => { const g = G[c]; if (g && g.id !== '000') byId[g.id] = n; });
-      const kosovo = CM.XK || 0;
+      const kosovo = CM.XK || 0, idReg = {}; Object.values(G).forEach(g => { if (g.id !== '000') idReg[g.id] = idReg[g.id] || g.r; });
       const proj = d3.geoNaturalEarth1().fitSize([960, 470], {type: 'FeatureCollection', features: f}), path = d3.geoPath(proj);
       const empty = getComputedStyle(document.documentElement).getPropertyValue('--line').trim() || '#e1e0d9';
       svg.innerHTML = f.map(x => { const n = x.id ? byId[x.id] : (x.properties.name === 'Kosovo' ? kosovo : 0);
-        return `<path d="${path(x)}" fill="${n ? green(n) : empty}"></path>`; }).join('');
+        const r = x.id ? idReg[x.id] : (x.properties.name === 'Kosovo' ? 'E' : null);
+        return `<path d="${path(x)}" fill="${n ? green(n) : empty}"${r ? ` data-r="${r}"` : ''}></path>`; }).join('');
+      // Guy, Oct 31: hovering a country on the map shows its region's countries, most to least (tap on phones)
+      svg.addEventListener('mousemove', e => { const r = e.target.dataset && e.target.dataset.r; r ? show(regTip(r), e.clientX, e.clientY) : hide(); });
+      svg.addEventListener('mouseleave', hide);
+      svg.addEventListener('click', e => { e.stopPropagation(); const r = e.target.dataset && e.target.dataset.r; r ? show(regTip(r), e.clientX, e.clientY) : hide(); });
     } catch (e) { svg.outerHTML = '<p style="color:var(--muted)">Map could not load (no connection?). The list below has every country.</p>'; }
   };
   window.openCMap = () => { ov.hidden = false; document.body.style.overflow = 'hidden'; draw(); };
   const close = () => { ov.hidden = true; hide(); document.body.style.overflow = ''; };
   document.getElementById('cmx').onclick = close;
-  ov.addEventListener('click', e => { if (e.target === ov) close(); else if (!e.target.closest('.cmrh')) hide(); });
+  ov.addEventListener('click', e => { if (e.target === ov) close(); else hide(); });
   addEventListener('keydown', e => { if (e.key === 'Escape' && !ov.hidden) close(); });
   document.querySelectorAll('.cclick').forEach(el => el.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); openCMap(); }));
 })();
