@@ -39,6 +39,7 @@ ASCR = {}       # App Store Connect app numbers for the Retention card (asc_ret_
 ASC_D1_ON = False   # flip to True once ASC Analytics > Retention shows data (Guy wants Apple numbers when reliable)
 RET = {}        # {"d1": %, "d1_n": players, "d7": %, "d7_n": players} from Firebase / GA4 (ga4_lite)
 GADS = {}       # {date: Google Ads spend in USD} (gads_lite; empty if keys are missing)
+METAADS = {}    # {date: {spend, clicks, installs}} Meta ads, FB + IG (metaads_lite; empty until the token has ads_read; Guy, Nov 1)
 ASCSRC = {}     # {date: {pv_ads, pv_search, pv_browse, pv_other, dl_...}} App Store page views + first downloads by source (asc_ret_lite; Guy, Oct 29)
 RCNEW = {}      # {date: RevenueCat new customers (first opens)} for the same-day download estimate
 LAST = os.path.join(HERE, "cache", "report-last.json")   # the previous run's table + chart, shown at the bottom (one run only, not a history)
@@ -80,6 +81,10 @@ def fetch():
         from sources import gads_lite
     except ImportError:
         gads_lite = None
+    try:
+        from sources import metaads_lite
+    except ImportError:
+        metaads_lite = None
     out, errors = {}, []
     import re, time
     from concurrent.futures import ThreadPoolExecutor
@@ -94,7 +99,7 @@ def fetch():
                     return {}, f"{m.__name__.split('.')[-1]} (3 tries): {msg}"[:200]
                 time.sleep(10 * attempt)
 
-    INSTALLS.clear(); COUNTRIES.clear(); REVIEWS.clear(); MONEY.clear(); RCNEW.clear(); GADS.clear(); RET.clear(); ASCR.clear()
+    INSTALLS.clear(); COUNTRIES.clear(); REVIEWS.clear(); MONEY.clear(); RCNEW.clear(); GADS.clear(); METAADS.clear(); RET.clear(); ASCR.clear()
     srcs = [youtube, meta, tiktok] + ([asc_lite] if asc_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")) else [])
     if money_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")) and os.path.exists(os.path.join(KEYS, "admob-token.json")):
         srcs.append(money_lite)
@@ -110,6 +115,8 @@ def fetch():
         srcs.append(gads_lite)
     elif gads_lite and os.path.exists(gads_lite.CACHE):   # no keys here: still show the spend we already have
         GADS.update(json.load(open(gads_lite.CACHE)))
+    if metaads_lite and os.path.exists(os.path.join(KEYS, "meta-token.txt")):
+        srcs.append(metaads_lite)
     with ThreadPoolExecutor(6) as ex:   # the sites, App Store installs and money in parallel
         for got, err in ex.map(pull, srcs):
             if "ASC Installs Lite" in got:
@@ -135,6 +142,9 @@ def fetch():
             if "GAds Spend Lite" in got:
                 d = got.pop("GAds Spend Lite")
                 GADS.update({r.date: float(r.spend) for r in d.itertuples() if pd.notna(r.spend)})
+            if "Meta Ads Lite" in got:
+                d = got.pop("Meta Ads Lite")
+                METAADS.update({r["date"]: {k: r[k] for k in ("spend", "clicks", "installs")} for r in d.to_dict("records")})
             if "RC New Lite" in got:
                 d = got.pop("RC New Lite")
                 RCNEW.update({r.date: int(r.new) for r in d.itertuples() if pd.notna(r.new)})
@@ -873,10 +883,17 @@ def sources_section():
     md = lambda d: dt.date.fromisoformat(d).strftime("%b %-d")
     summ = (f"Last 7 days ({md(wk[0])} – {md(wk[-1])}): <b>Google Ads:</b> {tot('pv_ads'):,} page views → <b>{ad_dl:,}</b> downloads ({pct(ad_dl, tot('pv_ads'))}), ${spend:,.2f} spent{per} · "
             f"<b>Search:</b> {tot('pv_search'):,} → <b>{tot('dl_search'):,}</b> · <b>Browse:</b> {tot('pv_browse'):,} → <b>{tot('dl_browse'):,}</b> · <b>Other:</b> {tot('pv_other'):,} views")
+    if METAADS:   # Guy, Nov 1: Meta ads line (spend, link clicks, Meta's install count)
+        mw = [METAADS.get(d) or {} for d in wk]
+        ms, mc, mi = sum(x.get("spend", 0) for x in mw), sum(x.get("clicks", 0) for x in mw), sum(x.get("installs", 0) for x in mw)
+        mper = f", ${ms / mi:.2f} per install" if mi and ms else ""
+        summ += f"<br><b>Meta ads (FB + IG):</b> ${ms:,.2f} spent, {mc:,} link click{'' if mc == 1 else 's'}, <b>{mi:,}</b> install{'' if mi == 1 else 's'} (Meta's count){mper}"
+    else:
+        summ += "<br><b>Meta ads (FB + IG):</b> not connected yet (the Meta token needs the ads_read permission)"
     src = [("ads", "Google Ads", "#C9A227"), ("other", "Other", "#A8A8A8"), ("search", "Search", "#12A4A4"), ("browse", "Browse", "#8E6FD8")]
     src.sort(key=lambda x: -sum(g(d, "pv_" + x[0]) for d in days))   # most to least (bottom of the stack = biggest)
     data = {"labels": [md(d) for d in days], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in days],
-            "spend": [GADS.get(d) for d in days], "src": [{"k": k, "l": l, "c": c} for k, l, c in src],
+            "spend": [GADS.get(d) for d in days], "meta": [METAADS.get(d) for d in days], "src": [{"k": k, "l": l, "c": c} for k, l, c in src],
             **{"pv_" + k: [g(d, "pv_" + k) for d in days] for k, _, _ in src}, **{"dl_" + k: [g(d, "dl_" + k) for d in days] for k, _, _ in src}}
     legend = "".join(f"<span class='lg'><svg width='22' height='10'><line x1='0' y1='5' x2='22' y2='5' stroke='{c}' stroke-width='3'/></svg>{l} {sum(g(d, 'pv_' + k) for d in days):,}</span>" for k, l, c in src)
     js = """<script>window.SRCCHART = () => { const X = __DATA__, cv = document.getElementById('srcc'); if (!cv || !window.Chart || Chart.getChart(cv)) return;   // started by the main chart script (the password page writes this page in after 'load' has fired)
@@ -891,6 +908,7 @@ def sources_section():
   rows.forEach(s => { const v = X['pv_' + s.k][i], d = X['dl_' + s.k][i];
    h += `<div class="ctt-r"><i style="background:${s.c}"></i>${s.l}: ${n(v)} view${v === 1 ? '' : 's'} → ${n(d)} download${d === 1 ? '' : 's'}${sh(d)}</div>`; });
   if (X.spend[i] != null) h += `<div class="ctt-sep"></div><div class="ctt-r"><i style="background:#C9A227"></i>Google Ads spend: $${X.spend[i].toFixed(2)}` + (X.dl_ads[i] ? ` ($${(X.spend[i] / X.dl_ads[i]).toFixed(2)} per download)` : '') + '</div>';
+  const M = X.meta[i]; if (M && (M.spend || M.clicks || M.installs)) h += `<div class="ctt-r"><i style="background:#1877F2"></i>Meta ads: $${M.spend.toFixed(2)} · ${n(M.clicks)} click${M.clicks === 1 ? '' : 's'} · ${n(M.installs)} install${M.installs === 1 ? '' : 's'} (Meta's count)</div>`;   // Guy, Nov 1
   el.innerHTML = h; el.style.opacity = 1;
   const W = ch.canvas.parentNode.clientWidth, w = el.offsetWidth, hh = el.offsetHeight;
   let x = t.caretX + 16; if (x + w > W) x = t.caretX - w - 16; if (x < 0) x = Math.max(0, (W - w) / 2);
@@ -904,7 +922,7 @@ def sources_section():
  const hide = () => { const el = cv.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); };
  document.addEventListener('touchstart', e => { if (e.target !== cv) hide(); }, {passive: true}); }; </script>""".replace("__DATA__", json.dumps(data))
     return (f"<h2 class='sh' id='sec-sources'>App Store visits by source</h2><p class='sub'>App Store product page views (unique devices) per day, stacked by where people came from; hover or tap a day for downloads (with each source's share of that day's downloads) and Google Ads spend. "
-            f"Apple posts these 1–2 days behind. Download totals match the main chart (Apple's sales report); the split by source comes from Apple's analytics report, so per-source downloads are close estimates. Google Ads = Apple's “App referrer” (visits from inside other apps, which is where the ads run). "
+            f"Apple posts these 1–2 days behind. Download totals match the main chart (Apple's sales report); the split by source comes from Apple's analytics report, so per-source downloads are close estimates. Google Ads = Apple's “App referrer” (visits from inside other apps, which is where the ads run). Taps on a Meta ad from inside Instagram or Facebook would also land here; Meta's own counts are in the Meta ads line. "
             f"Search = people who searched the App Store; social posts say “search Beaker Lab”, so post viewers land here, along with anyone else who searched. Browse = found inside the App Store. Other = Apple couldn't tell the source.</p>"
             f"<p class='sub'>{summ}</p><div class='lgs' style='margin-top:6px'>{legend}</div><div class='chart' style='height:300px'><canvas id='srcc' role='img' aria-label='App Store page views per day by source'></canvas></div>{js}")
 
