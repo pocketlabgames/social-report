@@ -30,6 +30,8 @@ def fetch(keys_dir, today):
         accts = _get("me/adaccounts", token, fields="id,name", limit=50).get("data", [])
     except RuntimeError as e:
         if "permission" in str(e).lower():
+            if not os.path.exists(CACHE):   # report.yml saves this file every run, so it must exist (runs #444/#445 failed without it)
+                json.dump({}, open(CACHE, "w"))
             return {"Meta Ads Lite": (pd.DataFrame(), None)}   # token has no ads_read yet
         raise
     cache = json.load(open(CACHE)) if os.path.exists(CACHE) else {}
