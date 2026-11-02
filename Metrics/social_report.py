@@ -962,8 +962,8 @@ def game_section():
              (f"{sum(k * v for k, v in ml.items()) / mp:.1f}" if mp else "—", "Avg furthest level", f"of {mp:,} player{'' if mp == 1 else 's'} since Nov 1" if mp else "no level data yet"),
              (f"{oc.get('win', 0) / on * 100:.0f}%" if on else "—", "Win rate", f"{oc.get('win', 0):,} wins of {on:,} level attempts" if on else "no win/loss data yet"),
              (per(ads), "Ad views per player", (" · ".join(f"{v:,} {'between levels' if k == 'interstitial' else k}" for k, v in sorted(kd.items())) or f"{ads:,} ads") + " in 7 days" + few(P)),
-             (per(sup, 100), "Super Stir / Solve per 100", f"{W.get('super_stir', 0):,} Super Stir · {W.get('super_solve', 0):,} Super Solve" + few(P)),
-             (per(buy, 100), "Purchases per 100 players", f"{buy:,} purchase{'' if buy == 1 else 's'} in 7 days" + few(P))]
+             (f"{sup:,}", "Super Stir / Solve uses", f"{W.get('super_stir', 0):,} Super Stir · {W.get('super_solve', 0):,} Super Solve, by {P:,} player{'' if P == 1 else 's'} in 7 days"),   # Guy, Nov 2: plain counts, not per 100
+             (f"{buy:,}", "Purchases", f"by {P:,} player{'' if P == 1 else 's'} in 7 days")]
     e = html.escape
     tiles_html = "<div class='gst'>" + "".join(f"<div class='gt'><b>{e(v)}</b><span>{e(l)}</span><small>{e(n)}</small></div>" for v, l, n in tiles) + "</div>"
     top = max(ml) if ml else 0
