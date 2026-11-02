@@ -24512,7 +24512,7 @@
     }
   },
   {
-    "checked_at": "2026-11-01 20:23",
+    "checked_at": "2026-11-01 20:24",
     "source": "social_report.py",
     "instagram": {
       "posts": 76,
@@ -24540,7 +24540,7 @@
     },
     "youtube": {
       "posts": 75,
-      "views": 24879,
+      "views": 24889,
       "top_views": 1414,
       "likes": 92,
       "comments": 41,
@@ -24549,7 +24549,7 @@
       "likes_per_k": 3.7,
       "views_3s": 5865,
       "public_posts": 75,
-      "public_views": 24573,
+      "public_views": 24583,
       "followers": 6
     },
     "tiktok": {
