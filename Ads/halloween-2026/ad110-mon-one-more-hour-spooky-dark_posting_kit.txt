@@ -1,6 +1,6 @@
-adXXX One More Hour of Halloween (story ad; daylight saving; Spooky Brews, Level 229, Combo ×9, 15.0 s, Dark)
-Video: dst-sound.mp4
-Schedule: TBD (Guy). Text: draft, Nov 2.
+ad110 One More Hour of Halloween (story ad; daylight saving; Spooky Brews, Level 229, Combo ×9, 15.0 s, Dark)
+Video: ad110-mon-one-more-hour-spooky-dark.mp4 (= dst-sound.mp4)
+Schedule: Mon Nov 2, 2026, post now (Guy), all 4 sites. Text: draft, Nov 2. Ad number assumed (next after ad109).
 Music: "Halloween Funny Pumpkin (version 5, cute horror)" by BombinSound (Pixabay), from 0:00, faded under the end card. SFX: synthesized; game sounds from ad105 gameplay.
 
 FACEBOOK + INSTAGRAM (crossposted)
