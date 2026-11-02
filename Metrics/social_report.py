@@ -787,7 +787,7 @@ def money_bits(money, now):
     y = (td - dt.timedelta(days=1)).isoformat()
     w = [d for d in allk if 0 <= (td - dt.date.fromisoformat(d)).days < 7]   # Guy, Oct 27 audit: was 8 days (<= 7); now today + 6 days, same window as views
     mo = [d for d in allk if d[:7] == td.strftime("%Y-%m")]
-    return {"all": tot(allk), "t": tot([td.isoformat()]), "y": tot([y]), "w": tot(w), "m": tot(mo), "ads": tot(allk, "ads"), "iap": tot(allk, "iap"),
+    return {"all": tot(allk), "t": tot([td.isoformat()]), "y": tot([y]), "w": tot(w), "m": tot(mo), "ads": tot(allk, "ads"), "iap": tot(allk, "iap"), "mads": tot(mo, "ads"), "miap": tot(mo, "iap"),
             "y_missing": (money.get(y) or {}).get("iap") is None, "month": td.strftime("%B")}
 
 
@@ -1344,7 +1344,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         if money:
             right += f"<div class='dayt eclick' title='Click for earnings by day, week, month or year'>${money['m']:,.2f} {lab('earned in ' + money['month'], 'Earned ' + money['month'][:3])}</div>"   # Guy, Nov 2: this month only; click = earnings chart"
             inst += (f"<div class='dayp daym'>Earned: <b>${money['t']:,.2f}</b> today · <b>${money['y']:,.2f}</b> yesterday · <b>${money['w']:,.2f}</b> last 7 days · <b>${money['m']:,.2f}</b> in {money['month']}"
-                     f" · ads ${money['ads']:,.2f} + App Store ${money['iap']:,.2f} since launch {' <small>(Apple hasn’t posted yesterday yet)</small>' if money['y_missing'] else ''}</div>")
+                     f" (ads ${money['mads']:,.2f} + App Store ${money['miap']:,.2f}) {' <small>(Apple hasn’t posted yesterday yet)</small>' if money['y_missing'] else ''}</div>")
         v3now = {p: (snap.get(p) or {}).get("views_3s") for p in PLAT}
         v3b = {p: (day_base.get(p) or {}).get("views_3s") for p in PLAT} if day_base else {}
         v3parts = " · ".join(f"<span style='color:{COLOR[p]}'>●</span> <span class='nf'>{NAME[p]}</span><span class='ns'>{SHORT[p]}</span> {v3now[p]:,}" + (f" <small>(+{v3now[p] - v3b[p]:,} 24 h)</small>" if v3b.get(p) is not None and v3now[p] - v3b[p] >= 0 else "") for p in sorted(PLAT, key=lambda q: -(v3now[q] or 0)) if v3now[p] is not None)   # most to least
