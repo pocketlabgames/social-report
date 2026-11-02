@@ -37,6 +37,7 @@ COUNTRIES = {}  # {country code: first downloads since launch} from App Store Co
 MONEY = {}      # {date: {"ads": usd, "iap": usd}} (filled by fetch(); empty if keys are missing)
 ASCR = {}       # App Store Connect app numbers for the Retention card (asc_ret_lite; Guy, Oct 26)
 ASC_D1_ON = False   # flip to True once ASC Analytics > Retention shows data (Guy wants Apple numbers when reliable)
+GAME = {}       # Firebase / GA4 game stats, builds 1.3.1+ (ga4_game_lite; Guy, Nov 2)
 RET = {}        # {"d1": %, "d1_n": players, "d7": %, "d7_n": players} from Firebase / GA4 (ga4_lite)
 GADS = {}       # {date: Google Ads spend in USD} (gads_lite; empty if keys are missing)
 METAADS = {}    # {date: {spend, clicks, installs}} Meta ads, FB + IG (metaads_lite; empty until the token has ads_read; Guy, Nov 1)
@@ -70,6 +71,10 @@ def fetch():
     except ImportError:
         ga4_lite = None
     try:
+        from sources import ga4_game_lite
+    except ImportError:
+        ga4_game_lite = None
+    try:
         from sources import asc_ret_lite
     except ImportError:
         asc_ret_lite = None
@@ -99,7 +104,7 @@ def fetch():
                     return {}, f"{m.__name__.split('.')[-1]} (3 tries): {msg}"[:200]
                 time.sleep(10 * attempt)
 
-    INSTALLS.clear(); COUNTRIES.clear(); REVIEWS.clear(); MONEY.clear(); RCNEW.clear(); GADS.clear(); METAADS.clear(); RET.clear(); ASCR.clear()
+    INSTALLS.clear(); COUNTRIES.clear(); REVIEWS.clear(); MONEY.clear(); RCNEW.clear(); GADS.clear(); METAADS.clear(); RET.clear(); ASCR.clear(); GAME.clear()
     srcs = [youtube, meta, tiktok] + ([asc_lite] if asc_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")) else [])
     if money_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")) and os.path.exists(os.path.join(KEYS, "admob-token.json")):
         srcs.append(money_lite)
@@ -107,6 +112,8 @@ def fetch():
         srcs.append(rc_lite)
     if ga4_lite and os.path.exists(os.path.join(KEYS, "ga4-token.json")):
         srcs.append(ga4_lite)
+    if ga4_game_lite and os.path.exists(os.path.join(KEYS, "ga4-token.json")):
+        srcs.append(ga4_game_lite)
     if asc_ret_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")):
         srcs.append(asc_ret_lite)
     if asc_reviews_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")):
@@ -131,6 +138,8 @@ def fetch():
             if "GA4 Retention Lite" in got:
                 r0 = got.pop("GA4 Retention Lite").iloc[0].to_dict()
                 RET.update({k: (None if pd.isna(v) else v) for k, v in r0.items()})
+            if "GA4 Game Lite" in got:
+                GAME.update(json.loads(got.pop("GA4 Game Lite").iloc[0]["json"]))
             if "ASC Retention Lite" in got:
                 r0 = got.pop("ASC Retention Lite").iloc[0].to_dict() if len(got.get("ASC Retention Lite", [])) else {}
                 got.pop("ASC Retention Lite", None)
@@ -927,6 +936,70 @@ def sources_section():
             f"<p class='sub'>{summ}</p><div class='lgs' style='margin-top:6px'>{legend}</div><div class='chart' style='height:300px'><canvas id='srcc' role='img' aria-label='App Store page views per day by source'></canvas></div>{js}")
 
 
+def game_section():
+    """Guy, Nov 2: game stats from Firebase / GA4 (builds 1.3.1+ only): players, furthest level, win rate, ads, Super Stir /
+    Super Solve and purchases, with a furthest-level funnel (where players stop) and players per day."""
+    G = GAME
+    if not G.get("versions"):
+        return ""
+    today = dt.date.today()
+    days = [(today - dt.timedelta(days=i)).isoformat() for i in range(13, -1, -1)]
+    D = {d: G.get("daily", {}).get(d, {}) for d in days}
+    while len(days) > 1 and not D[days[0]]:   # start at the first day with data (no 1.3.1 players before release)
+        days.pop(0)
+    W, P = G.get("week", {}), G.get("week", {}).get("players", 0)
+    per = lambda n, k=1: f"{n / P * k:.1f}" if P else "—"
+    soon = "collecting since Nov 2"
+    ml = {int(k): v for k, v in G.get("max_level", {}).items()}
+    mp = sum(ml.values())
+    oc = G.get("outcome", {}); on = sum(oc.values())
+    kd = G.get("kind", {})
+    ads, sup, buy = W.get("ad_shown", 0), W.get("super_stir", 0) + W.get("super_solve", 0), W.get("purchase_ok", 0)
+    tiles = [(f"{P:,}", "Players", "on 1.3.1 or newer, last 7 days"),
+             (f"{sum(k * v for k, v in ml.items()) / mp:.1f}" if mp else "—", "Avg furthest level", f"of {mp:,} players, last 28 days" if mp else soon),
+             (f"{oc.get('win', 0) / on * 100:.0f}%" if on else "—", "Win rate", f"{oc.get('win', 0):,} wins of {on:,} level attempts" if on else soon),
+             (per(ads), "Ad views per player", (" · ".join(f"{v:,} {'between levels' if k == 'interstitial' else k}" for k, v in sorted(kd.items())) or f"{ads:,} ads") + " in 7 days"),
+             (per(sup, 100), "Super Stir / Solve per 100", f"{W.get('super_stir', 0):,} Super Stir · {W.get('super_solve', 0):,} Super Solve"),
+             (per(buy, 100), "Purchases per 100 players", f"{buy:,} purchase{'' if buy == 1 else 's'} in 7 days")]
+    e = html.escape
+    tiles_html = "<div class='gst'>" + "".join(f"<div class='gt'><b>{e(v)}</b><span>{e(l)}</span><small>{e(n)}</small></div>" for v, l, n in tiles) + "</div>"
+    top = max(ml) if ml else 0
+    steps = list(range(1, min(top, 100) + 1, 5)) if top else []
+    reach = [sum(v for k, v in ml.items() if k >= s) for s in steps]
+    md = lambda d: dt.date.fromisoformat(d).strftime("%b %-d")
+    data = {"steps": steps, "reach": reach, "mp": mp, "labels": [md(d) for d in days], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in days],
+            "players": [D[d].get("players", 0) for d in days], **{k: [D[d].get(k, 0) for d in days] for k in ("level_end", "level_up", "ad_shown", "super_stir", "super_solve", "purchase_ok")}}
+    funnel = ("<div class='chart' style='height:260px'><canvas id='gfun' role='img' aria-label='Players by furthest level reached'></canvas></div>" if steps else
+              f"<p class='sub gempty'>Furthest level: {soon}. Bars show once players on 1.3.1+ open the game (GA4 needs up to a day).</p>")
+    js = """<script>window.GAMECHART = () => { const X = __DATA__; if (!window.Chart) return;
+ const dark = matchMedia('(prefers-color-scheme: dark)').matches, grid = dark ? '#2c2c2a' : '#e1e0d9', muted = '#898781', n = v => (v || 0).toLocaleString(), pl = (v, w) => `${n(v)} ${w}${v === 1 ? '' : 's'}`;
+ const tip = f => ({chart: ch, tooltip: t}) => { let el = ch.canvas.parentNode.querySelector('.ctt');
+  if (!el) { el = document.createElement('div'); el.className = 'ctt'; ch.canvas.parentNode.appendChild(el); }
+  if (!t.opacity || !t.dataPoints.length) { el.style.opacity = 0; return; }
+  el.innerHTML = f(t.dataPoints[0].dataIndex); el.style.opacity = 1;
+  const W = ch.canvas.parentNode.clientWidth, w = el.offsetWidth, hh = el.offsetHeight;
+  let x = t.caretX + 16; if (x + w > W) x = t.caretX - w - 16; if (x < 0) x = Math.max(0, (W - w) / 2);
+  el.style.left = x + 'px'; el.style.top = Math.max(0, Math.min(t.caretY - hh / 2, ch.canvas.clientHeight - hh)) + 'px'; };
+ const bar = (cv, labels, data, color, ytitle, f) => { if (!cv || Chart.getChart(cv)) return;
+  const ch = new Chart(cv, {type: 'bar', data: {labels, datasets: [{data, backgroundColor: color, borderRadius: 4, borderSkipped: 'start', maxBarThickness: 34}]},
+   options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false}, plugins: {legend: {display: false}, tooltip: {enabled: false, external: tip(f)}},
+    scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: 12}}},
+     y: {beginAtZero: true, grid: {color: grid}, ticks: {color: muted, precision: 0}, title: {display: true, text: ytitle, color: muted}}}}});
+  document.addEventListener('touchstart', e => { if (e.target !== cv) { const el = cv.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); } }, {passive: true}); };
+ bar(document.getElementById('gfun'), X.steps.map(s => s + '+'), X.reach, '#12A4A4', 'Players', i => `<div class="ctt-h">Reached level ${X.steps[i]}+</div><div class="ctt-r">${pl(X.reach[i], 'player')} (${Math.round(X.reach[i] / X.mp * 100)}% of ${n(X.mp)})</div>` + (i ? `<div class="ctt-r">${n(X.reach[i - 1] - X.reach[i])} stopped at levels ${X.steps[i - 1]}–${X.steps[i] - 1}</div>` : ''));
+ bar(document.getElementById('gday'), X.labels, X.players, '#8E6FD8', 'Players', i => `<div class="ctt-h">${X.full[i]} · ${pl(X.players[i], 'player')}</div>`
+  + `<div class="ctt-r">${pl(X.level_up[i], 'new level')} beaten · ${pl(X.level_end[i], 'level attempt')}</div><div class="ctt-r">${pl(X.ad_shown[i], 'ad')}` + (X.players[i] ? ` (${(X.ad_shown[i] / X.players[i]).toFixed(1)} per player)` : '') + '</div>'
+  + `<div class="ctt-r">${n(X.super_stir[i])} Super Stir · ${n(X.super_solve[i])} Super Solve · ${pl(X.purchase_ok[i], 'purchase')}</div>`); }; </script>""".replace("__DATA__", json.dumps(data))
+    return (f"<style>.sh3{{font-size:18px;margin:22px 0 4px}} .gst{{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:4px 0 18px}} "
+            f".gt{{border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:1px}} .gt b{{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}} "
+            f".gt span{{font-size:13px;color:var(--ink2)}} .gt small{{font-size:11px;color:var(--muted);line-height:1.3}} @media (max-width:700px){{.gst{{grid-template-columns:1fr 1fr}} .gt b{{font-size:18px}}}}</style>"
+            f"<h2 class='sh' id='sec-game'>Game stats</h2><p class='sub'>From Firebase (Google Analytics), players on app version 1.3.1 or newer only ({e(', '.join(G['versions']))}); older versions don't send these. "
+            f"Tiles = last 7 complete days unless noted. Level, win and furthest-level numbers start Nov 2, when those fields were set up in Google Analytics.</p>{tiles_html}"
+            f"<h3 class='sh3'>Where players stop</h3><p class='sub'>Players by the furthest level they've reached (last 28 days), in steps of 5 levels; each bar counts everyone at that level or beyond. Hover or tap a bar for how many stopped in that range.</p>{funnel}"
+            f"<h3 class='sh3'>Players per day</h3><p class='sub'>Players on 1.3.1+ each day (last 14 days, today so far on the right); hover or tap a day for levels, ads, Super Stir / Super Solve and purchases.</p>"
+            f"<div class='chart' style='height:260px'><canvas id='gday' role='img' aria-label='Players per day on 1.3.1 or newer'></canvas></div>{js}")
+
+
 def time_section(posts, now):
     """Which posting time gets the most views: public posts grouped by the hour they went up (Eastern)."""
     rows = []
@@ -1355,7 +1428,7 @@ body.editing #g{{display:none}} body:not(.editing) .tw{{display:none}} #m{{displ
 @media (max-width:700px){{#g .nf{{display:none}} #g .ns{{display:inline}} #g th,#g td{{padding:7px 3px;font-size:14px}} #g td.lab{{font-size:13px;width:25%}} #g th:first-child{{width:25%}} #g small{{display:block;font-size:11px}} #g .cv{{display:block}} #g .cv>small{{text-align:right}} #g .card{{padding:14px 12px}}}}
 </style></head><body><main>
 <h1>Beaker Lab - Social Report</h1><p class="sub">{e(stamp)} · changes in brackets are since the last check ({e(prev.get('checked_at', 'none') if prev else 'none')})</p>
-<div class="bar"><button id="refresh" class="b red" aria-label="Refresh"><span class="nf">Refresh</span><span class="ns"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg></span></button><a class="b gray jump" href="#sec-sources"><span class="nf">App Store Sources</span><span class="ns">Sources</span></a><a class="b gray jump" href="#sec-best"><span class="nf">Best Posting Time</span><span class="ns">TOD</span></a><a class="b gray jump" href="#sec-videos">Videos</a><a class="b gray jump" href="#sec-history">History</a><button id="edit" class="b blue">Edit Layout</button>
+<div class="bar"><button id="refresh" class="b red" aria-label="Refresh"><span class="nf">Refresh</span><span class="ns"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg></span></button><a class="b gray jump" href="#sec-sources"><span class="nf">App Store Sources</span><span class="ns">Sources</span></a><a class="b gray jump" href="#sec-game"><span class="nf">Game Stats</span><span class="ns">Game</span></a><a class="b gray jump" href="#sec-best"><span class="nf">Best Posting Time</span><span class="ns">TOD</span></a><a class="b gray jump" href="#sec-videos">Videos</a><a class="b gray jump" href="#sec-history">History</a><button id="edit" class="b blue">Edit Layout</button>
 <span id="tools" hidden><select id="addc"></select><select id="addr"></select><button id="cancel" class="b gray">Cancel</button><button id="reset" class="b gray">Reset Layout</button></span>
 <span id="msg" class="note"></span></div>
 {day_html}{week_html}<h2 class="sh" style="margin-top:4px">Views gained per day</h2>
@@ -1694,7 +1767,8 @@ function rangeSlider(chart, D, O) {{   // Guy, Oct 27: drag the blue window to l
  box.addEventListener('pointermove', e => {{ if (x0 == null) return; const ns = Math.round(s0 + (e.clientX - x0) / (box.clientWidth / n)); if (ns !== s) set(ns, true); }});
  const up = () => {{ x0 = null; box.classList.remove('drag'); }}; box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up); }}
 mk(document.getElementById('c'), D);
-if (window.SRCCHART) SRCCHART();   // Guy, Oct 29: App Store sources chart
+if (window.SRCCHART) SRCCHART();
+if (window.GAMECHART) GAMECHART();   // Guy, Nov 2: Firebase game stats charts   // Guy, Oct 29: App Store sources chart
 </script>{cmap_html()}{earn_html(money_daily)}</body></html>"""
     open(OUT_HTML, "w").write(doc)
     return {"stamp": stamp, "table": {"cols": cols, "rows": trows}, "legend": legend,
@@ -1802,7 +1876,7 @@ def main():
             old = write_html(day["since"].strftime("%b %-d, %Y · %-I:%M %p"), build_rows(bsnap, bprev, rd), rd, bsnap, bprev,
                              blabels, bser, "history file", [], (), None, None, None, dry=True)
     phist = json.load(open(POSTS_HIST)) if os.path.exists(POSTS_HIST) else []
-    posts_html = sources_section() + time_section(POSTS, now) + posts_section(POSTS, phist, now)   # Guy, Oct 29: App Store visits by source first
+    posts_html = sources_section() + game_section() + time_section(POSTS, now) + posts_section(POSTS, phist, now)   # Guy, Oct 29: App Store visits by source first
     if complete and POSTS:
         phist.append({"checked_at": now.strftime("%Y-%m-%d %H:%M"), "posts": {r["id"]: r["views"] for r in POSTS}})
         json.dump(phist, open(POSTS_HIST, "w"))
