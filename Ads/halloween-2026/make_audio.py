@@ -3,7 +3,7 @@ the gameplay, plus music.
 
     python3 make_audio.py <reel>.mp4 ad105-tue-trick-or-treat-spooky-dark.mp4 [music.mp3 [start_seconds [tempo]]]
 Writes <reel>-sound.mp4 (video stream copied, AAC audio, loudness-normalised for social). The cue list is picked from
-the video's name (mirror-maze, last-candy, pumpkin or dst). Both reels use ad105's gameplay, whose audio from 6 s on is only game
+the video's name (mirror-maze, last-candy, pumpkin, dst or monday). Both reels use ad105's gameplay, whose audio from 6 s on is only game
 sounds (pours, combo), so that audio is laid in under our gameplay at the bubble transition, in sync with the footage.
 """
 import os
@@ -267,9 +267,39 @@ def build_dst(total, z0=7.9):
     return out[: int(total * SR)]
 
 
+def build_monday(total, z0=4.05):
+    """Cues for render_monday.py ("POV: Monday after Halloween")."""
+    tr = z0 + 0.45
+    out = np.zeros(int(total * SR) + SR)
+
+    def put(clip, t):
+        mix_into(out, clip, int(t * SR))
+
+    for i in range(3):                       # snores
+        n = int(0.5 * SR)
+        snore = np.convolve(rng.standard_normal(n), np.ones(40) / 40, mode="same") * np.sin(np.linspace(0, np.pi, n)) ** 2
+        put(snore * 0.6 + tone((110, 90), 0.5, 0.3) * 0.15, 0.1 + i * 0.55)
+    put(whoosh(0.5) * 0.7, 1.35)             # the coffee floats over
+    for s0, e0 in ((2.0, 2.45), (3.0, 3.45)):   # pours
+        n = int((e0 - s0) * SR)
+        pour = np.diff(noise(e0 - s0, 3), prepend=0) * 0.18 * np.clip(np.linspace(0, 6, n), 0, 1)
+        put(pour, s0)
+        for i in range(4):
+            put(blip(rng.uniform(300, 600)), s0 + 0.08 + i * 0.09)
+    for i, tc in enumerate((2.45, 3.45, 3.75)):  # combo x1, x2, x3: punch whoosh + rising ding
+        put(whoosh(0.3) * 0.5, tc - 0.05)
+        f = 880 * 2 ** (i * 4 / 12)
+        put(tone((f, f), 0.4, 0.14, ((1, 1.0), (2, 0.35), (3, 0.1))) * 0.35, tc)
+    put(boing() * 0.6, 3.75)                 # both awake: hop
+    zoom_fizz(put, z0)
+    transition_and_card(put, tr, 6.45)
+    return out[: int(total * SR)]
+
+
 # cues, bubble transition start, where in ad105 the gameplay (and its game sounds) starts
 REELS = {"mirror-maze": (build_mirror_maze, 11.6, 6.0), "last-candy": (build_last_candy, 10.05, 6.45),
-         "pumpkin": (build_pumpkin, 7.85, 6.45), "dst": (build_dst, 8.35, 6.45)}
+         "pumpkin": (build_pumpkin, 7.85, 6.45), "dst": (build_dst, 8.35, 6.45),
+         "monday": (build_monday, 4.5, 6.45)}
 
 
 def main():
