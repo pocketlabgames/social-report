@@ -992,7 +992,7 @@ CMAP_CSS = """
 .cmleg i{display:block;width:140px;height:9px;border-radius:5px}
 .cmreg{border-top:1px solid var(--line);padding:10px 0 6px}
 .cmrh{display:inline-flex;gap:8px;align-items:baseline;font-weight:700;font-size:16px}
-#cmsvg path[data-r]{cursor:pointer}
+#cmsvg path[data-n]{cursor:pointer}
 .cmrh small{color:var(--muted);font-weight:500;font-size:13px}
 .cmg{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:2px 18px;margin-top:6px;font-size:14px}
 .cmg div{display:flex;justify-content:space-between;gap:8px;padding:2px 0;border-bottom:1px dashed var(--line)}
@@ -1023,7 +1023,6 @@ CMAP_JS = """
   const show = (h, x, y) => { tt.innerHTML = h; tt.hidden = false; const w = tt.offsetWidth, ht = tt.offsetHeight;
     tt.style.left = Math.max(8, Math.min(innerWidth - w - 8, x + 14)) + 'px'; tt.style.top = Math.max(8, Math.min(innerHeight - ht - 8, y + 14)) + 'px'; };
   const hide = () => { tt.hidden = true; };
-  const regTip = r => { const g = regs.find(x => x[0] === r); return g ? `<h4>${REG[r]} · ${fmt(g[2])}</h4>` + g[1].map(([c, n]) => `<div><span>${nm(c)}</span><b>${fmt(n)}</b></div>`).join('') : `<h4>${REG[r]}</h4>No downloads yet`; };
   let drawn = false;
   const load = src => new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
   const draw = async () => {
@@ -1035,16 +1034,17 @@ CMAP_JS = """
       const w = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-50m.json').then(r => r.json());
       const f = topojson.feature(w, w.objects.countries).features.filter(x => x.id !== '010');   // no Antarctica
       const byId = {}; Object.entries(CM).forEach(([c, n]) => { const g = G[c]; if (g && g.id !== '000') byId[g.id] = n; });
-      const kosovo = CM.XK || 0, idReg = {}; Object.values(G).forEach(g => { if (g.id !== '000') idReg[g.id] = idReg[g.id] || g.r; });
+      const kosovo = CM.XK || 0, idReg = {}, idCode = {}; Object.entries(G).forEach(([c, g]) => { if (g.id !== '000') { idReg[g.id] = idReg[g.id] || g.r; idCode[g.id] = idCode[g.id] || c; } });
       const proj = d3.geoNaturalEarth1().fitSize([960, 470], {type: 'FeatureCollection', features: f}), path = d3.geoPath(proj);
       const empty = getComputedStyle(document.documentElement).getPropertyValue('--line').trim() || '#e1e0d9';
       svg.innerHTML = f.map(x => { const n = x.id ? byId[x.id] : (x.properties.name === 'Kosovo' ? kosovo : 0);
-        const r = x.id ? idReg[x.id] : (x.properties.name === 'Kosovo' ? 'E' : null);
-        return `<path d="${path(x)}" fill="${n ? green(n) : empty}"${r ? ` data-r="${r}"` : ''}></path>`; }).join('');
-      // Guy, Oct 31: hovering a country on the map shows its region's countries, most to least (tap on phones)
-      svg.addEventListener('mousemove', e => { const r = e.target.dataset && e.target.dataset.r; r ? show(regTip(r), e.clientX, e.clientY) : hide(); });
+        const r = x.id ? idReg[x.id] : (x.properties.name === 'Kosovo' ? 'E' : null), c = x.id ? idCode[x.id] : (x.properties.name === 'Kosovo' ? 'XK' : null);
+        return `<path d="${path(x)}" fill="${n ? green(n) : empty}"${r ? ` data-r="${r}"` : ''} data-n="${(c ? nm(c) : x.properties.name).replace(/"/g, '')}" data-v="${n || 0}"></path>`; }).join('');
+      // Guy, Nov 2: hovering a country on the map shows only that country's downloads (tap on phones)
+      const cTip = d => `<h4>${d.n}</h4>` + (+d.v ? `<div><span>Downloads</span><b>${fmt(+d.v)}</b></div>` : 'No downloads yet');
+      svg.addEventListener('mousemove', e => { const d = e.target.dataset; d && d.n ? show(cTip(d), e.clientX, e.clientY) : hide(); });
       svg.addEventListener('mouseleave', hide);
-      svg.addEventListener('click', e => { e.stopPropagation(); const r = e.target.dataset && e.target.dataset.r; r ? show(regTip(r), e.clientX, e.clientY) : hide(); });
+      svg.addEventListener('click', e => { e.stopPropagation(); const d = e.target.dataset; d && d.n ? show(cTip(d), e.clientX, e.clientY) : hide(); });
     } catch (e) { svg.outerHTML = '<p style="color:var(--muted)">Map could not load (no connection?). The list below has every country.</p>'; }
   };
   window.openCMap = () => { ov.hidden = false; document.body.style.overflow = 'hidden'; draw(); };
@@ -1070,6 +1070,66 @@ def cmap_html():
             f"<div class='cmleg'>1<i style='background:linear-gradient(90deg,{lo},{hi})'></i>{max(COUNTRIES.values()):,} downloads</div>"
             f"<div id='cmlist'></div></div></div><div class='cmtt' id='cmtt' hidden></div>"
             f"<script>const CM = {json.dumps(COUNTRIES, sort_keys=True)}; const CM_GEO = {json.dumps(GEO)};{CMAP_JS}</script>")
+
+
+EARN_CSS = """
+.eclick{cursor:pointer}
+.eclick:hover{text-decoration:underline dotted;text-underline-offset:3px}
+.ebt{display:flex;gap:6px;margin:12px 0 8px;flex-wrap:wrap}
+.ebt button{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:999px;padding:6px 14px;font:inherit;font-size:14px;cursor:pointer}
+.ebt button.on{background:#1E9E55;border-color:#1E9E55;color:#fff}
+.ecw{position:relative;height:340px}
+@media (max-width:700px){.ecw{height:260px}}
+"""
+
+EARN_JS = """
+(() => {
+  const ov = document.getElementById('earn'), btns = ov.querySelectorAll('.ebt button');
+  const keys = Object.keys(EM).sort(), M = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const day = k => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); };
+  const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const group = by => { const g = new Map();
+    keys.forEach(k => { const d = day(k); let key, lab;
+      if (by === 'day') { key = k; lab = M[d.getMonth()] + ' ' + d.getDate(); }
+      else if (by === 'week') { const s = new Date(d); s.setDate(d.getDate() - (d.getDay() + 6) % 7); key = iso(s); lab = 'Week of ' + M[s.getMonth()] + ' ' + s.getDate(); }
+      else if (by === 'month') { key = k.slice(0, 7); lab = M[d.getMonth()] + ' ' + d.getFullYear(); }
+      else { key = k.slice(0, 4); lab = key; }
+      const o = g.get(key) || {lab, v: 0}; o.v += EM[k]; g.set(key, o); });
+    return [...g.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1).map(x => x[1]); };
+  let ch = null;
+  const draw = by => {
+    btns.forEach(b => b.classList.toggle('on', b.dataset.by === by));
+    const g = group(by), dark = matchMedia('(prefers-color-scheme: dark)').matches, grid = dark ? '#2c2c2a' : '#e1e0d9', ink = dark ? '#c3c2b7' : '#52514e';
+    document.getElementById('etot').textContent = '$' + g.reduce((a, x) => a + x.v, 0).toFixed(2) + ' earned since launch (ads + App Store)';
+    if (ch) ch.destroy();
+    ch = new Chart(document.getElementById('ecv'), {type: 'bar',
+      data: {labels: g.map(x => x.lab), datasets: [{label: 'Earned', data: g.map(x => Math.round(x.v * 100) / 100), backgroundColor: '#1E9E55', borderRadius: 4, maxBarThickness: 60}]},
+      options: {responsive: true, maintainAspectRatio: false, animation: false, plugins: {legend: {display: false},
+        tooltip: {callbacks: {label: c => 'Earned: $' + c.parsed.y.toFixed(2)}}},
+        scales: {x: {grid: {display: false}, ticks: {color: ink, autoSkip: true, maxRotation: 0}},
+                 y: {beginAtZero: true, grid: {color: grid}, ticks: {color: ink, callback: v => '$' + v}}}}});
+  };
+  const close = () => { ov.hidden = true; document.body.style.overflow = ''; };
+  document.querySelectorAll('.eclick').forEach(el => el.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); ov.hidden = false; document.body.style.overflow = 'hidden'; draw('month'); }));
+  btns.forEach(b => b.onclick = () => draw(b.dataset.by));
+  document.getElementById('ecx').onclick = close;
+  ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  addEventListener('keydown', e => { if (e.key === 'Escape' && !ov.hidden) close(); });
+})();
+"""
+
+
+def earn_html(money_daily):
+    """Pop-up chart of money earned (ads + App Store) by day, week, month (default) or year; opened from the header tile (Guy, Nov 2)."""
+    if not money_daily:
+        return ""
+    em = {d: round(sum(v for v in (m or {}).values() if v is not None), 4) for d, m in money_daily.items()}
+    return (f"<style>{CMAP_CSS if not COUNTRIES else ''}{EARN_CSS}</style>"
+            f"<div class='cmo' id='earn' hidden><div class='cmc'><button class='cmx' id='ecx' aria-label='Close'>×</button>"
+            f"<div class='cmh'><h2>Earned</h2><small id='etot'></small></div>"
+            f"<div class='ebt'><button data-by='day'>Day</button><button data-by='week'>Week</button><button data-by='month'>Month</button><button data-by='year'>Year</button></div>"
+            f"<div class='ecw'><canvas id='ecv'></canvas></div></div></div>"
+            f"<script>const EM = {json.dumps(em, sort_keys=True)};{EARN_JS}</script>")
 
 
 def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None, old=None, dry=False, posts_html="", week_html="", installs=None, today=None, day_base=None, money=None, money_daily=None, est=None):
@@ -1203,7 +1263,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
             tip = f"Day-1: {RET['d1']:.0f}% of {int(RET.get('d1_n') or 0):,} new players came back the next day" + (f" · Day-7: {RET['d7']:.0f}%" if RET.get("d7") is not None else "") + " (Firebase, last 7 complete days)"
             right += f"<div class='dayt' title='{tip}'>{RET['d1']:.0f}% {lab('day-1 retention', 'D-1')}</div>"
         if money:
-            right += f"<div class='dayt'>${money['all']:,.2f} {lab('total earned', 'Earned')}</div>"
+            right += f"<div class='dayt eclick' title='Click for earnings by day, week, month or year'>${money['m']:,.2f} {lab('earned in ' + money['month'], 'Earned ' + money['month'][:3])}</div>"   # Guy, Nov 2: this month only; click = earnings chart"
             inst += (f"<div class='dayp daym'>Earned: <b>${money['t']:,.2f}</b> today · <b>${money['y']:,.2f}</b> yesterday · <b>${money['w']:,.2f}</b> last 7 days · <b>${money['m']:,.2f}</b> in {money['month']}"
                      f" · ads ${money['ads']:,.2f} + App Store ${money['iap']:,.2f} since launch {' <small>(Apple hasn’t posted yesterday yet)</small>' if money['y_missing'] else ''}</div>")
         v3now = {p: (snap.get(p) or {}).get("views_3s") for p in PLAT}
@@ -1635,7 +1695,7 @@ function rangeSlider(chart, D, O) {{   // Guy, Oct 27: drag the blue window to l
  const up = () => {{ x0 = null; box.classList.remove('drag'); }}; box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up); }}
 mk(document.getElementById('c'), D);
 if (window.SRCCHART) SRCCHART();   // Guy, Oct 29: App Store sources chart
-</script>{cmap_html()}</body></html>"""
+</script>{cmap_html()}{earn_html(money_daily)}</body></html>"""
     open(OUT_HTML, "w").write(doc)
     return {"stamp": stamp, "table": {"cols": cols, "rows": trows}, "legend": legend,
             "data": {"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}}}
