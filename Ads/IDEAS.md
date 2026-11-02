@@ -17,6 +17,12 @@ bubble transition (no level number), gameplay with the game's own sounds, end ca
   out, zoom into the purple liquid in the dark. Script: `halloween-2026/render_pumpkin.py`.
   (Guy dropped the "carved each other's costume" twist, Oct 30.)
 
+## Daylight saving (Nov 2026)
+
+- **One more hour of Halloween** (Guy picked Nov 2): Nov 1, 1:59 AM, costumes off and sad; the pumpkin wall clock
+  strikes 2:00 and falls back to 1:00; costumes fly back on and they party for the extra hour (confetti, hops).
+  Script: `halloween-2026/render_dst.py`. Ad number and schedule TBD.
+
 ## Sunday posting
 
 - **Halloween is over** (Sunday Nov 1, 2026): morning after, decorations come down, both beakers are sad; the cat

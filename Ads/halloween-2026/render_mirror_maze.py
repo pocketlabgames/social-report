@@ -76,11 +76,12 @@ def font(size):
 
 
 # ---------------------------------------------------------------- characters
-def tube(costume, t, mood="calm", walk=0.0, look=0.0, blink=False, wrapper=False, blush=False):
+def tube(costume, t, mood="calm", walk=0.0, look=0.0, blink=False, wrapper=False, blush=False, bare=False):
     """One beaker character on its own RGBA layer. Returns (layer, foot_x, foot_y) in layer pixels.
 
     costume: "skeleton" (purple) or "cat" (green). mood: calm | scared | happy | whistle (cat: eyes shut, "o" mouth).
-    wrapper: a candy wrapper stuck near the cat's tail tip. blush: pink cheeks.
+    wrapper: a candy wrapper stuck near the cat's tail tip. blush: pink cheeks. mood "sad": droopy brows + frown.
+    bare: costume off (no skull / no ears, headband or tail); the skeleton then gets a face on its glass.
     walk: walk-cycle phase in cycles (0 = standing). look: -1..1 pupil direction.
     """
     lw, lh = k(420), k(560)
@@ -102,7 +103,7 @@ def tube(costume, t, mood="calm", walk=0.0, look=0.0, blink=False, wrapper=False
         d.rounded_rectangle([lx - k(9), yb - k(10), lx + k(9), foot - lift], k(9), fill=legc + (255,))
         d.ellipse([lx - k(14), foot - lift - k(10), lx + k(18), foot - lift + k(4)], fill=legc + (255,))
     # cat tail (behind the glass)
-    if costume == "cat":
+    if costume == "cat" and not bare:
         sway = math.sin(t * 3) * 0.3 + (0.6 if mood == "scared" else 0)
         pts = []
         for n in range(24):
@@ -134,10 +135,11 @@ def tube(costume, t, mood="calm", walk=0.0, look=0.0, blink=False, wrapper=False
             by = yb - k(30) - ((t * 40 + n * 47) % 200) * K
             r = k(7 + (n % 3) * 4)
             ld.ellipse([bx - r, by - r, bx + r, by + r], fill=(150, 255, 110, 220))
-        sx = cx                               # ribs + spine
-        ld.line([(sx, y0 + k(60)), (sx, yb - k(36))], fill=WHITE + (255,), width=k(9))
+        sx = cx                               # ribs + spine (lower when bare, to make room for the face)
+        sp = k(30) if bare else 0
+        ld.line([(sx, y0 + k(60) + sp), (sx, yb - k(36))], fill=WHITE + (255,), width=k(9))
         for n in range(5):
-            ry = y0 + k(78 + n * 30)
+            ry = y0 + k(78 + n * (24 if bare else 30)) + sp
             ww = k(40 - n * 3)
             ld.arc([sx - ww, ry - k(14), sx + ww, ry + k(18)], 200, 340, fill=WHITE + (255,), width=k(8))
         ld.arc([sx - k(30), yb - k(56), sx + k(30), yb - k(14)], 180, 360, fill=WHITE + (255,), width=k(8))
@@ -161,7 +163,7 @@ def tube(costume, t, mood="calm", walk=0.0, look=0.0, blink=False, wrapper=False
     d.ellipse([x0 - k(8), y0 - k(6), x1 + k(8), y0 + k(16)], outline=(235, 245, 255, 255), width=k(5))     # rim
     # faces
     pupil = k(6) if mood == "scared" else k(11)
-    if costume == "skeleton":
+    if costume == "skeleton" and not bare:
         hx, hy, hr = cx, y0 - k(38), k(56)
         d.ellipse([hx - hr, hy - hr, hx + hr, hy + hr * 0.95], fill=(240, 238, 228, 255))
         d.rounded_rectangle([hx - k(30), hy + k(30), hx + k(30), hy + k(68)], k(10), fill=(240, 238, 228, 255))
@@ -182,16 +184,18 @@ def tube(costume, t, mood="calm", walk=0.0, look=0.0, blink=False, wrapper=False
                 d.ellipse([px - pupil, ey - pupil, px + pupil, ey + pupil], fill=(130, 255, 90, 255))
         d.ellipse([hx - hr - k(10), y0 - k(12), hx + hr + k(10), y0 + k(10)], outline=(235, 245, 255, 180), width=k(4))
     else:
-        # cat-ear headband on the rim
-        d.rounded_rectangle([x0 - k(4), y0 - k(10), x1 + k(4), y0 + k(14)], k(8), fill=INK + (255,))
-        for sgn in (-1, 1):
+        if costume == "cat" and not bare:   # cat-ear headband on the rim
+            d.rounded_rectangle([x0 - k(4), y0 - k(10), x1 + k(4), y0 + k(14)], k(8), fill=INK + (255,))
+        for sgn in ((-1, 1) if costume == "cat" and not bare else ()):
             ex = cx + sgn * k(32)
             perk = k(6) if mood == "scared" else 0
             d.polygon([(ex - k(26), y0 - k(4)), (ex + k(26), y0 - k(4)), (ex + sgn * k(6), y0 - k(64) - perk)], fill=INK + (255,))
             d.polygon([(ex - k(14), y0 - k(10)), (ex + k(14), y0 - k(10)), (ex + sgn * k(5), y0 - k(46) - perk)], fill=(255, 170, 200, 255))
-        fy = y0 + k(66)
+        fy = y0 + (k(66) if costume == "cat" else k(52))
         for sgn in (-1, 1):
             ex = cx + sgn * k(22)
+            if mood == "sad" and not blink:     # droopy brows over small eyes
+                d.line([(ex - sgn * k(12), fy - k(16)), (ex + sgn * k(10), fy - k(10))], fill=INK + (255,), width=k(4))
             if blink:
                 d.line([(ex - k(10), fy), (ex + k(10), fy)], fill=INK + (255,), width=k(5))
             elif mood in ("happy", "whistle"):
@@ -204,19 +208,22 @@ def tube(costume, t, mood="calm", walk=0.0, look=0.0, blink=False, wrapper=False
                     d.ellipse([ex - k(4) + k(look * 4), fy - k(4), ex + k(4) + k(look * 4), fy + k(4)], fill=INK + (255,))
                 else:
                     d.ellipse([ex - k(4) + k(look * 3), fy - k(8), ex + k(2) + k(look * 3), fy - k(2)], fill=WHITE + (255,))
-        d.polygon([(cx - k(6), fy + k(14)), (cx + k(6), fy + k(14)), (cx, fy + k(21))], fill=(255, 130, 170, 255))
+        if costume == "cat":
+            d.polygon([(cx - k(6), fy + k(14)), (cx + k(6), fy + k(14)), (cx, fy + k(21))], fill=(255, 130, 170, 255))
         if blush:
             for sgn in (-1, 1):
                 d.ellipse([cx + sgn * k(36) - k(12), fy + k(6), cx + sgn * k(36) + k(12), fy + k(18)], fill=(255, 110, 150, 200))
         if mood == "whistle":
             d.ellipse([cx - k(6), fy + k(24), cx + k(6), fy + k(36)], fill=INK + (255,))
+        elif mood == "sad":
+            d.arc([cx - k(12), fy + k(26), cx + k(12), fy + k(42)], 200, 340, fill=INK + (255,), width=k(3))
         elif mood == "scared":
             d.line([(cx - k(12), fy + k(32)), (cx - k(6), fy + k(28)), (cx, fy + k(32)), (cx + k(6), fy + k(28)), (cx + k(12), fy + k(32))],
                    fill=INK + (255,), width=k(3))
         else:
             d.arc([cx - k(12), fy + k(18), cx, fy + k(30)], 0, 180, fill=INK + (255,), width=k(3))
             d.arc([cx, fy + k(18), cx + k(12), fy + k(30)], 0, 180, fill=INK + (255,), width=k(3))
-        for sgn in (-1, 1):
+        for sgn in ((-1, 1) if costume == "cat" else ()):
             for n in (-1, 0, 1):
                 d.line([(cx + sgn * k(16), fy + k(22) + n * k(5)), (cx + sgn * k(66), fy + k(18) + n * k(10))], fill=INK + (255,), width=k(2))
     return L, cx, foot

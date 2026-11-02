@@ -3,7 +3,7 @@ the gameplay, plus music.
 
     python3 make_audio.py <reel>.mp4 ad105-tue-trick-or-treat-spooky-dark.mp4 [music.mp3 [start_seconds [tempo]]]
 Writes <reel>-sound.mp4 (video stream copied, AAC audio, loudness-normalised for social). The cue list is picked from
-the video's name (mirror-maze, last-candy or pumpkin). Both reels use ad105's gameplay, whose audio from 6 s on is only game
+the video's name (mirror-maze, last-candy, pumpkin or dst). Both reels use ad105's gameplay, whose audio from 6 s on is only game
 sounds (pours, combo), so that audio is laid in under our gameplay at the bubble transition, in sync with the footage.
 """
 import os
@@ -237,9 +237,39 @@ def build_pumpkin(total, z0=7.4):
     return out[: int(total * SR)]
 
 
+def build_dst(total, z0=7.9):
+    """Cues for render_dst.py ("One more hour of Halloween")."""
+    tr = z0 + 0.45
+    out = np.zeros(int(total * SR) + SR)
+
+    def put(clip, t):
+        mix_into(out, clip, int(t * SR))
+
+    for i, (f0, f1, dur) in enumerate([(392, 370, 0.35), (370, 349, 0.35), (349, 330, 0.35), (330, 300, 0.9)]):
+        put(dun(f0 / 2, dur, 0.28) * np.linspace(1, 0.9, int(dur * SR)), 0.5 + i * 0.4)   # sad trombone
+    for i in range(3):                       # tick, tick, tick
+        put(pop(2400) * 0.4, 2.35 + i * 0.3)
+    put(chime((261.6, 523.3), 0.0, 0.45), 2.95)   # DONG: 2:00
+    n = int(0.55 * SR)                        # tape rewind whirr as the hands spin back
+    tt = np.arange(n) / SR
+    whirr = np.sin(2 * np.pi * np.cumsum(np.linspace(1400, 500, n) * (1 + 0.3 * np.sin(2 * np.pi * 30 * tt))) / SR)
+    put(whirr * np.sin(np.linspace(0, np.pi, n)) * 0.2, 3.2)
+    put(pop(900), 3.3)                       # FALL BACK sign
+    put(stinger(), 4.08)                     # wait... one more hour?!
+    put(chime((1046.5, 1318.5, 1568.0, 2093.0), 0.06, 0.28), 4.45)
+    for tp in (5.05, 5.35):                  # costumes pop back on
+        put(pop(1200), tp)
+        put(chime((1568.0, 2093.0), 0.05, 0.18), tp + 0.02)
+    for i in range(6):                       # party hops
+        put(boing() * 0.4, 5.45 + i * 0.42)
+    zoom_fizz(put, z0)
+    transition_and_card(put, tr, 6.45)
+    return out[: int(total * SR)]
+
+
 # cues, bubble transition start, where in ad105 the gameplay (and its game sounds) starts
 REELS = {"mirror-maze": (build_mirror_maze, 11.6, 6.0), "last-candy": (build_last_candy, 10.05, 6.45),
-         "pumpkin": (build_pumpkin, 7.85, 6.45)}
+         "pumpkin": (build_pumpkin, 7.85, 6.45), "dst": (build_dst, 8.35, 6.45)}
 
 
 def main():
