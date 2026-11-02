@@ -945,32 +945,38 @@ def game_section():
     today = dt.date.today()
     days = [(today - dt.timedelta(days=i)).isoformat() for i in range(13, -1, -1)]
     D = {d: G.get("daily", {}).get(d, {}) for d in days}
-    while len(days) > 1 and not D[days[0]]:   # start at the first day with data (no 1.3.1 players before release)
+    days = [d for d in days if d >= "2026-11-01"] or days[-1:]   # 1.3.1 went live Nov 1
+    D = {d: D[d] for d in days}
+    while len(days) > 1 and not D[days[0]]:   # start at the first day with data
         days.pop(0)
     W, P = G.get("week", {}), G.get("week", {}).get("players", 0)
     per = lambda n, k=1: f"{n / P * k:.1f}" if P else "—"
-    soon = "collecting since Nov 2"
+    MIN, MINA = 20, 50   # Guy, Nov 2: hide a tile/chart until it has enough players (or level attempts) to mean something
+    soon = lambda have, need, what="players": f"collecting: {have:,} of {need} {what}"
     ml = {int(k): v for k, v in G.get("max_level", {}).items()}
     mp = sum(ml.values())
     oc = G.get("outcome", {}); on = sum(oc.values())
     kd = G.get("kind", {})
     ads, sup, buy = W.get("ad_shown", 0), W.get("super_stir", 0) + W.get("super_solve", 0), W.get("purchase_ok", 0)
-    tiles = [(f"{P:,}", "Players", "on 1.3.1 or newer, last 7 days"),
-             (f"{sum(k * v for k, v in ml.items()) / mp:.1f}" if mp else "—", "Avg furthest level", f"of {mp:,} players, last 28 days" if mp else soon),
-             (f"{oc.get('win', 0) / on * 100:.0f}%" if on else "—", "Win rate", f"{oc.get('win', 0):,} wins of {on:,} level attempts" if on else soon),
-             (per(ads), "Ad views per player", (" · ".join(f"{v:,} {'between levels' if k == 'interstitial' else k}" for k, v in sorted(kd.items())) or f"{ads:,} ads") + " in 7 days"),
-             (per(sup, 100), "Super Stir / Solve per 100", f"{W.get('super_stir', 0):,} Super Stir · {W.get('super_solve', 0):,} Super Solve"),
-             (per(buy, 100), "Purchases per 100 players", f"{buy:,} purchase{'' if buy == 1 else 's'} in 7 days")]
+    ok = P >= MIN
+    tiles = [(f"{P:,}", "Players", f"on {', '.join(G['versions'])}, last 7 days"),
+             (f"{sum(k * v for k, v in ml.items()) / mp:.1f}" if mp >= MIN else "—", "Avg furthest level", f"of {mp:,} players since Nov 1" if mp >= MIN else soon(mp, MIN)),
+             (f"{oc.get('win', 0) / on * 100:.0f}%" if ok and on >= MINA else "—", "Win rate", f"{oc.get('win', 0):,} wins of {on:,} level attempts" if ok and on >= MINA else (soon(P, MIN) if not ok else soon(on, MINA, "level attempts"))),
+             (per(ads) if ok else "—", "Ad views per player", ((" · ".join(f"{v:,} {'between levels' if k == 'interstitial' else k}" for k, v in sorted(kd.items())) or f"{ads:,} ads") + " in 7 days") if ok else soon(P, MIN)),
+             (per(sup, 100) if ok else "—", "Super Stir / Solve per 100", f"{W.get('super_stir', 0):,} Super Stir · {W.get('super_solve', 0):,} Super Solve" if ok else soon(P, MIN)),
+             (per(buy, 100) if ok else "—", "Purchases per 100 players", f"{buy:,} purchase{'' if buy == 1 else 's'} in 7 days" if ok else soon(P, MIN))]
     e = html.escape
     tiles_html = "<div class='gst'>" + "".join(f"<div class='gt'><b>{e(v)}</b><span>{e(l)}</span><small>{e(n)}</small></div>" for v, l, n in tiles) + "</div>"
-    top = max(ml) if ml else 0
+    top = max(ml) if mp >= MIN else 0
     steps = list(range(1, min(top, 100) + 1, 5)) if top else []
     reach = [sum(v for k, v in ml.items() if k >= s) for s in steps]
     md = lambda d: dt.date.fromisoformat(d).strftime("%b %-d")
     data = {"steps": steps, "reach": reach, "mp": mp, "labels": [md(d) for d in days], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in days],
             "players": [D[d].get("players", 0) for d in days], **{k: [D[d].get(k, 0) for d in days] for k in ("level_end", "level_up", "ad_shown", "super_stir", "super_solve", "purchase_ok")}}
     funnel = ("<div class='chart' style='height:260px'><canvas id='gfun' role='img' aria-label='Players by furthest level reached'></canvas></div>" if steps else
-              f"<p class='sub gempty'>Furthest level: {soon}. Bars show once players on 1.3.1+ open the game (GA4 needs up to a day).</p>")
+              f"<p class='sub gempty'>Collecting: {mp:,} of {MIN} players so far. Bars show once {MIN} players have a furthest level.</p>")
+    daychart = ("<div class='chart' style='height:260px'><canvas id='gday' role='img' aria-label='Players per day on released versions'></canvas></div>" if ok else
+                f"<p class='sub gempty'>Collecting: {P:,} of {MIN} players in the last 7 days. The chart shows once there are {MIN}.</p>")
     js = """<script>window.GAMECHART = () => { const X = __DATA__; if (!window.Chart) return;
  const dark = matchMedia('(prefers-color-scheme: dark)').matches, grid = dark ? '#2c2c2a' : '#e1e0d9', muted = '#898781', n = v => (v || 0).toLocaleString(), pl = (v, w) => `${n(v)} ${w}${v === 1 ? '' : 's'}`;
  const tip = f => ({chart: ch, tooltip: t}) => { let el = ch.canvas.parentNode.querySelector('.ctt');
@@ -993,11 +999,11 @@ def game_section():
     return (f"<style>.sh3{{font-size:18px;margin:22px 0 4px}} .gst{{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:4px 0 18px}} "
             f".gt{{border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:1px}} .gt b{{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}} "
             f".gt span{{font-size:13px;color:var(--ink2)}} .gt small{{font-size:11px;color:var(--muted);line-height:1.3}} @media (max-width:700px){{.gst{{grid-template-columns:1fr 1fr}} .gt b{{font-size:18px}}}}</style>"
-            f"<h2 class='sh' id='sec-game'>Game stats</h2><p class='sub'>From Firebase (Google Analytics), players on app version 1.3.1 or newer only ({e(', '.join(G['versions']))}); older versions don't send these. "
-            f"Tiles = last 7 complete days unless noted. Level, win and furthest-level numbers start Nov 2, when those fields were set up in Google Analytics.</p>{tiles_html}"
-            f"<h3 class='sh3'>Where players stop</h3><p class='sub'>Players by the furthest level they've reached (last 28 days), in steps of 5 levels; each bar counts everyone at that level or beyond. Hover or tap a bar for how many stopped in that range.</p>{funnel}"
-            f"<h3 class='sh3'>Players per day</h3><p class='sub'>Players on 1.3.1+ each day (last 14 days, today so far on the right); hover or tap a day for levels, ads, Super Stir / Super Solve and purchases.</p>"
-            f"<div class='chart' style='height:260px'><canvas id='gday' role='img' aria-label='Players per day on 1.3.1 or newer'></canvas></div>{js}")
+            f"<h2 class='sh' id='sec-game'>Game stats</h2><p class='sub'>From Firebase (Google Analytics), released app versions only ({e(', '.join(G['versions']))}; versions still in App Review and older versions don't count), from Nov 1, when 1.3.1 went live. "
+            f"Tiles = last 7 complete days unless noted. Each tile and chart stays blank until it has at least {MIN} players, so a few people can't skew it.</p>{tiles_html}"
+            f"<h3 class='sh3'>Where players stop</h3><p class='sub'>Players by the furthest level they've reached (since Nov 1), in steps of 5 levels; each bar counts everyone at that level or beyond. Hover or tap a bar for how many stopped in that range.</p>{funnel}"
+            f"<h3 class='sh3'>Players per day</h3><p class='sub'>Players on released versions each day (from Nov 1, today so far on the right); hover or tap a day for levels, ads, Super Stir / Super Solve and purchases.</p>"
+            f"{daychart}{js}")
 
 
 def time_section(posts, now):
