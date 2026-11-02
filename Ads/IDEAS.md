@@ -21,7 +21,7 @@ bubble transition (no level number), gameplay with the game's own sounds, end ca
 
 - **One more hour of Halloween** (Guy picked Nov 2): Nov 1, 1:59 AM, costumes off and sad; the pumpkin wall clock
   strikes 2:00 and falls back to 1:00; costumes fly back on and they party for the extra hour (confetti, hops).
-  Script: `halloween-2026/render_dst.py`. posted as ad126, Mon Nov 2, 2026 (ad110 was taken).
+  Script: `halloween-2026/render_dst.py`. posted as ad126, Sun Nov 1, 2026, ~9:40 PM ET (ad110 was taken).
 
 ## Sunday posting
 
