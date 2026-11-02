@@ -25644,5 +25644,59 @@
       "views_3s": null,
       "followers": 1
     }
+  },
+  {
+    "checked_at": "2026-11-02 10:04",
+    "source": "social_report.py",
+    "instagram": {
+      "posts": 81,
+      "views": 45950,
+      "top_views": 2159,
+      "likes": 69,
+      "comments": 0,
+      "avg_watch_s": 4.7,
+      "watch_pct": null,
+      "likes_per_k": 1.5,
+      "views_3s": null,
+      "followers": 2
+    },
+    "facebook": {
+      "posts": 85,
+      "views": 15324,
+      "top_views": 381,
+      "likes": 41,
+      "comments": 0,
+      "avg_watch_s": 3.4,
+      "watch_pct": 29.0,
+      "likes_per_k": 2.7,
+      "views_3s": 3283,
+      "followers": 5
+    },
+    "youtube": {
+      "posts": 80,
+      "views": 25139,
+      "top_views": 1414,
+      "likes": 93,
+      "comments": 41,
+      "avg_watch_s": 14.1,
+      "watch_pct": 114.2,
+      "likes_per_k": 3.7,
+      "views_3s": 5861,
+      "public_posts": 80,
+      "public_views": 24833,
+      "followers": 6
+    },
+    "tiktok": {
+      "posts": 81,
+      "views": 6269,
+      "top_views": 274,
+      "likes": 20,
+      "comments": 1,
+      "avg_watch_s": null,
+      "watch_pct": null,
+      "likes_per_k": 3.2,
+      "views_3s": null,
+      "followers": 1
+    }
   }
 ]
