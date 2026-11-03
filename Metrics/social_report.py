@@ -30,6 +30,8 @@ OUT_XLSX = os.path.join(HERE, "Social Report.xlsx")
 LAYOUT = os.path.join(HERE, "report-layout.json")   # saved from the report's Edit Layout button
 POSTS_HIST = os.path.join(HERE, "posts-history.json")   # per-post views at every complete check (for +24 h per post)
 POSTS = []   # per-post rows from the latest fetch (filled by fetch())
+CHECKS = []   # Guy, Nov 3: accuracy warnings shown at the top of the report (missing posts, totals that don't match)
+CARRY = {}   # post id -> last known views, for posts a site stopped returning (kept so totals never drop)
 YSAME = None   # Guy, Oct 29: views gained yesterday by this time of day (gray line left of today's bar)
 INSTALLS = {}   # {date: first downloads} from App Store Connect (filled by fetch(); empty if the key is missing)
 REVIEWS = {}    # {app_id, n, avg, top, reviews} App Store star ratings + written reviews (asc_reviews_lite; Guy, Oct 30)
@@ -262,7 +264,43 @@ def fetch():
         a = out.get("TikTok Account")
         tt["followers"] = int(a.followers.iloc[-1]) if a is not None and not a.empty else None
         snap["tiktok"] = tt
+    accuracy_checks(snap, out)
     return snap, errors
+
+
+def accuracy_checks(snap, out):
+    """Guy, Nov 3: YouTube's uploads list dropped 3 public videos and 'Views today' went negative.
+    1) A post an earlier check saw but this fetch didn't return keeps its last view count (views never vanish), with a warning.
+    2) Totals are compared with the site's own count where the API gives one (YouTube channel views, TikTok video count)."""
+    CHECKS.clear(); CARRY.clear()
+    try:
+        phist = json.load(open(POSTS_HIST))
+    except Exception:
+        return
+    last = {}
+    for cp in phist[-30:]:   # newest value of every post seen in recent checks
+        last.update(cp["posts"])
+    have = {r["id"] for r in POSTS}
+    yt = out.get("YouTube Videos")
+    if yt is not None and not yt.empty:   # private/unlisted videos are left out of POSTS but still in the site total
+        have |= {f"youtube:{v}" for v in yt.video_id}
+    for p in PLAT:
+        if p not in snap:
+            continue
+        gone = {k: v for k, v in last.items() if k.startswith(p + ":") and k not in have and v}
+        if gone:
+            CARRY.update(gone)
+            snap[p]["views"] += sum(gone.values())
+            CHECKS.append(f"{NAME[p]} didn’t return {len(gone)} post{'s' if len(gone) > 1 else ''} this check "
+                          f"({sum(gone.values()):,} views); {'their last counts are' if len(gone) > 1 else 'its last count is'} kept so the totals don’t drop.")
+    ch = out.get("YouTube Channel")
+    if "youtube" in snap and ch is not None and not ch.empty:
+        tot, mine = int(ch.total_views.iloc[-1]), snap["youtube"]["views"]
+        if tot > mine * 1.03 + 50:   # YouTube's channel count lags a little, so only a clear gap is flagged
+            CHECKS.append(f"YouTube says the channel has {tot:,} views, but the report’s posts add up to {mine:,}. Some videos may be missing.")
+    a, tv = out.get("TikTok Account"), out.get("TikTok Videos")
+    if a is not None and not a.empty and tv is not None and "videos" in a and pd.notna(a.videos.iloc[-1]) and int(a.videos.iloc[-1]) > len(tv):
+        CHECKS.append(f"TikTok says the account has {int(a.videos.iloc[-1])} videos, but only {len(tv)} came back. Some views may be missing.")
 
 
 def yt_own_comments(video_ids):
@@ -1350,6 +1388,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         day_html = (f"<div class='day'><div class='dayl'>{head}</div><div class='dayv'>{big} <small>views</small> {sub}</div>"
                     f"<div class='dayr'>{right}</div><div class='dayp dayps'>{parts}</div>{inst}</div>")
     stale_html = "".join(f"<p class='warn'>{NAME[p]} couldn’t be pulled after 3 tries, so its numbers are from the last good check ({e(t)}).</p>" for p, t in stale.items())
+    stale_html += "".join(f"<p class='warn'>⚠️ {e(x)}</p>" for x in CHECKS)
     if len(snap) == len(PLAT) and not stale:   # keep the last complete run (Mac report cache)
         os.makedirs(os.path.dirname(LAST), exist_ok=True)
         json.dump({"stamp": stamp, "table": {"cols": cols, "rows": trows}, "legend": legend,
@@ -1881,7 +1920,7 @@ def main():
     phist = json.load(open(POSTS_HIST)) if os.path.exists(POSTS_HIST) else []
     posts_html = sources_section() + game_section() + time_section(POSTS, now) + posts_section(POSTS, phist, now)   # Guy, Oct 29: App Store visits by source first
     if complete and POSTS:
-        phist.append({"checked_at": now.strftime("%Y-%m-%d %H:%M"), "posts": {r["id"]: r["views"] for r in POSTS}})
+        phist.append({"checked_at": now.strftime("%Y-%m-%d %H:%M"), "posts": {**CARRY, **{r["id"]: r["views"] for r in POSTS}}})
         json.dump(phist, open(POSTS_HIST, "w"))
     base = next((h for h in before if day and h["checked_at"] == day["since"].strftime("%Y-%m-%d %H:%M")), None)
     for r in rows:   # Guy, Oct 30: Top post views change = vs the check closest to 24 h ago, not the last refresh
