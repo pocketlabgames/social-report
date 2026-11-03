@@ -76,6 +76,15 @@ def fetch(keys_dir, today):
         token = r.get("nextPageToken")
         if not token:
             break
+    # YouTube's uploads playlist sometimes leaves out public videos (Nov 3: ad105/ad106/ad108 vanished from it);
+    # add every video an earlier check saw, so the totals never drop
+    try:
+        import json
+        hist = json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "posts-history.json")))
+        seen = {k.split(":", 1)[1] for cp in hist for k in cp["posts"] if k.startswith("youtube:")}
+        ids += sorted(seen - set(ids))
+    except Exception:
+        pass
 
     rows = []
     for i in range(0, len(ids), 50):
