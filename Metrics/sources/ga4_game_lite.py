@@ -34,11 +34,14 @@ def _ver(v):
 
 
 def _live():
-    """Version on the App Store now; builds newer than this (in review / TestFlight) are test devices, so they're left out."""
-    try:
-        return _ver(requests.get("https://itunes.apple.com/lookup", params={"id": APP_ID, "country": "us"}, timeout=20).json()["results"][0]["version"])
-    except Exception:
-        return FIRST
+    """Version on the App Store now + its release date; builds newer than this (in review / TestFlight) are test devices, so they're left out."""
+    for _ in range(3):
+        try:
+            r = requests.get("https://itunes.apple.com/lookup", params={"id": APP_ID, "country": "us"}, timeout=20).json()["results"][0]
+            return _ver(r["version"]), pd.Timestamp(r["currentVersionReleaseDate"]).tz_convert("America/New_York").date()
+        except Exception:
+            pass
+    return FIRST, START
 
 
 def fetch(keys_dir, today):
@@ -49,12 +52,18 @@ def fetch(keys_dir, today):
     rng = lambda days, end=0: {"startDate": max(today - dt.timedelta(days=days), START).isoformat(), "endDate": max(today - dt.timedelta(days=end), START).isoformat()}
     ev = lambda name: {"filter": {"fieldName": "eventName", "stringFilter": {"value": name}}}
     d14, d7, d28 = rng(14), rng(7, 1), rng(28)   # d7 = last 7 complete days; none start before Nov 1
-    live = _live()
+    live, released = _live()
     vers = [v[0] for v, _ in _run(s, {"dateRanges": [d28], "dimensions": [{"name": "appVersion"}], "metrics": [{"name": "activeUsers"}]}) if FIRST <= _ver(v[0]) <= live]
     out = {"versions": vers, "live": ".".join(map(str, live)), "daily": {}, "week": {}, "outcome": {}, "kind": {}, "reach": {}, "all": {}}
     if not vers:
         return {"GA4 Game Lite": (pd.DataFrame([{"json": json.dumps(out)}]), None)}
     newer = {"filter": {"fieldName": "appVersion", "inListFilter": {"values": vers}}}
+    # Guy, Nov 4: before its release day the live version only ran on review/test devices (1.3.2: 2 purchases, 14 Super Solves), so those days don't count
+    pre = [(START + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((released - START).days)]
+    if pre:
+        test = {"andGroup": {"expressions": [{"filter": {"fieldName": "appVersion", "stringFilter": {"value": ".".join(map(str, live))}}},
+                                             {"filter": {"fieldName": "date", "inListFilter": {"values": pre}}}]}}
+        newer = {"andGroup": {"expressions": [newer, {"notExpression": test}]}}
     for (d,), (n,) in _run(s, {"dateRanges": [d14], "dimensions": [{"name": "date"}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": newer}):
         out["daily"].setdefault(f"{d[:4]}-{d[4:6]}-{d[6:]}", {})["players"] = int(n)
     evf = {"andGroup": {"expressions": [{"filter": {"fieldName": "eventName", "inListFilter": {"values": EVENTS}}}, newer]}}
