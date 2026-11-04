@@ -991,25 +991,30 @@ def game_section():
     per = lambda n, k=1: f"{n / P * k:.1f}" if P else "—"
     MIN = 20   # Guy, Nov 2: always show the real numbers; under 20 players a tile just notes the small sample
     few = lambda n, what="player": f" ({n:,} {what}{'' if n == 1 else 's'} so far)" if n < MIN else ""
-    ml = {int(k): v for k, v in G.get("max_level", {}).items()}
-    mp = sum(ml.values())
+    rc = {int(k): v for k, v in G.get("reach", {}).items()}   # level -> different players who reached it or beyond
+    lv = sorted(rc)
+    reached = lambda s: next((rc[k] for k in lv if k >= s), 0)
+    mp = rc[lv[0]] if lv else 0
+    avg = sum(k * (rc[k] - (rc[lv[i + 1]] if i + 1 < len(lv) else 0)) for i, k in enumerate(lv)) / mp if mp else 0
+    half = max((k for k in lv if rc[k] * 2 >= mp), default=0)
+    A = G.get("all", {})
     oc = G.get("outcome", {}); on = sum(oc.values())
     kd = G.get("kind", {})
     ads, sup, buy = W.get("ad_shown", 0), W.get("super_stir", 0) + W.get("super_solve", 0), W.get("purchase_ok", 0)
-    tiles = [(f"{P:,}", "Players", f"on {', '.join(G['versions'])}, last 7 days"),
-             (f"{sum(k * v for k, v in ml.items()) / mp:.1f}" if mp else "—", "Avg furthest level", f"of {mp:,} player{'' if mp == 1 else 's'} since Nov 1" if mp else "no level data yet"),
+    tiles = [(f"{A.get('week', 0):,}", "Active players", f"last 7 days, all versions · {A.get('today', 0):,} today · {A.get('ever', 0):,} since launch"),
+             (f"{avg:.1f}" if mp else "—", "Avg furthest level", f"half of {mp:,} player{'' if mp == 1 else 's'} reached level {half}+, since Nov 1" if mp else "no level data yet"),
              (f"{oc.get('win', 0) / on * 100:.0f}%" if on else "—", "Win rate", f"{oc.get('win', 0):,} wins of {on:,} level attempts" if on else "no win/loss data yet"),
              (per(ads), "Ad views per player", (" · ".join(f"{v:,} {'between levels' if k == 'interstitial' else k}" for k, v in sorted(kd.items())) or f"{ads:,} ads") + " in 7 days" + few(P)),
-             (f"{sup:,}", "Super Stir / Solve uses", f"{W.get('super_stir', 0):,} Super Stir · {W.get('super_solve', 0):,} Super Solve, by {P:,} player{'' if P == 1 else 's'} in 7 days"),   # Guy, Nov 2: plain counts, not per 100
-             (f"{buy:,}", "Purchases", f"by {P:,} player{'' if P == 1 else 's'} in 7 days")]
+             (f"{sup:,}", "Super Stir / Solve uses", f"{W.get('super_stir', 0):,} Super Stir · {W.get('super_solve', 0):,} Super Solve, by {P:,} player{'' if P == 1 else 's'} on 1.3.1+"),   # Guy, Nov 2: plain counts, not per 100
+             (f"{buy:,}", "Purchases", f"by {P:,} player{'' if P == 1 else 's'} on 1.3.1+")]
     e = html.escape
     tiles_html = "<div class='gst'>" + "".join(f"<div class='gt'><b>{e(v)}</b><span>{e(l)}</span><small>{e(n)}</small></div>" for v, l, n in tiles) + "</div>"
-    top = max(ml) if ml else 0
+    top = lv[-1] if lv else 0
     steps = list(range(1, min(top, 100) + 1, 5)) if top else []
-    reach = [sum(v for k, v in ml.items() if k >= s) for s in steps]
+    reach = [reached(s) for s in steps]
     md = lambda d: dt.date.fromisoformat(d).strftime("%b %-d")
     data = {"steps": steps, "reach": reach, "mp": mp, "labels": [md(d) for d in days], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in days],
-            "players": [D[d].get("players", 0) for d in days], **{k: [D[d].get(k, 0) for d in days] for k in ("level_end", "level_up", "ad_shown", "super_stir", "super_solve", "purchase_ok")}}
+            "players": [A.get("daily", {}).get(d, 0) for d in days], "newer": [D[d].get("players", 0) for d in days], **{k: [D[d].get(k, 0) for d in days] for k in ("level_end", "level_up", "ad_shown", "super_stir", "super_solve", "purchase_ok")}}
     funnel = ("<div class='chart' style='height:260px'><canvas id='gfun' role='img' aria-label='Players by furthest level reached'></canvas></div>" if steps else
               f"<p class='sub gempty'>No furthest-level data yet. Bars show once players on released versions send it (Google Analytics needs up to a day).</p>")
     js = """<script>window.GAMECHART = () => { const X = __DATA__; if (!window.Chart) return;
@@ -1029,16 +1034,16 @@ def game_section():
   document.addEventListener('touchstart', e => { if (e.target !== cv) { const el = cv.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); } }, {passive: true}); };
  bar(document.getElementById('gfun'), X.steps.map(s => s + '+'), X.reach, '#12A4A4', 'Players', i => `<div class="ctt-h">Reached level ${X.steps[i]}+</div><div class="ctt-r">${pl(X.reach[i], 'player')} (${Math.round(X.reach[i] / X.mp * 100)}% of ${n(X.mp)})</div>` + (i ? `<div class="ctt-r">${n(X.reach[i - 1] - X.reach[i])} stopped at levels ${X.steps[i - 1]}–${X.steps[i] - 1}</div>` : ''));
  bar(document.getElementById('gday'), X.labels, X.players, '#8E6FD8', 'Players', i => `<div class="ctt-h">${X.full[i]} · ${pl(X.players[i], 'player')}</div>`
-  + `<div class="ctt-r">${pl(X.level_up[i], 'new level')} beaten · ${pl(X.level_end[i], 'level attempt')}</div><div class="ctt-r">${pl(X.ad_shown[i], 'ad')}` + (X.players[i] ? ` (${(X.ad_shown[i] / X.players[i]).toFixed(1)} per player)` : '') + '</div>'
+  + `<div class="ctt-r">${n(X.newer[i])} on 1.3.1+; the numbers below are theirs</div><div class="ctt-r">${pl(X.level_up[i], 'new level')} beaten · ${pl(X.level_end[i], 'level attempt')}</div><div class="ctt-r">${pl(X.ad_shown[i], 'ad')}` + (X.newer[i] ? ` (${(X.ad_shown[i] / X.newer[i]).toFixed(1)} per player)` : '') + '</div>'
   + `<div class="ctt-r">${n(X.super_stir[i])} Super Stir · ${n(X.super_solve[i])} Super Solve · ${pl(X.purchase_ok[i], 'purchase')}</div>`); }; </script>""".replace("__DATA__", json.dumps(data))
     return (f"<style>.sh3{{font-size:18px;margin:22px 0 4px}} .gst{{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:4px 0 18px}} "
             f".gt{{border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:1px}} .gt b{{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}} "
             f".gt span{{font-size:13px;color:var(--ink2)}} .gt small{{font-size:11px;color:var(--muted);line-height:1.3}} @media (max-width:700px){{.gst{{grid-template-columns:1fr 1fr}} .gt b{{font-size:18px}}}}</style>"
-            f"<h2 class='sh' id='sec-game'>Game stats</h2><p class='sub'>From Firebase (Google Analytics), released app versions only ({e(', '.join(G['versions']))}; versions still in App Review and older versions don't count), from Nov 1, when 1.3.1 went live. "
+            f"<h2 class='sh' id='sec-game'>Game stats</h2><p class='sub'>From Firebase (Google Analytics). Active players counts every app version. Everything else comes only from released versions that send game events ({e(', '.join(G['versions']))}), from Nov 1, when 1.3.1 went live. "
             f"Tiles = last 7 complete days unless noted. Small samples (under {MIN} players) are noted; read them as early signs only.</p>{tiles_html}"
             f"<h3 class='sh3'>Where players stop</h3><p class='sub'>Players by the furthest level they've reached (since Nov 1{few(mp).replace(' (', '; ').rstrip(')')}), in steps of 5 levels; each bar counts everyone at that level or beyond. Hover or tap a bar for how many stopped in that range.</p>{funnel}"
-            f"<h3 class='sh3'>Players per day</h3><p class='sub'>Players on released versions each day (from Nov 1, today so far on the right); hover or tap a day for levels, ads, Super Stir / Super Solve and purchases.</p>"
-            f"<div class='chart' style='height:260px'><canvas id='gday' role='img' aria-label='Players per day on released versions'></canvas></div>{js}")
+            f"<h3 class='sh3'>Players per day</h3><p class='sub'>Active players on all versions each day (from Nov 1, today so far on the right); hover or tap a day for levels, ads, Super Stir / Super Solve and purchases.</p>"
+            f"<div class='chart' style='height:260px'><canvas id='gday' role='img' aria-label='Active players per day on all versions'></canvas></div>{js}")
 
 
 def time_section(posts, now):

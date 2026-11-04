@@ -51,7 +51,7 @@ def fetch(keys_dir, today):
     d14, d7, d28 = rng(14), rng(7, 1), rng(28)   # d7 = last 7 complete days; none start before Nov 1
     live = _live()
     vers = [v[0] for v, _ in _run(s, {"dateRanges": [d28], "dimensions": [{"name": "appVersion"}], "metrics": [{"name": "activeUsers"}]}) if FIRST <= _ver(v[0]) <= live]
-    out = {"versions": vers, "live": ".".join(map(str, live)), "daily": {}, "week": {}, "outcome": {}, "kind": {}, "max_level": {}}
+    out = {"versions": vers, "live": ".".join(map(str, live)), "daily": {}, "week": {}, "outcome": {}, "kind": {}, "reach": {}, "all": {}}
     if not vers:
         return {"GA4 Game Lite": (pd.DataFrame([{"json": json.dumps(out)}]), None)}
     newer = {"filter": {"fieldName": "appVersion", "inListFilter": {"values": vers}}}
@@ -71,7 +71,16 @@ def fetch(keys_dir, today):
     for (k,), (n,) in _run(s, {"dateRanges": [d7], "dimensions": [{"name": "customEvent:kind"}], "metrics": [{"name": "eventCount"}], "dimensionFilter": one("ad_shown")}):
         if k != "(not set)":
             out["kind"][k] = int(n)
-    for (lv,), (n,) in _run(s, {"dateRanges": [d28], "dimensions": [{"name": "customUser:max_level"}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": newer}):
-        if lv.isdigit():
-            out["max_level"][lv] = int(n)
+    # Guy, Nov 4: a player whose furthest level changes shows up once per level in a by-level report (285 "players" vs 53 real),
+    # so ask for each level how many different players reached it or beyond
+    lvs = sorted(int(lv) for (lv,), _ in _run(s, {"dateRanges": [d28], "dimensions": [{"name": "customUser:max_level"}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": newer, "limit": 1000}) if lv.isdigit())
+    for lv in lvs:
+        f = {"andGroup": {"expressions": [newer, {"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in lvs if x >= lv]}}}]}}
+        r = _run(s, {"dateRanges": [{"startDate": d28["startDate"], "endDate": d28["endDate"]}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": f})
+        out["reach"][str(lv)] = int(r[0][1][0]) if r else 0
+    # active players on every app version (the game events above only come from 1.3.1+)
+    span = lambda a: {"startDate": a, "endDate": today.isoformat()}
+    total = lambda a: int(next(iter(_run(s, {"dateRanges": [span(a)], "metrics": [{"name": "activeUsers"}]})), ([], [0]))[1][0])
+    out["all"] = {"today": total(today.isoformat()), "week": total((today - dt.timedelta(days=6)).isoformat()), "ever": total("2026-01-01"),
+                  "daily": {f"{d[:4]}-{d[4:6]}-{d[6:]}": int(n) for (d,), (n,) in _run(s, {"dateRanges": [d14], "dimensions": [{"name": "date"}], "metrics": [{"name": "activeUsers"}]})}}
     return {"GA4 Game Lite": (pd.DataFrame([{"json": json.dumps(out)}]), None)}
