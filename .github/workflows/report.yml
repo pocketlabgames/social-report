@@ -14,10 +14,10 @@ concurrency:
 jobs:
   report:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 29
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      url: https://pocketlabgames.github.io/social-report/
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -52,5 +52,23 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
+      # GitHub Pages sometimes hangs, then refuses new deploys for up to ~50 min (Nov 5): wait and try again instead of failing right away
       - id: deploy
         uses: actions/deploy-pages@v4
+        continue-on-error: true
+        with:
+          timeout: 300000
+      - if: steps.deploy.outcome == 'failure'
+        run: sleep 360
+      - id: deploy2
+        if: steps.deploy.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+        with:
+          timeout: 300000
+      - if: steps.deploy2.outcome == 'failure'
+        run: sleep 360
+      - if: steps.deploy2.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        with:
+          timeout: 300000
