@@ -615,6 +615,28 @@ def short_title(t, n=36):
     return (cut or t[:n]) + "…"
 
 
+def ad_of(posts):
+    """{post id: ad-log.json row}. Guy, Nov 4: cards group by ad number. By post ID when the log has the link; Facebook and
+    Instagram posts scheduled without a link go by exact caption on the same date, only when one ad fits."""
+    path = os.path.join(HERE, "ad-log.json")
+    if not os.path.exists(path):
+        return {}
+    with open(path) as f:
+        rows = json.load(f)
+    by_id = {(s, i): a for a in rows for s, i in a["ids"].items()}
+    out = {}
+    for r in posts:
+        site = r["site"]
+        key = r["url"].rstrip("/").rsplit("/", 1)[-1] if site == "instagram" else r["id"].split(":", 1)[1]
+        a = by_id.get((site, key))
+        if a is None and site in ("facebook", "instagram"):
+            fits = [x for x in rows if site not in x["ids"] and x[site] and x["date"] == r["created"][:10] and x[site][:90] == r["title"]]
+            a = fits[0] if len(fits) == 1 else None
+        if a:
+            out[r["id"]] = a
+    return out
+
+
 def same_video(r, g):
     """Is post r the video in group g? Guy, Nov 4: going up close in time isn't enough, reels 55 minutes apart got merged.
     Within 90 minutes on another site, and the lengths must agree (YouTube reports about 1 s longer). Then the caption's
@@ -641,7 +663,7 @@ def same_video(r, g):
 
 
 def group_videos(posts):
-    """One group per video: video-map.csv names first, then posts on different sites that same_video says match."""
+    """One group per video: video-map.csv names first, then ad number (ad_of), then posts on different sites that same_video says match."""
     name_of = {}
     if os.path.exists(VIDEO_MAP):
         try:
@@ -650,10 +672,18 @@ def group_videos(posts):
                 name_of[f"{r.platform.strip().lower()}:{r.post_id.strip()}"] = r.video.strip()
         except Exception:
             pass
-    groups, by_name, loose = [], {}, []
+    ads = ad_of(posts)
+    groups, by_name, by_ad, loose = [], {}, {}, []
     for r in sorted(posts, key=lambda r: r["created"]):
         n = name_of.get(r["id"])
-        if n:
+        a = ads.get(r["id"])
+        if a and not n:
+            g = by_ad.get(a["ad"])
+            if g is None:
+                g = by_ad[a["ad"]] = {"name": a["title"], "mapped": True, "ad": a["ad"], "posts": []}
+                groups.append(g)
+            g["posts"].append(r)
+        elif n:
             g = by_name.get(n)
             if g is None:
                 g = by_name[n] = {"name": n, "mapped": True, "posts": []}
@@ -759,7 +789,7 @@ def posts_section(posts, phist, now):
         dhtml = "" if xv is None else f"<span class='pdist' title='Views compared with a typical video of yours at the same age (1.0× = typical)'>{xv:.1f}×</span>"
         cards.append(f"<div class='vc{' old' if old else ''}'><div class='vch'><div class='vcn'><b>{num(tv)}</b> <small>views{(' (' + sg(tg) + ')') if tg is not None else ''}</small></div>"
                      f"<span class='pcol'><span class='pdot' style='background:{pc}' title='{pt}'></span>{dhtml}</span></div><div class='vct'>{e(g['name'][:90])}</div>"
-                     f"<div class='vcm'>{when(g['created'])}{(' · ' + num(ln) + ' s') if ln else ''}{(' · not on ' + ', '.join(missing)) if missing and len(missing) < 4 else ''}</div>"
+                     f"<div class='vcm'>{(e(g['ad']) + ' · ') if g.get('ad') else ''}{when(g['created'])}{(' · ' + num(ln) + ' s') if ln else ''}{(' · not on ' + ', '.join(missing)) if missing and len(missing) < 4 else ''}</div>"
                      f"<table class='vt'><thead><tr><th class='rl'>Site</th><th>Views</th><th>{gain_label}</th><th>Likes / 1K</th><th class='aw'>Avg watch</th><th>Watched</th></tr></thead><tbody>{rows}</tbody></table></div>")
     more = f"<button id='more' class='b gray' type='button'>Show {hidden} older video(s)</button>" if hidden else ""
     return (f"<h2 class='sh' id='sec-videos'>Videos</h2><p class='sub'>One card per video, newest first, with its numbers on each site. {gain_label} = views gained since the check closest to 24 h ago"

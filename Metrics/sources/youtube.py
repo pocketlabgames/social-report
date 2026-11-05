@@ -85,6 +85,7 @@ def fetch(keys_dir, today):
         ids += sorted(seen - set(ids))
     except Exception:
         pass
+    ids = list(dict.fromkeys(ids))   # the playlist can list a video twice (Nov 4: 3 videos counted double)
 
     rows = []
     for i in range(0, len(ids), 50):
