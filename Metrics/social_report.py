@@ -615,8 +615,33 @@ def short_title(t, n=36):
     return (cut or t[:n]) + "…"
 
 
+def same_video(r, g):
+    """Is post r the video in group g? Guy, Nov 4: going up close in time isn't enough, reels 55 minutes apart got merged.
+    Within 90 minutes on another site, and the lengths must agree (YouTube reports about 1 s longer). Then the caption's
+    first words must match, or it went up within 10 minutes (older YouTube titles were worded differently)."""
+    if any(x["site"] == r["site"] for x in g["posts"]):
+        return False
+    try:
+        t = dt.datetime.strptime(r["created"], "%Y-%m-%d %H:%M")
+        mins = max(abs((t - dt.datetime.strptime(x["created"], "%Y-%m-%d %H:%M")).total_seconds()) / 60 for x in g["posts"])
+    except ValueError:
+        return False
+    if mins > 90:
+        return False
+    secs = lambda x: x["length_s"] - (1 if x["site"] == "youtube" else 0)
+    lens = [secs(x) for x in g["posts"] if x["length_s"]]
+    if r["length_s"] and any(abs(secs(r) - l) > 1.5 for l in lens):
+        return False
+    words = lambda x: re.findall(r"[^\W_]+", re.sub(r"#\w+", "", x["title"] or "").lower())
+    def same_words(x):
+        a, b = words(r), words(x)
+        n = min(len(a), len(b), 5)
+        return n > 0 and a[:n] == b[:n]
+    return (r["length_s"] and lens and mins <= 10) or any(same_words(x) for x in g["posts"])
+
+
 def group_videos(posts):
-    """One group per video: video-map.csv names first, then posts on different sites that went up within 90 minutes."""
+    """One group per video: video-map.csv names first, then posts on different sites that same_video says match."""
     name_of = {}
     if os.path.exists(VIDEO_MAP):
         try:
@@ -636,20 +661,11 @@ def group_videos(posts):
             g["posts"].append(r)
         else:
             loose.append(r)
-    for r in loose:   # time clustering for unmapped posts
-        try:
-            t = dt.datetime.strptime(r["created"], "%Y-%m-%d %H:%M")
-        except ValueError:
-            groups.append({"name": "", "mapped": False, "posts": [r]}); continue
+    # time clustering for unmapped posts; Instagram last, since it reports no length to compare
+    for r in sorted(loose, key=lambda r: (not r["length_s"], r["created"])):
         placed = False
         for g in groups:
-            if g["mapped"] or any(x["site"] == r["site"] for x in g["posts"]):
-                continue
-            try:
-                t0 = dt.datetime.strptime(g["posts"][0]["created"], "%Y-%m-%d %H:%M")
-            except ValueError:
-                continue
-            if abs((t - t0).total_seconds()) <= 90 * 60:
+            if not g["mapped"] and same_video(r, g):
                 g["posts"].append(r); placed = True; break
         if not placed:
             groups.append({"name": "", "mapped": False, "posts": [r]})
