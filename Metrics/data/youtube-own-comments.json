@@ -1,0 +1,169 @@
+{
+ "note": "Our own YouTube comments per video (pinned/link comments by @beakerlabgame). The API's commentCount includes them and our read-only login can't see comment authors, so the Social Report subtracts these. Checked in YouTube Studio > Comments on Oct 20, 2026 (every comment so far is ours). Add 1 for each new Short when we post its pinned comment.",
+ "videos": {
+  "L_cRWw2ZfYA": {
+   "own_comments": 1,
+   "title": "POV: \"one more level\" at 2 AM 😵‍💫 #shorts"
+  },
+  "YbvjKVU3T-Q": {
+   "own_comments": 1,
+   "title": "5 seconds left ⚡ Beaker Lab Speed Round #shorts"
+  },
+  "ll_qMo6uylA": {
+   "own_comments": 1,
+   "title": "Combo ×7 🔥 How high can you go? #shorts"
+  },
+  "nap2x5MWmM8": {
+   "own_comments": 1,
+   "title": "What color is hiding under the \"?\" 🎃 #shorts"
+  },
+  "mCyRfWrpK0g": {
+   "own_comments": 1,
+   "title": "Only 1 move works. Find it in 3 seconds 🎃 #shorts"
+  },
+  "zaF7zLc2aXw": {
+   "own_comments": 1,
+   "title": "Don't do this 😩 Super Stir to the rescue #shorts"
+  },
+  "ugHLxUvDAUI": {
+   "own_comments": 1,
+   "title": "Stuck on a Mystery Level? Super Stir pours 5 for you 🧪 #shorts"
+  },
+  "g1dJu7sUcrk": {
+   "own_comments": 1,
+   "title": "Can you beat the clock? ⚡ Speed Round in Beaker Lab #shorts"
+  },
+  "JPpFfxBSb5A": {
+   "own_comments": 1,
+   "title": "These aren't normal liquids: Beaker Lab color packs #shorts"
+  },
+  "QyDuE27wmd4": {
+   "own_comments": 1,
+   "title": "Can you unlock it? Locked beakers in Beaker Lab #shorts"
+  },
+  "tQm7Bb1xkO8": {
+   "own_comments": 1,
+   "title": "Halloween color packs are here in Beaker Lab #shorts"
+  },
+  "062NP367Ook": {
+   "own_comments": 1,
+   "title": "POV: the perfect combo 😮‍💨 Combo ×7 #shorts"
+  },
+  "5qUeOImrY-g": {
+   "own_comments": 1,
+   "title": "Can you unlock it? 🔑 Tapping won't work #shorts"
+  },
+  "xCw8QslETEc": {
+   "own_comments": 1,
+   "title": "Can't sleep? 🌙 Sort these with me #shorts"
+  },
+  "Kx3GNQycRoE": {
+   "own_comments": 1,
+   "title": "Solve it before your coffee cools ☕ #shorts"
+  },
+  "SkQvyKenJOk": {
+   "own_comments": 1,
+   "title": "3 PM slump? Wake your brain up ⚡ #shorts"
+  },
+  "uzgojG1empk": {
+   "own_comments": 1,
+   "title": "After dinner… one more level 🍝 #shorts"
+  },
+  "vgqLT7F3mTw": {
+   "own_comments": 1,
+   "title": "POV: it's 11 PM and the combo won't stop 😮‍💨 #shorts"
+  },
+  "68B8Y7BL9tA": {
+   "own_comments": 1,
+   "title": "POV: your first combo of the day ☕ #shorts"
+  },
+  "SR1HJN35RQ0": {
+   "own_comments": 1,
+   "title": "POV: your lunch break turned into a combo 🥪 #shorts"
+  },
+  "ofYMIwW6kf4": {
+   "own_comments": 1,
+   "title": "Afternoon slump? 😴 Super Stir pours 5 for you #shorts"
+  },
+  "NrYeOxuVzoI": {
+   "own_comments": 1,
+   "title": "After work: can you unlock it? 🔑 #shorts"
+  },
+  "vXpPCkfqTaE": {
+   "own_comments": 1,
+   "title": "POV: \"one more level\" before bed 😵‍💫 #shorts"
+  },
+  "bopGLPWW24o": {
+   "own_comments": 1,
+   "title": "POV: it's 1 AM on a Friday 🌙 #shorts"
+  },
+  "s6DfZ4er0MY": {
+   "own_comments": 1,
+   "title": "POV: you just woke up and the combo is already going ☕ #shorts"
+  },
+  "DohYy90-y4I": {
+   "own_comments": 1,
+   "title": "Saturday lunch break: Combo ×8 🥪 #shorts"
+  },
+  "9-SIuIiX1ow": {
+   "own_comments": 1,
+   "title": "Can you beat the clock? ⚡ Beaker Blitz #shorts"
+  },
+  "nlCRIlO40t0": {
+   "own_comments": 1,
+   "title": "Dinner's ready… 1 more level 🍂 #shorts"
+  },
+  "LubjZv6BMxs": {
+   "own_comments": 1,
+   "title": "One more level before bed 😵‍💫 #shorts"
+  },
+  "jCuBPpRl0XQ": {
+   "own_comments": 1,
+   "title": "POV: Sunday morning, coffee + combo ☕ #shorts"
+  },
+  "b8y7zegTiDg": {
+   "own_comments": 1,
+   "title": "Stuck on a level? Super Stir pours 5 for you 🧪 #shorts"
+  },
+  "_iORUatYpzc": {
+   "own_comments": 1,
+   "title": "Sunday reset: one cozy level 🍂 #shorts"
+  },
+  "s7bWgg6g7n8": {
+   "own_comments": 1,
+   "title": "🎃 7 days to Halloween: only 1 move works #shorts"
+  },
+  "ADUbVrH7Oo8": {
+   "own_comments": 1,
+   "title": "POV: it's 11 PM Sunday 😮‍💨 #shorts"
+  },
+  "hWliyvGKb9k": {
+   "own_comments": 1,
+   "title": "POV: Monday morning, coffee + combo ☕ #shorts"
+  },
+  "eB5yy0ZaYas": {
+   "own_comments": 1,
+   "title": "Monday already? 😩 Super Stir pours 5 for you 🧪 #shorts"
+  },
+  "u0TDd_NxWQQ": {
+   "own_comments": 1,
+   "title": "3 PM slump? One combo fixes it 😮‍💨 #shorts"
+  },
+  "OPqqCojutck": {
+   "own_comments": 1,
+   "title": "🎃 6 days to Halloween: one more level #shorts"
+  },
+  "DWJwSDxxYFs": {
+   "own_comments": 1,
+   "title": "It's 12:45 AM… last level 🌙 #shorts"
+  },
+  "I6o1NGg_jIk": {
+   "own_comments": 1,
+   "title": "POV: Tuesday morning, coffee + combo ☕ #shorts"
+  },
+  "dkpa24wvp-4": {
+   "own_comments": 1,
+   "title": "Knock knock… trick or treat! 🎃 #shorts"
+  }
+ }
+}

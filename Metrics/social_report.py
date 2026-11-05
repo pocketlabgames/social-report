@@ -903,10 +903,9 @@ def week_box(snap, hist, posts, phist, installs, now):
         lines.append(txt)
     if installs:
         days = sorted(d for d in installs if installs[d] is not None)
-        w1 = [d for d in days if (now.date() - dt.date.fromisoformat(d)).days <= 7]
-        w2 = [d for d in days if 7 < (now.date() - dt.date.fromisoformat(d)).days <= 14]
+        w1, w2 = days[-7:], days[-14:-7]   # Guy, Nov 5 audit: the 7 days Apple has posted vs the 7 before, so a day Apple hasn't posted yet can't shrink this week
         i1, i2 = sum(installs[d] for d in w1), sum(installs[d] for d in w2)
-        txt = f"<b>{i1:,}</b> App Store installs in the last 7 days"
+        txt = f"<b>{i1:,}</b> App Store installs in the last 7 days Apple has posted"
         if w2:
             txt += f" ({i1 - i2:+,} vs the 7 days before)"
         if a and b and (a[0] - b[0]).days >= 5 and i1:
@@ -916,7 +915,7 @@ def week_box(snap, hist, posts, phist, installs, now):
     base = None
     for h in phist:
         t = dt.datetime.strptime(h["checked_at"], "%Y-%m-%d %H:%M")
-        if (now - t).total_seconds() >= 6.5 * 86400 and (base is None or t > base[0]):
+        if (now - t).total_seconds() >= 7 * 86400 and (base is None or t > base[0]):
             base = (t, h["posts"])
     byid = {r["id"]: r for r in posts}
     if base:
@@ -1345,8 +1344,8 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         if ASCR.get("mins") is not None:
             tiles.append((f"{ASCR['mins']:.1f} min", "Avg session", "time per app open"))
         if ASCR.get("deletes") is not None:
-            kept = f"  (~{max(0, 100 - round(ASCR['deletes'] / ASCR['installs'] * 100))}% kept)" if ASCR.get("installs") else ""   # Guy, Oct 26: rough, deletions include earlier installs
-            tiles.append((f"{ASCR['deletes']:,}{kept}", "Deletions", f"vs {ASCR.get('installs', 0):,} new installs"))
+            # Guy, Nov 5 audit: no "% kept"; this Apple report caught 22 installs where the sales report had 83, so the two can't be compared
+            tiles.append((f"{ASCR['deletes']:,}", "Deletions", "Apple's analytics count, which misses many devices"))
         asc_tpl = ("<template id='ascret'><div class='asc'><div class='ash'>App · App Store Connect, "
                    f"{e(md(ASCR['first']))} – {e(md(ASCR['last']))} <small>(last {ASCR.get('days', 7)} days Apple has posted)</small></div><div class='atg'>"
                    + "".join(f"<div class='at'><b>{e(v)}</b><span>{e(l)}</span><small>{e(n)}</small></div>" for v, l, n in tiles)
@@ -1394,13 +1393,13 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         if installs:
             days = sorted(d for d in installs if installs[d] is not None)
             y = (dt.date.today() - dt.timedelta(days=1)).isoformat()
-            w = sum(installs[d] for d in days if (dt.date.today() - dt.date.fromisoformat(d)).days <= 7)
+            w = sum(installs[d] for d in days[-7:])
             est = est or {}
             td_s = dt.date.today().isoformat()
             m = sum(installs[d] for d in days if d[:7] == dt.date.today().strftime("%Y-%m"))
             month = dt.date.today().strftime("%B")
             tot = sum(installs[d] for d in days)
-            tail = f" · <b>{w:,}</b> last 7 days · <b>{m:,}</b> in {month} · <b>{tot:,}</b> total since launch</div>"
+            tail = f" · <b>{w:,}</b> last 7 days Apple has posted · <b>{m:,}</b> in {month} · <b>{tot:,}</b> total since launch</div>"
             today_est = f"<b>~{est[td_s]:,}</b> today <small>(estimate)</small> · " if td_s in est else ""
             if installs.get(y) is not None:
                 inst = f"<div class='dayp dayi'>App Store installs: {today_est}<b>{installs[y]:,}</b> yesterday" + tail
