@@ -1191,7 +1191,7 @@ CMAP_JS = """
   const ov = document.getElementById('cmap'), tt = document.getElementById('cmtt'), tot = Object.values(CM).reduce((a, b) => a + b, 0);
   const max = Math.max(...Object.values(CM));
   const t = v => Math.log(v) / Math.log(Math.max(max, 2));   // log scale: the US would wash out everyone else
-  const LO = [37, 99, 235], HI = [249, 115, 22];   // same blue + orange as the legend
+  const LO = [106, 140, 180], HI = [208, 138, 88];   // same blue + orange as the legend
   const heat = v => { const k = max <= 1 ? 1 : t(v); return `rgb(${LO.map((c, i) => Math.round(c + (HI[i] - c) * k)).join(', ')})`; };
   const fmt = n => n.toLocaleString();
   // list by region (most downloads first), countries most to least
@@ -1241,7 +1241,7 @@ def cmap_html():
     if not COUNTRIES:
         return ""
     tot = sum(COUNTRIES.values())
-    lo = "rgb(37, 99, 235)"; hi = "rgb(249, 115, 22)"
+    lo = "rgb(106, 140, 180)"; hi = "rgb(208, 138, 88)"
     return (f"<style>{CMAP_CSS}</style>"
             f"<div class='cmo' id='cmap' hidden><div class='cmc'><button class='cmx' id='cmx' aria-label='Close'>×</button>"
             f"<div class='cmh'><h2>{len(COUNTRIES):,} countries</h2><small>{tot:,} App Store first downloads since launch</small></div>"
