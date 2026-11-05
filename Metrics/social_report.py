@@ -1145,7 +1145,7 @@ SHORT = {"instagram": "IG", "facebook": "FB", "youtube": "YT", "tiktok": "TT"}  
 
 
 
-# Guy, Oct 31: click the countries total -> world map (green, darker = more downloads) + every country by region; hover a region for its countries
+# Guy, Oct 31: click the countries total -> world map (Guy, Nov 5: blue = fewer downloads, orange = more) + every country by region; hover a region for its countries
 # ISO alpha-2 + ISO numeric (world-atlas map id; 000 = not on the map) + continent (Guy, Oct 31: traditional continents):
 # N North America (incl. Central America + Caribbean), S South America, E Europe (incl. Russia, Cyprus), A Asia (incl. Caucasus), M Middle East (incl. Turkey; Guy, Oct 31: Asia was too big), F Africa, O Oceania
 GEO = """US840N CA124N BM060N GL304N PM666N MX484N GT320N BZ084N SV222N HN340N NI558N CR188N PA591N CU192N JM388N HT332N DO214N PR630N BS044N BB052N TT780N AG028N DM212N GD308N KN659N LC662N VC670N AI660N KY136N VG092N VI850N TC796N MS500N AW533N CW531N SX534N MF663N BL652N GP312N MQ474N BQ535N
@@ -1191,7 +1191,8 @@ CMAP_JS = """
   const ov = document.getElementById('cmap'), tt = document.getElementById('cmtt'), tot = Object.values(CM).reduce((a, b) => a + b, 0);
   const max = Math.max(...Object.values(CM));
   const t = v => Math.log(v) / Math.log(Math.max(max, 2));   // log scale: the US would wash out everyone else
-  const green = v => { const k = max <= 1 ? 1 : 0.25 + 0.75 * t(v); return `hsl(145, ${45 + 20 * k}%, ${82 - 58 * k}%)`; };
+  const LO = [37, 99, 235], HI = [249, 115, 22];   // same blue + orange as the legend
+  const heat = v => { const k = max <= 1 ? 1 : t(v); return `rgb(${LO.map((c, i) => Math.round(c + (HI[i] - c) * k)).join(', ')})`; };
   const fmt = n => n.toLocaleString();
   // list by region (most downloads first), countries most to least
   const by = {}; Object.entries(CM).forEach(([c, n]) => { const r = (G[c] || {}).r || '?'; (by[r] = by[r] || []).push([c, n]); });
@@ -1217,7 +1218,7 @@ CMAP_JS = """
       const empty = getComputedStyle(document.documentElement).getPropertyValue('--line').trim() || '#e1e0d9';
       svg.innerHTML = f.map(x => { const n = x.id ? byId[x.id] : (x.properties.name === 'Kosovo' ? kosovo : 0);
         const r = x.id ? idReg[x.id] : (x.properties.name === 'Kosovo' ? 'E' : null), c = x.id ? idCode[x.id] : (x.properties.name === 'Kosovo' ? 'XK' : null);
-        return `<path d="${path(x)}" fill="${n ? green(n) : empty}"${r ? ` data-r="${r}"` : ''} data-n="${(c ? nm(c) : x.properties.name).replace(/"/g, '')}" data-v="${n || 0}"></path>`; }).join('');
+        return `<path d="${path(x)}" fill="${n ? heat(n) : empty}"${r ? ` data-r="${r}"` : ''} data-n="${(c ? nm(c) : x.properties.name).replace(/"/g, '')}" data-v="${n || 0}"></path>`; }).join('');
       // Guy, Nov 2: hovering a country on the map shows only that country's downloads (tap on phones)
       const cTip = d => `<h4>${d.n}</h4>` + (+d.v ? `<div><span>Downloads</span><b>${fmt(+d.v)}</b></div>` : 'No downloads yet');
       svg.addEventListener('mousemove', e => { const d = e.target.dataset; d && d.n ? show(cTip(d), e.clientX, e.clientY) : hide(); });
@@ -1240,7 +1241,7 @@ def cmap_html():
     if not COUNTRIES:
         return ""
     tot = sum(COUNTRIES.values())
-    lo = "hsl(145, 49%, 77%)"; hi = "hsl(145, 65%, 24%)"
+    lo = "rgb(37, 99, 235)"; hi = "rgb(249, 115, 22)"
     return (f"<style>{CMAP_CSS}</style>"
             f"<div class='cmo' id='cmap' hidden><div class='cmc'><button class='cmx' id='cmx' aria-label='Close'>×</button>"
             f"<div class='cmh'><h2>{len(COUNTRIES):,} countries</h2><small>{tot:,} App Store first downloads since launch</small></div>"
