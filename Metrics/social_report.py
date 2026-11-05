@@ -270,7 +270,7 @@ def fetch():
 
 def accuracy_checks(snap, out):
     """Guy, Nov 3: YouTube's uploads list dropped 3 public videos and 'Views today' went negative.
-    1) A post an earlier check saw but this fetch didn't return keeps its last view count (views never vanish), with a warning.
+    1) A post an earlier check saw but this fetch didn't return keeps its last view count (views never vanish), with a warning. So does one returned with 0 views.
     2) Totals are compared with the site's own count where the API gives one (YouTube channel views, TikTok video count)."""
     CHECKS.clear(); CARRY.clear()
     try:
@@ -280,6 +280,20 @@ def accuracy_checks(snap, out):
     last = {}
     for cp in phist[-30:]:   # newest value of every post seen in recent checks
         last.update(cp["posts"])
+    seen = {}   # newest non-zero count; Guy, Nov 4: TikTok returned 0 for 11 posts in one check (941 views)
+    for cp in phist[-30:]:
+        seen.update({k: v for k, v in cp["posts"].items() if v})
+    zeroed = {}
+    for r in POSTS:
+        if not r["views"] and seen.get(r["id"]):
+            r["views"] = seen[r["id"]]
+            if r["site"] in snap:
+                snap[r["site"]]["views"] += r["views"]
+                zeroed.setdefault(r["site"], []).append(r["views"])
+    for p, vs in zeroed.items():
+        if sum(vs) >= 20:   # YouTube's newest Shorts flip between 0 and a few views all day
+            CHECKS.append(f"{NAME[p]} returned 0 views for {len(vs)} post{'s' if len(vs) > 1 else ''} this check; "
+                          f"{'their' if len(vs) > 1 else 'its'} last count{'s are' if len(vs) > 1 else ' is'} kept ({sum(vs):,} views).")
     have = {r["id"] for r in POSTS}
     yt = out.get("YouTube Videos")
     if yt is not None and not yt.empty:   # private/unlisted videos are left out of POSTS but still in the site total
