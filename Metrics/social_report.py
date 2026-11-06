@@ -958,8 +958,8 @@ SLOTS = [("Morning", 5, 11), ("Midday", 11, 14), ("Afternoon", 14, 17), ("Evenin
 
 
 def sources_section():
-    """Guy, Oct 29: App Store page views by where people came from, as a stacked line chart; hover/tap a day for downloads,
-    ad conversion and Google Ads spend. App referrer = inside another app (our Google Ads); social posts have no App Store
+    """Guy, Nov 6: App Store downloads by where people came from, as a stacked bar chart; hover/tap a day for each source's
+    downloads and Google Ads spend. App referrer = inside another app (our Google Ads); social posts have no App Store
     link, so their viewers search."""
     days = sorted(d for d, r in ASCSRC.items() if any(k.startswith("pv_") for k in r))[-14:]
     if not days:
@@ -979,16 +979,14 @@ def sources_section():
         for k in sorted(KS, key=lambda k: -(raw[k] - r[k]))[:T - sum(r.values())]:   # largest remainder, so the split adds up to T
             r[k] += 1
         dlx[d] = r
-    g = lambda d, k: dlx[d][k[3:]] if k.startswith("dl_") else ASCSRC[d].get(k, 0)
-    tot = lambda k: sum(g(d, k) for d in days[-7:])
-    pct = lambda a, b: f"{a / b * 100:.0f}%" if b else "—"
     wk = days[-7:]
+    tot = lambda k: sum(dlx[d][k] for d in wk)
     spend = sum(GADS.get(d) or 0 for d in wk)
-    ad_dl = tot("dl_ads")
+    ad_dl = tot("ads")
     per = f", ${spend / ad_dl:.2f} per download" if ad_dl and spend else ""
     md = lambda d: dt.date.fromisoformat(d).strftime("%b %-d")
-    summ = (f"Last 7 days ({md(wk[0])} – {md(wk[-1])}): <b>Google Ads:</b> {tot('pv_ads'):,} page views → <b>{ad_dl:,}</b> downloads ({pct(ad_dl, tot('pv_ads'))}), ${spend:,.2f} spent{per} · "
-            f"<b>Search:</b> {tot('pv_search'):,} → <b>{tot('dl_search'):,}</b> · <b>Browse:</b> {tot('pv_browse'):,} → <b>{tot('dl_browse'):,}</b> · <b>Other:</b> {tot('pv_other'):,} views")
+    summ = (f"Last 7 days ({md(wk[0])} – {md(wk[-1])}): <b>Google Ads:</b> <b>{ad_dl:,}</b> downloads, ${spend:,.2f} spent{per} · "
+            f"<b>Search:</b> <b>{tot('search'):,}</b> · <b>Browse:</b> <b>{tot('browse'):,}</b> · <b>Other:</b> <b>{tot('other'):,}</b>")
     if METAADS:   # Guy, Nov 1: Meta ads line (spend, link clicks, Meta's install count)
         mw = [METAADS.get(d) or {} for d in wk]
         ms, mc, mi = sum(x.get("spend", 0) for x in mw), sum(x.get("clicks", 0) for x in mw), sum(x.get("installs", 0) for x in mw)
@@ -997,40 +995,39 @@ def sources_section():
     else:
         summ += "<br><b>Meta ads (FB + IG):</b> not connected yet (the Meta token needs the ads_read permission)"
     src = [("ads", "Google Ads", "#C9A227"), ("other", "Other", "#A8A8A8"), ("search", "Search", "#12A4A4"), ("browse", "Browse", "#8E6FD8")]
-    src.sort(key=lambda x: -sum(g(d, "pv_" + x[0]) for d in days))   # most to least (bottom of the stack = biggest)
+    src.sort(key=lambda x: -sum(dlx[d][x[0]] for d in days))   # most to least (bottom of the stack = biggest)
     data = {"labels": [md(d) for d in days], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in days],
             "spend": [GADS.get(d) for d in days], "meta": [METAADS.get(d) for d in days], "src": [{"k": k, "l": l, "c": c} for k, l, c in src],
-            **{"pv_" + k: [g(d, "pv_" + k) for d in days] for k, _, _ in src}, **{"dl_" + k: [g(d, "dl_" + k) for d in days] for k, _, _ in src}}
-    legend = "".join(f"<span class='lg'><svg width='22' height='10'><line x1='0' y1='5' x2='22' y2='5' stroke='{c}' stroke-width='3'/></svg>{l} {sum(g(d, 'pv_' + k) for d in days):,}</span>" for k, l, c in src)
+            **{"dl_" + k: [dlx[d][k] for d in days] for k, _, _ in src}}
+    legend = "".join(f"<span class='lg'><svg width='10' height='10'><rect width='10' height='10' rx='2' fill='{c}'/></svg>{l} {sum(dlx[d][k] for d in days):,}</span>" for k, l, c in src)
     js = """<script>window.SRCCHART = () => { const X = __DATA__, cv = document.getElementById('srcc'); if (!cv || !window.Chart || Chart.getChart(cv)) return;   // started by the main chart script (the password page writes this page in after 'load' has fired)
  const dark = matchMedia('(prefers-color-scheme: dark)').matches, grid = dark ? '#2c2c2a' : '#e1e0d9', muted = '#898781', n = v => (v || 0).toLocaleString();
  const tt = ({chart: ch, tooltip: t}) => { let el = ch.canvas.parentNode.querySelector('.ctt');
   if (!el) { el = document.createElement('div'); el.className = 'ctt'; ch.canvas.parentNode.appendChild(el); }
   if (!t.opacity || !t.dataPoints.length) { el.style.opacity = 0; return; }
-  const i = t.dataPoints[0].dataIndex, all = X.src.reduce((a, s) => a + X['pv_' + s.k][i], 0), dall = X.src.reduce((a, s) => a + X['dl_' + s.k][i], 0);
-  const rows = [...X.src].sort((a, b) => X['pv_' + b.k][i] - X['pv_' + a.k][i]), sh = d => dall ? ` (${Math.round(d / dall * 100)}%)` : '';   // Guy, Oct 29: % = share of the day's downloads
-  let h = `<div class="ctt-h">${X.full[i]} · ${n(all)} page views · ${n(dall)} download${dall === 1 ? '' : 's'}</div>`;
-  if (dall) h += '<div class="rtt-bar">' + rows.map(s => X['dl_' + s.k][i] ? `<i style="width:${X['dl_' + s.k][i] / dall * 100}%;background:${s.c}"></i>` : '').join('') + '</div>';
-  rows.forEach(s => { const v = X['pv_' + s.k][i], d = X['dl_' + s.k][i];
-   h += `<div class="ctt-r"><i style="background:${s.c}"></i>${s.l}: ${n(v)} view${v === 1 ? '' : 's'} → ${n(d)} download${d === 1 ? '' : 's'}${sh(d)}</div>`; });
+  const i = t.dataPoints[0].dataIndex, dall = X.src.reduce((a, s) => a + X['dl_' + s.k][i], 0);
+  const rows = X.src.filter(s => X['dl_' + s.k][i]).sort((a, b) => X['dl_' + b.k][i] - X['dl_' + a.k][i]);   // Guy, Nov 6: most to least, no 0-download sources
+  let h = `<div class="ctt-h">${X.full[i]} · ${n(dall)} download${dall === 1 ? '' : 's'}</div>`;
+  if (dall) h += '<div class="rtt-bar">' + rows.map(s => `<i style="width:${X['dl_' + s.k][i] / dall * 100}%;background:${s.c}"></i>`).join('') + '</div>';
+  rows.forEach(s => { const d = X['dl_' + s.k][i];
+   h += `<div class="ctt-r"><i style="background:${s.c}"></i>${s.l}: ${n(d)} download${d === 1 ? '' : 's'} (${Math.round(d / dall * 100)}%)</div>`; });
   if (X.spend[i] != null) h += `<div class="ctt-sep"></div><div class="ctt-r"><i style="background:#C9A227"></i>Google Ads spend: $${X.spend[i].toFixed(2)}` + (X.dl_ads[i] ? ` ($${(X.spend[i] / X.dl_ads[i]).toFixed(2)} per download)` : '') + '</div>';
   const M = X.meta[i]; if (M && (M.spend || M.clicks || M.installs)) h += `<div class="ctt-r"><i style="background:#1877F2"></i>Meta ads: $${M.spend.toFixed(2)} · ${n(M.clicks)} click${M.clicks === 1 ? '' : 's'} · ${n(M.installs)} install${M.installs === 1 ? '' : 's'} (Meta's count)</div>`;   // Guy, Nov 1
   el.innerHTML = h; el.style.opacity = 1;
   const W = ch.canvas.parentNode.clientWidth, w = el.offsetWidth, hh = el.offsetHeight;
   let x = t.caretX + 16; if (x + w > W) x = t.caretX - w - 16; if (x < 0) x = Math.max(0, (W - w) / 2);
   el.style.left = x + 'px'; el.style.top = Math.max(0, Math.min(t.caretY - hh / 2, ch.canvas.clientHeight - hh)) + 'px'; };
- const ch = new Chart(cv, {type: 'line', data: {labels: X.labels, datasets: X.src.map((s, j) => ({label: s.l, data: X['pv_' + s.k], borderColor: s.c, backgroundColor: s.c + '40',
-   fill: j ? '-1' : 'origin', tension: 0.25, borderWidth: 2, pointRadius: 3, pointHoverRadius: 5, pointBackgroundColor: s.c}))},
+ const ch = new Chart(cv, {type: 'bar', data: {labels: X.labels, datasets: X.src.map(s => ({label: s.l, data: X['dl_' + s.k], backgroundColor: s.c, maxBarThickness: 32}))},
   options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false},
    plugins: {legend: {display: false}, tooltip: {enabled: false, external: tt}},
-   scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: 12}}},
-    y: {stacked: true, beginAtZero: true, grid: {color: grid}, ticks: {color: muted, callback: v => v.toLocaleString()}, title: {display: true, text: 'Page views', color: muted}}}}});
+   scales: {x: {stacked: true, grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: 12}}},
+    y: {stacked: true, beginAtZero: true, grid: {color: grid}, ticks: {color: muted, precision: 0, callback: v => v.toLocaleString()}, title: {display: true, text: 'Downloads', color: muted}}}}});
  const hide = () => { const el = cv.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); };
  document.addEventListener('touchstart', e => { if (e.target !== cv) hide(); }, {passive: true}); }; </script>""".replace("__DATA__", json.dumps(data))
-    return (f"<h2 class='sh' id='sec-sources'>App Store visits by source</h2><p class='sub'>App Store product page views (unique devices) per day, stacked by where people came from; hover or tap a day for downloads (with each source's share of that day's downloads) and Google Ads spend. "
-            f"Apple posts these 1–2 days behind. Download totals match the main chart (Apple's sales report); the split by source comes from Apple's analytics report, so per-source downloads are close estimates. Google Ads = Apple's “App referrer” (visits from inside other apps, which is where the ads run). Taps on a Meta ad from inside Instagram or Facebook would also land here; Meta's own counts are in the Meta ads line. "
+    return (f"<h2 class='sh' id='sec-sources'>App Store downloads by source</h2><p class='sub'>First-time App Store downloads per day, stacked by where people came from; hover or tap a day for each source's downloads and Google Ads spend. "
+            f"Apple posts these 1–2 days behind. Download totals match the main chart (Apple's sales report); the split by source comes from Apple's analytics report, so per-source downloads are close estimates. Google Ads = Apple's “App referrer” (downloads from inside other apps, which is where the ads run). Taps on a Meta ad from inside Instagram or Facebook would also land here; Meta's own counts are in the Meta ads line. "
             f"Search = people who searched the App Store; social posts say “search Beaker Lab”, so post viewers land here, along with anyone else who searched. Browse = found inside the App Store. Other = Apple couldn't tell the source.</p>"
-            f"<p class='sub'>{summ}</p><div class='lgs' style='margin-top:6px'>{legend}</div><div class='chart' style='height:300px'><canvas id='srcc' role='img' aria-label='App Store page views per day by source'></canvas></div>{js}")
+            f"<p class='sub'>{summ}</p><div class='lgs' style='margin-top:6px'>{legend}</div><div class='chart' style='height:300px'><canvas id='srcc' role='img' aria-label='App Store downloads per day by source'></canvas></div>{js}")
 
 
 def game_section():
@@ -1983,7 +1980,7 @@ def main():
             old = write_html(day["since"].strftime("%b %-d, %Y · %-I:%M %p"), build_rows(bsnap, bprev, rd), rd, bsnap, bprev,
                              blabels, bser, "history file", [], (), None, None, None, dry=True)
     phist = json.load(open(POSTS_HIST)) if os.path.exists(POSTS_HIST) else []
-    posts_html = sources_section() + game_section() + time_section(POSTS, now) + posts_section(POSTS, phist, now)   # Guy, Oct 29: App Store visits by source first
+    posts_html = sources_section() + game_section() + time_section(POSTS, now) + posts_section(POSTS, phist, now)   # Guy, Oct 29: App Store downloads by source first
     if complete and POSTS:
         phist.append({"checked_at": now.strftime("%Y-%m-%d %H:%M"), "posts": {**CARRY, **{r["id"]: r["views"] for r in POSTS}}})
         json.dump(phist, open(POSTS_HIST, "w"))
