@@ -16,6 +16,8 @@ SCOPES = ["https://www.googleapis.com/auth/analytics.readonly"]
 FIRST = (1, 3, 1)   # first app version that sends the game events
 START = dt.date(2026, 11, 1)   # 1.3.1 went live Nov 1; earlier days were test devices only (Guy, Nov 2)
 APP_ID = "6816478290"
+STEPS = list(range(1, 11)) + [11, 16, 21, 26, 31]   # Guy, Nov 6: "Where players stop" bars: levels 1-10 one by one, then steps of 5, then 31+
+COMPARE = (1, 3, 4)   # first version with the new-player changes; new players on it vs new players before it
 EVENTS = ["level_end", "level_up", "ad_shown", "purchase_ok", "super_stir", "super_solve"]
 
 
@@ -51,9 +53,9 @@ def fetch(keys_dir, today):
     s = AuthorizedSession(creds)
     rng = lambda days, end=0: {"startDate": max(today - dt.timedelta(days=days), START).isoformat(), "endDate": max(today - dt.timedelta(days=end), START).isoformat()}
     ev = lambda name: {"filter": {"fieldName": "eventName", "stringFilter": {"value": name}}}
-    d14, d7, d28 = rng(14), rng(7, 1), rng(28)   # d7 = last 7 complete days; none start before Nov 1
+    d14, d7, dall = rng(14), rng(7, 1), rng(9999)   # d7 = last 7 complete days; dall = everything since Nov 1
     live, released = _live()
-    vers = [v[0] for v, _ in _run(s, {"dateRanges": [d28], "dimensions": [{"name": "appVersion"}], "metrics": [{"name": "activeUsers"}]}) if FIRST <= _ver(v[0]) <= live]
+    vers = [v[0] for v, _ in _run(s, {"dateRanges": [dall], "dimensions": [{"name": "appVersion"}], "metrics": [{"name": "activeUsers"}]}) if FIRST <= _ver(v[0]) <= live]
     out = {"versions": vers, "live": ".".join(map(str, live)), "daily": {}, "week": {}, "outcome": {}, "kind": {}, "reach": {}, "all": {}}
     if not vers:
         return {"GA4 Game Lite": (pd.DataFrame([{"json": json.dumps(out)}]), None)}
@@ -82,11 +84,28 @@ def fetch(keys_dir, today):
             out["kind"][k] = int(n)
     # Guy, Nov 4: a player whose furthest level changes shows up once per level in a by-level report (285 "players" vs 53 real),
     # so ask for each level how many different players reached it or beyond
-    lvs = sorted(int(lv) for (lv,), _ in _run(s, {"dateRanges": [d28], "dimensions": [{"name": "customUser:max_level"}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": newer, "limit": 1000}) if lv.isdigit())
+    lvs = sorted(int(lv) for (lv,), _ in _run(s, {"dateRanges": [dall], "dimensions": [{"name": "customUser:max_level"}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": newer, "limit": 1000}) if lv.isdigit())
     for lv in lvs:
         f = {"andGroup": {"expressions": [newer, {"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in lvs if x >= lv]}}}]}}
-        r = _run(s, {"dateRanges": [{"startDate": d28["startDate"], "endDate": d28["endDate"]}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": f})
+        r = _run(s, {"dateRanges": [{"startDate": dall["startDate"], "endDate": dall["endDate"]}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": f})
         out["reach"][str(lv)] = int(r[0][1][0]) if r else 0
+    # Guy, Nov 6: split each bar: played in the last 3 days (today + 2 before) = still playing; the rest of that bar has left
+    reached = lambda base, dr, st: {str(lv): int(next(iter(_run(s, {"dateRanges": [dr], "metrics": [{"name": "activeUsers"}], "dimensionFilter": {"andGroup": {"expressions": [base, {"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in lvs if x >= lv]}}}]}}})), ([], [0]))[1][0]) for lv in st if any(x >= lv for x in lvs)}
+    out["active"] = reached(newer, {"startDate": max(today - dt.timedelta(days=2), START).isoformat(), "endDate": today.isoformat()}, STEPS)
+    # Guy, Nov 6: did 1.3.4 help? New players only (first opened the game after it came out) vs new players before it, so updaters with high levels don't flatter it
+    cmp = {"version": ".".join(map(str, COMPARE)), "live": live >= COMPARE}
+    if live >= COMPARE:
+        since = released if live == COMPARE else None
+        if not since:   # a later version is live, so Apple only gives that one's date: use the first day this version had 5+ players
+            days = _run(s, {"dateRanges": [dall], "dimensions": [{"name": "date"}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": {"filter": {"fieldName": "appVersion", "stringFilter": {"value": cmp["version"]}}}})
+            since = min((dt.date(int(d[:4]), int(d[4:6]), int(d[6:])) for (d,), (n,) in days if n >= 5), default=None)
+        if since:
+            dates = lambda a, b: [(a + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((b - a).days + 1)]
+            group = lambda vs, ds: {"andGroup": {"expressions": [newer, {"filter": {"fieldName": "appVersion", "inListFilter": {"values": vs}}}, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": ds}}}]}}
+            cmp["since"] = since.isoformat()
+            cmp["new"] = reached(group([v for v in vers if _ver(v) >= COMPARE], dates(since, today)), dall, STEPS)
+            cmp["old"] = reached(group([v for v in vers if _ver(v) < COMPARE], dates(START, since - dt.timedelta(days=1))), dall, STEPS)
+    out["compare"] = cmp
     # active players on every app version (the game events above only come from 1.3.1+)
     span = lambda a: {"startDate": a, "endDate": today.isoformat()}
     total = lambda a: int(next(iter(_run(s, {"dateRanges": [span(a)], "metrics": [{"name": "activeUsers"}]})), ([], [0]))[1][0])

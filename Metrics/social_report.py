@@ -1066,13 +1066,29 @@ def game_section():
     e = html.escape
     tiles_html = "<div class='gst'>" + "".join(f"<div class='gt'><b>{e(v)}</b><span>{e(l)}</span><small>{e(n)}</small></div>" for v, l, n in tiles) + "</div>"
     top = lv[-1] if lv else 0
-    steps = list(range(1, min(top, 100) + 1, 5)) if top else []
+    steps = [s for s in list(range(1, 11)) + [11, 16, 21, 26, 31] if s <= top]   # Guy, Nov 6: early levels one by one, then steps of 5, then 31+
     reach = [reached(s) for s in steps]
+    ac = G.get("active") or {}
+    playing = [min(ac.get(str(s), 0), r) for s, r in zip(steps, reach)] if ac else []
+    CM = G.get("compare") or {}
+    cnew, cold = CM.get("new") or {}, CM.get("old") or {}
+    CMIN = 50   # Guy, Nov 6: compare once the new version has about 50 new players
+    cn, co = cnew.get("1", 0), cold.get("1", 0)
+    show_cmp = cn >= CMIN and co > 0
     md = lambda d: dt.date.fromisoformat(d).strftime("%b %-d")
-    data = {"steps": steps, "reach": reach, "mp": mp, "labels": [md(d) for d in days], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in days],
+    data = {"steps": steps, "reach": reach, "playing": playing, "mp": mp, "cver": CM.get("version", ""), "cn": cn, "co": co, "cnew": [round(cnew.get(str(s), 0) / cn * 100) for s in steps] if show_cmp else [], "cold": [round(cold.get(str(s), 0) / co * 100) for s in steps] if show_cmp else [], "labels": [md(d) for d in days], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in days],
             "players": [A.get("daily", {}).get(d, 0) for d in days], "newer": [D[d].get("players", 0) for d in days], **{k: [D[d].get(k, 0) for d in days] for k in ("level_end", "level_up", "ad_shown", "super_stir", "super_solve", "purchase_ok")}}
     funnel = ("<div class='chart' style='height:260px'><canvas id='gfun' role='img' aria-label='Players by furthest level reached'></canvas></div>" if steps else
               f"<p class='sub gempty'>No furthest-level data yet. Bars show once players on released versions send it (Google Analytics needs up to a day).</p>")
+    legend = ("<div class='lgs' style='margin-top:6px'><span class='gk'><i style='background:#12A4A4'></i>Still playing (played in the last 3 days)</span> <span class='gk'><i style='background:var(--gleft)'></i>Left (no play in 3+ days)</span></div>" if playing and steps else "")
+    cv = CM.get("version", "")
+    if show_cmp:
+        compare = (f"<h3 class='sh3'>Did {e(cv)} help?</h3><p class='sub'>Share of new players reaching each level: {cn:,} who first opened the game on {e(cv)} or later vs {co:,} who first opened it before ({md(CM['since'])} is the dividing day). Earlier players have had more days to play, so the later levels favor them; levels 1-5 are the fairest read.</p>"
+                   "<div class='chart' style='height:240px'><canvas id='gcmp' role='img' aria-label='Share of new players reaching each level, new version vs earlier'></canvas></div>")
+    elif cv:
+        compare = (f"<h3 class='sh3'>Did {e(cv)} help?</h3><p class='sub gempty'>" + (f"This comparison appears at {CMIN} new players on {e(cv)}; {cn:,} so far." if CM.get("live") else f"This comparison starts when {e(cv)} is live on the App Store and appears at {CMIN} new players.") + "</p>")
+    else:
+        compare = ""
     js = """<script>window.GAMECHART = () => { const X = __DATA__; if (!window.Chart) return;
  const dark = matchMedia('(prefers-color-scheme: dark)').matches, grid = dark ? '#2c2c2a' : '#e1e0d9', muted = '#898781', n = v => (v || 0).toLocaleString(), pl = (v, w) => `${n(v)} ${w}${v === 1 ? '' : 's'}`;
  const tip = f => ({chart: ch, tooltip: t}) => { let el = ch.canvas.parentNode.querySelector('.ctt');
@@ -1088,16 +1104,35 @@ def game_section():
     scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: 12}}},
      y: {beginAtZero: true, grid: {color: grid}, ticks: {color: muted, precision: 0}, title: {display: true, text: ytitle, color: muted}}}}});
   document.addEventListener('touchstart', e => { if (e.target !== cv) { const el = cv.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); } }, {passive: true}); };
- bar(document.getElementById('gfun'), X.steps.map(s => s + '+'), X.reach, '#12A4A4', 'Players', i => `<div class="ctt-h">Reached level ${X.steps[i]}+</div><div class="ctt-r">${pl(X.reach[i], 'player')} (${Math.round(X.reach[i] / X.mp * 100)}% of ${n(X.mp)})</div>` + (i ? `<div class="ctt-r">${n(X.reach[i - 1] - X.reach[i])} stopped at levels ${X.steps[i - 1]}–${X.steps[i] - 1}</div>` : ''));
+ const pctOf = i => Math.round(X.reach[i] / X.mp * 100), lbl = s => s > 10 ? s + '+' : String(s), has = X.playing.length > 0, leftAt = i => X.reach[i] - (X.playing[i] || 0);
+ const range = i => { const a = X.steps[i], b = X.steps[i + 1]; return b === undefined ? `level ${a}+` : b === a + 1 ? `level ${a}` : `levels ${a}–${b - 1}`; };
+ const gf = document.getElementById('gfun');
+ if (gf && !Chart.getChart(gf)) { const left = dark ? '#55544f' : '#c9c7bd';
+  const ds = has ? [{label: 'Still playing', data: X.playing, backgroundColor: '#12A4A4', maxBarThickness: 34}, {label: 'Left', data: X.steps.map((s, i) => leftAt(i)), backgroundColor: left, maxBarThickness: 34}] : [{data: X.reach, backgroundColor: '#12A4A4', maxBarThickness: 34}];
+  const pcts = {id: 'pcts', afterDatasetsDraw(ch) { const c = ch.ctx, m = ch.getDatasetMeta(ch.data.datasets.length - 1); c.save(); c.fillStyle = muted; c.font = '10px system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'bottom';
+   X.steps.forEach((s, i) => { const b = m.data[i]; if (b) c.fillText(pctOf(i) + '%', b.x, ch.scales.y.getPixelForValue(X.reach[i]) - 3); }); c.restore(); }};
+  const f = i => `<div class="ctt-h">Reached level ${lbl(X.steps[i])}</div><div class="ctt-r">${pl(X.reach[i], 'player')} (${pctOf(i)}% of ${n(X.mp)})</div>` + (has ? `<div class="ctt-r">${n(X.playing[i])} still playing · ${n(leftAt(i))} left</div><div class="ctt-r">${n(leftAt(i) - (i + 1 < X.steps.length ? leftAt(i + 1) : 0))} left the game at ${range(i)}</div>` : '');
+  const ch = new Chart(gf, {type: 'bar', plugins: [pcts], data: {labels: X.steps.map(lbl), datasets: ds},
+   options: {responsive: true, maintainAspectRatio: false, layout: {padding: {top: 16}}, interaction: {mode: 'index', intersect: false}, plugins: {legend: {display: false}, tooltip: {enabled: false, external: tip(f)}},
+    scales: {x: {stacked: true, grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: false, font: {size: innerWidth < 500 ? 9 : 11}}, title: {display: true, text: 'Level reached', color: muted}},
+     y: {stacked: true, beginAtZero: true, grid: {color: grid}, ticks: {color: muted, precision: 0}, title: {display: true, text: 'Players', color: muted}}}}});
+  document.addEventListener('touchstart', e => { if (e.target !== gf) { const el = gf.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); } }, {passive: true}); }
+ const gc = document.getElementById('gcmp');
+ if (gc && !Chart.getChart(gc) && X.cnew.length) { const f = i => `<div class="ctt-h">Reached level ${lbl(X.steps[i])}</div><div class="ctt-r">${X.cver}+: ${X.cnew[i]}% of ${n(X.cn)}</div><div class="ctt-r">Before: ${X.cold[i]}% of ${n(X.co)}</div>`;
+  const line = (label, data, color, dash) => ({label, data, borderColor: color, backgroundColor: color, borderDash: dash, borderWidth: 2, pointRadius: 3, tension: 0.2});
+  new Chart(gc, {type: 'line', data: {labels: X.steps.map(lbl), datasets: [line(X.cver + ' and later', X.cnew, '#12A4A4', []), line('Before ' + X.cver, X.cold, muted, [5, 4])]},
+   options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false}, plugins: {legend: {display: true, labels: {color: muted, boxWidth: 18, boxHeight: 2}}, tooltip: {enabled: false, external: tip(f)}},
+    scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: false, font: {size: innerWidth < 500 ? 9 : 11}}, title: {display: true, text: 'Level reached', color: muted}},
+     y: {beginAtZero: true, max: 100, grid: {color: grid}, ticks: {color: muted, callback: v => v + '%'}, title: {display: true, text: 'New players', color: muted}}}}}); }
  bar(document.getElementById('gday'), X.labels, X.players, '#8E6FD8', 'Players', i => `<div class="ctt-h">${X.full[i]} · ${pl(X.players[i], 'player')}</div>`
   + `<div class="ctt-r">${n(X.newer[i])} on 1.3.1+; the numbers below are theirs</div><div class="ctt-r">${pl(X.level_up[i], 'new level')} beaten · ${pl(X.level_end[i], 'level attempt')}</div><div class="ctt-r">${pl(X.ad_shown[i], 'ad')}` + (X.newer[i] ? ` (${(X.ad_shown[i] / X.newer[i]).toFixed(1)} per player)` : '') + '</div>'
   + `<div class="ctt-r">${n(X.super_stir[i])} Super Stir · ${n(X.super_solve[i])} Super Solve · ${pl(X.purchase_ok[i], 'purchase')}</div>`); }; </script>""".replace("__DATA__", json.dumps(data))
     return (f"<style>.sh3{{font-size:18px;margin:22px 0 4px}} .gst{{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:4px 0 18px}} "
             f".gt{{border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:1px}} .gt b{{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}} "
-            f".gt span{{font-size:13px;color:var(--ink2)}} .gt small{{font-size:11px;color:var(--muted);line-height:1.3}} @media (max-width:700px){{.gst{{grid-template-columns:1fr 1fr}} .gt b{{font-size:18px}}}}</style>"
+            f".gt span{{font-size:13px;color:var(--ink2)}} .gt small{{font-size:11px;color:var(--muted);line-height:1.3}} :root{{--gleft:#c9c7bd}} @media (prefers-color-scheme:dark){{:root{{--gleft:#55544f}}}} .gk{{font-size:12px;color:var(--muted);margin-right:12px;white-space:normal}} .gk i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}} @media (max-width:700px){{.gst{{grid-template-columns:1fr 1fr}} .gt b{{font-size:18px}}}}</style>"
             f"<h2 class='sh' id='sec-game'>Game stats</h2><p class='sub'>From Firebase (Google Analytics). Active players counts every app version. Everything else comes only from released versions that send game events ({e(', '.join(G['versions']))}), from Nov 1, when 1.3.1 went live. "
             f"Tiles = last 7 complete days unless noted. Small samples (under {MIN} players) are noted; read them as early signs only.</p>{tiles_html}"
-            f"<h3 class='sh3'>Where players stop</h3><p class='sub'>Players by the furthest level they've reached (since Nov 1{few(mp).replace(' (', '; ').rstrip(')')}), in steps of 5 levels; each bar counts everyone at that level or beyond. Hover or tap a bar for how many stopped in that range.</p>{funnel}"
+            f"<h3 class='sh3'>Where players stop</h3><p class='sub'>Players by the furthest level they've reached (since Nov 1{few(mp).replace(' (', '; ').rstrip(')')}), levels 1-10 one by one, then steps of 5. Each bar counts everyone who reached that level, including those who went further, and the % is their share of all players. Recent installs count as still playing until 3 days pass. Hover or tap a bar to see how many left there.</p>{legend}{funnel}{compare}"
             f"<h3 class='sh3'>Players per day</h3><p class='sub'>Active players on all versions each day (from Nov 1, today so far on the right); hover or tap a day for levels, ads, Super Stir / Super Solve and purchases.</p>"
             f"<div class='chart' style='height:260px'><canvas id='gday' role='img' aria-label='Active players per day on all versions'></canvas></div>{js}")
 
