@@ -247,7 +247,7 @@ def _check_views(C, page, snap, prev, stale, errors, plats):
 
 
 def run(html_path, keys, G, snap, prev, stale, errors, plats, today=None):
-    """Adds a red banner to the top of the page if anything fails. Returns the Checks."""
+    """Compares the finished page with the sources. Returns the Checks; the page is not changed."""
     today = today or dt.date.today()
     page = open(html_path, encoding="utf-8").read()
     C = Checks()
@@ -258,16 +258,5 @@ def run(html_path, keys, G, snap, prev, stale, errors, plats, today=None):
         except Exception as e:
             msg = re.sub(r"(token|key|secret)=[^&\s'\"]+", r"\1=***", f"{type(e).__name__}: {e}", flags=re.I)
             C.fails.append(f"{name} check could not run: {msg}"[:240])
-    when = dt.datetime.now().strftime("%-I:%M %p")
-    if C.fails:
-        items = "".join(f"<li>{html.escape(x)}</li>" for x in C.fails[:30]) + (f"<li>…and {len(C.fails) - 30} more</li>" if len(C.fails) > 30 else "")
-        n = len(C.fails)
-        box = (f"<div id='dcheck' style='background:#b3261e;color:#fff;padding:14px 18px;font:15px/1.4 -apple-system,system-ui,sans-serif'><b style='font-size:17px'>⚠️ Don't trust this report yet: {n} number{'' if n == 1 else 's'} failed the data check ({when})</b>"
-               f"<ul style='margin:8px 0 0;padding-left:20px'>{items}</ul></div>")
-    else:
-        box = ""   # Guy, Nov 7: nothing on the page when everything matches; the result stays in the build log
-    page, hits = re.subn(r"(<body[^>]*>)", lambda m: m.group(1) + box, page, count=1)
-    if not hits:
-        raise RuntimeError("no <body> tag to put the data check on")
-    open(html_path, "w", encoding="utf-8").write(page)
+    # Guy, Nov 7: the data check is a build step, not part of the report; results go to the build log only, nothing on the page
     return C

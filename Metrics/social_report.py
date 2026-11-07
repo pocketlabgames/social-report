@@ -2019,7 +2019,7 @@ def main():
                week_html=week_html, installs=dict(INSTALLS) or None, today=today,
                day_base=base,
                money=money_bits(dict(MONEY), now), money_daily=dict(MONEY), est=dl_estimate(dict(INSTALLS), dict(RCNEW), now))
-    try:   # Guy, Nov 6: compare the finished page with the sources; any disagreement goes in a red banner at the top
+    try:   # compare the finished page with the sources; results go to the build log only (Guy, Nov 7: not on the report)
         import verify_report
         chk = verify_report.run(OUT_HTML, KEYS, GAME, snap, prev, stale, errors, PLAT)
         print(f"DATA CHECK: {chk.ok} matched, {len(chk.fails)} failed")
@@ -2027,8 +2027,6 @@ def main():
             print("DATA CHECK FAILED:", x)
     except Exception as e:
         print("DATA CHECK COULD NOT RUN:", type(e).__name__, e)
-        page = open(OUT_HTML, encoding="utf-8").read()
-        open(OUT_HTML, "w", encoding="utf-8").write(re.sub(r"(<body[^>]*>)", lambda m: m.group(1) + "<div id='dcheck' style='background:#b3261e;color:#fff;padding:14px 18px;font-weight:600'>⚠️ Don't trust this report yet: the data check could not run.</div>", page, count=1))
     if not SITE:
         write_xlsx(stamp, rows, labels, series)
     if complete:
