@@ -161,7 +161,7 @@ def fetch():
                 RCNEW.update({r.date: int(r.new) for r in d.itertuples() if pd.notna(r.new)})
             if "Money Lite" in got:
                 d = got.pop("Money Lite")
-                MONEY.update({r.date: {"ads": None if pd.isna(r.ads) else float(r.ads), "iap": None if pd.isna(r.iap) else float(r.iap)} for r in d.itertuples()})
+                MONEY.update({r.date: {"ads": None if pd.isna(r.ads) else float(r.ads), "iap": None if pd.isna(r.iap) else float(r.iap), "n": None if pd.isna(r.iapn) else int(r.iapn)} for r in d.itertuples()})
             out.update(got)
             if err:
                 errors.append(err)
@@ -1052,13 +1052,13 @@ def game_section():
     A = G.get("all", {})
     oc = G.get("outcome", {}); on = sum(oc.values())
     kd = G.get("kind", {})
-    ads, sup, buy = W.get("ad_shown", 0), W.get("super_stir", 0) + W.get("super_solve", 0), W.get("purchase_ok", 0)
+    ads, sup, buy = W.get("ad_shown", 0), W.get("super_stir", 0) + W.get("super_solve", 0), sum((MONEY.get((dt.date.today() - dt.timedelta(days=i)).isoformat()) or {}).get("n") or 0 for i in range(7))   # Guy, Nov 7: real sales from Apple only, not Firebase (App Review test buys showed as purchases)
     tiles = [(f"{A.get('week', 0):,}", "Active players", f"last 7 days, all versions · {A.get('today', 0):,} today · {A.get('ever', 0):,} since launch"),
              (f"{avg:.1f}" if mp else "—", "Avg furthest level", f"half of {mp:,} player{'' if mp == 1 else 's'} reached level {half}+, since Nov 1" if mp else "no level data yet"),
              (f"{oc.get('win', 0) / on * 100:.0f}%" if on else "—", "Win rate", f"{oc.get('win', 0):,} wins of {on:,} level attempts" if on else "no win/loss data yet"),
              (per(ads), "Ad views per player", (" · ".join(f"{v:,} {'between levels' if k == 'interstitial' else k}" for k, v in sorted(kd.items())) or f"{ads:,} ads") + " in 7 days" + few(P)),
              (f"{sup:,}", "Super Stir / Solve uses", f"{W.get('super_stir', 0):,} Super Stir · {W.get('super_solve', 0):,} Super Solve, by {P:,} player{'' if P == 1 else 's'} on 1.3.1+"),   # Guy, Nov 2: plain counts, not per 100
-             (f"{buy:,}", "Purchases", f"by {P:,} player{'' if P == 1 else 's'} on 1.3.1+")]
+             (f"{buy:,}", "Purchases", "App Store sales, last 7 days")]
     e = html.escape
     tiles_html = "<div class='gst'>" + "".join(f"<div class='gt'><b>{e(v)}</b><span>{e(l)}</span><small>{e(n)}</small></div>" for v, l, n in tiles) + "</div>"
     top = lv[-1] if lv else 0
@@ -1073,7 +1073,7 @@ def game_section():
     show_cmp = cn >= CMIN and co > 0
     md = lambda d: dt.date.fromisoformat(d).strftime("%b %-d")
     data = {"steps": steps, "reach": reach, "playing": playing, "mp": mp, "cver": CM.get("version", ""), "cn": cn, "co": co, "cnew": [round(cnew.get(str(s), 0) / cn * 100) for s in steps] if show_cmp else [], "cold": [round(cold.get(str(s), 0) / co * 100) for s in steps] if show_cmp else [], "labels": [md(d) for d in days], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in days],
-            "players": [A.get("daily", {}).get(d, 0) for d in days], "newer": [D[d].get("players", 0) for d in days], **{k: [D[d].get(k, 0) for d in days] for k in ("level_end", "level_up", "ad_shown", "super_stir", "super_solve", "purchase_ok")}}
+            "players": [A.get("daily", {}).get(d, 0) for d in days], "newer": [D[d].get("players", 0) for d in days], **{k: [D[d].get(k, 0) for d in days] for k in ("level_end", "level_up", "ad_shown", "super_stir", "super_solve")}, "purchase_ok": [(MONEY.get(d) or {}).get("n") or 0 for d in days]}
     funnel = ("<div class='chart' style='height:260px'><canvas id='gfun' role='img' aria-label='Players by level reached, split into still playing and not seen in 3+ days'></canvas></div>" if steps else
               f"<p class='sub gempty'>No furthest-level data yet. Bars show once players on released versions send it (Google Analytics needs up to a day).</p>")
     legend = ("<div class='lgs' style='margin-top:6px'><span class='gk'><i style='background:#12A4A4'></i>Still playing (played in the last 3 days)</span> <span class='gk'><i style='background:var(--gleft)'></i>Not seen in 3+ days</span></div>" if playing and steps else "")

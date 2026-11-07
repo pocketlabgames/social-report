@@ -35,7 +35,7 @@ def wobble(n):
 
 class Checks:
     def __init__(self):
-        self.ok, self.fails = 0, []
+        self.ok, self.fails, self.iapn = 0, [], {}   # iapn: App Store paid purchases per day, filled by the store check
 
     def same(self, name, shown, source, gap=0):
         if shown is None:
@@ -113,6 +113,7 @@ def _check_store(C, page, keys, today):
             if x["Product Type Identifier"] in money_lite.IAP_TYPES and float(x["Developer Proceeds"] or 0):
                 v += float(x["Units"] or 0) * float(x["Developer Proceeds"]) * money_lite.usd_rate(x["Currency of Proceeds"], d)
         iap[d] = v
+        C.iapn[d] = int(sum(float(x["Units"] or 0) for x in rows if x["Product Type Identifier"] in money_lite.IAP_TYPES and float(x["Developer Proceeds"] or 0) and float(x["Units"] or 0) > 0))
     both = lambda ds: sum(ads.get(d, 0) + iap.get(d, 0) for d in ds)
     td = today.isoformat()
     month = [d for d in set(ads) | set(iap) if d[:7] == today.strftime("%Y-%m")]
@@ -174,8 +175,8 @@ def _check_game(C, page, keys, today, G, on_sale):
     C.same("Win rate", n1(tile("Win rate")[0], r"(\d+)%"), round(wins / tries * 100) if tries else 0, 2)
     C.same("Super Stir uses", n1(tile("Super Stir / Solve uses")[1], r"([\d,]+) Super Stir"), ev.get("super_stir", 0), wobble(ev.get("super_stir", 0)))
     C.same("Super Solve uses", n1(tile("Super Stir / Solve uses")[1], r"([\d,]+) Super Solve"), ev.get("super_solve", 0), wobble(ev.get("super_solve", 0)))
-    C.same("Purchases", n1(tile("Purchases")[0], r"([\d,]+)"), ev.get("purchase_ok", 0))
-    C.same("Players, last 7 days", n1(tile("Purchases")[1], r"by ([\d,]+) player"), players, 1)
+    C.same("Purchases (App Store sales, last 7 days)", n1(tile("Purchases")[0], r"([\d,]+)"), sum(C.iapn.get((today - dt.timedelta(days=i)).isoformat(), 0) for i in range(7)))
+    C.same("Players, last 7 days", n1(tile("Super Stir / Solve uses")[1], r"by ([\d,]+) player"), players, 1)
     C.same("Ad views per player", _num(r"([\d.]+)", tile("Ad views per player")[0]), round(ev.get("ad_shown", 0) / players, 1) if players else 0, 0.3)
     C.same("Rewarded ads", n1(tile("Ad views per player")[1], r"([\d,]+) rewarded"), kind.get("rewarded", 0), wobble(kind.get("rewarded", 0)))
     C.same("Ads between levels", n1(tile("Ad views per player")[1], r"([\d,]+) between levels"), kind.get("interstitial", 0), wobble(kind.get("interstitial", 0)))
@@ -215,8 +216,9 @@ def _check_game(C, page, keys, today, G, on_sale):
         k, gap, recent_day = d.strftime("%Y%m%d"), (1 if d >= today - dt.timedelta(days=1) else 0), d >= today - dt.timedelta(days=1)
         C.same(f"Players on {lab}", X["players"][i], daily.get(k, 0), gap)
         C.same(f"Players on released versions, {lab}", X["newer"][i], newer.get(k, 0), gap)
-        for e in ("purchase_ok", "super_solve", "super_stir", "ad_shown", "level_up", "level_end"):
-            C.same(f"{e} on {lab}", X[e][i], day_ev.get((k, e), 0), 0 if e == "purchase_ok" and d < today else wobble(day_ev.get((k, e), 0)) if recent_day else 0)
+        C.same(f"App Store purchases on {lab}", X["purchase_ok"][i], C.iapn.get(d.isoformat(), 0))
+        for e in ("super_solve", "super_stir", "ad_shown", "level_up", "level_end"):
+            C.same(f"{e} on {lab}", X[e][i], day_ev.get((k, e), 0), wobble(day_ev.get((k, e), 0)) if recent_day else 0)
     # new-version comparison
     if X.get("cver") and (G.get("compare") or {}).get("since"):
         since, ver = dt.date.fromisoformat(G["compare"]["since"]), _ver(X["cver"])

@@ -68,7 +68,7 @@ def usd_rate(cur, day):
 
 
 def _asc_day(c, key, day):
-    """Apple proceeds (USD) for one day, or None when Apple hasn't posted it."""
+    """(Apple proceeds in USD, paid in-app purchases) for one day, or None when Apple hasn't posted it."""
     n = int(time.time())
     token = jwt.encode({"iss": c["issuer_id"], "iat": n, "exp": n + 1100, "aud": "appstoreconnect-v1"}, key,
                        algorithm="ES256", headers={"kid": c["key_id"], "typ": "JWT"})
@@ -83,12 +83,13 @@ def _asc_day(c, key, day):
     units = pd.to_numeric(df["Units"], errors="coerce").fillna(0)
     proceeds = pd.to_numeric(df["Developer Proceeds"], errors="coerce").fillna(0)
     sel = df["Product Type Identifier"].isin(IAP_TYPES) & (proceeds != 0)
-    return round(sum(u * v * usd_rate(c, day.isoformat()) for u, v, c in zip(units[sel], proceeds[sel], df["Currency of Proceeds"][sel])), 2)
+    usd = round(sum(u * v * usd_rate(c, day.isoformat()) for u, v, c in zip(units[sel], proceeds[sel], df["Currency of Proceeds"][sel])), 2)
+    return usd, int(sum(u for u in units[sel] if u > 0))   # paid purchases only: App Review / sandbox buys never reach this report (Guy, Nov 7)
 
 
 def fetch(keys_dir, today):
     cache = json.load(open(CACHE)) if os.path.exists(CACHE) else {"ads": {}, "iap": {}}
-    ads, iap = cache.get("ads", {}), cache.get("iap", {})
+    ads, iap, iapn = cache.get("ads", {}), cache.get("iap", {}), cache.get("iapn", {})
     # ads: refetch the last 3 days plus any gap since launch (one API call)
     have = sorted(d for d in ads)
     start = LAUNCH if not have else min(dt.date.fromisoformat(have[-1]) - dt.timedelta(days=3), dt.date.fromisoformat(have[-1]))
@@ -104,11 +105,11 @@ def fetch(keys_dir, today):
     while day < today:
         d = day.isoformat()
         age = (today - day).days
-        if d not in iap or iap[d] is None or age <= 3:
+        if d not in iap or iap[d] is None or d not in iapn or age <= 3:
             v = _asc_day(c, key, day)
             if v is not None or age > 1:
-                iap[d] = v if v is not None else 0.0
+                iap[d], iapn[d] = v if v is not None else (0.0, 0)
         day += dt.timedelta(days=1)
-    json.dump({"ads": ads, "iap": iap}, open(CACHE, "w"), indent=0, sort_keys=True)
+    json.dump({"ads": ads, "iap": iap, "iapn": iapn}, open(CACHE, "w"), indent=0, sort_keys=True)
     days = sorted(set(ads) | set(iap))
-    return {"Money Lite": (pd.DataFrame({"date": days, "ads": [ads.get(d) for d in days], "iap": [iap.get(d) for d in days]}), ["date"])}
+    return {"Money Lite": (pd.DataFrame({"date": days, "ads": [ads.get(d) for d in days], "iap": [iap.get(d) for d in days], "iapn": [iapn.get(d) for d in days]}), ["date"])}
