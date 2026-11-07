@@ -1561,7 +1561,7 @@ h2.ph{{font-size:18px;font-weight:500;margin:48px 0 4px;padding-top:20px;border-
 body.editing #g{{display:none}} body:not(.editing) .tw{{display:none}} #m{{display:none !important}}
 @media (max-width:700px){{#g .nf{{display:none}} #g .ns{{display:inline}} #g th,#g td{{padding:7px 3px;font-size:14px}} #g td.lab{{font-size:13px;width:25%}} #g th:first-child{{width:25%}} #g small{{display:block;font-size:11px}} #g .cv{{display:block}} #g .cv>small{{text-align:right}} #g .card{{padding:14px 12px}}}}
 </style></head><body><main>
-<div class="bar"><button id="refresh" class="b red" aria-label="Refresh"><span class="nf">Refresh</span><span class="ns"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg></span></button><a class="b gray jump" href="#sec-sources"><span class="nf">App Store Sources</span><span class="ns">Sources</span></a><a class="b gray jump" href="#sec-game"><span class="nf">Game Stats</span><span class="ns">Game</span></a><a class="b gray jump" href="#sec-best"><span class="nf">Best Posting Time</span><span class="ns">TOD</span></a><a class="b gray jump" href="#sec-videos">Videos</a><a class="b gray jump" href="#sec-history">History</a><button id="edit" class="b blue">Edit Layout</button>
+<div class="bar"><button id="refresh" class="b red" aria-label="Refresh"><span class="nf">Refresh</span><span class="ns"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg></span></button><a class="b gray jump" href="#sec-sources"><span class="nf">App Store Sources</span><span class="ns">Sources</span></a><a class="b gray jump" href="#sec-game"><span class="nf">Game Stats</span><span class="ns">Game</span></a><a class="b gray jump" href="#sec-videos">Videos</a><a class="b gray jump" href="#sec-history">History</a><button id="edit" class="b blue">Edit Layout</button>
 <span id="tools" hidden><select id="addc"></select><select id="addr"></select><button id="cancel" class="b gray">Cancel</button><button id="reset" class="b gray">Reset Layout</button></span>
 <span id="msg" class="note"></span></div>
 {day_html}<h2 class="sh" style="margin-top:4px">Views gained per day</h2>
@@ -2006,7 +2006,7 @@ def main():
             old = write_html(day["since"].strftime("%b %-d, %Y · %-I:%M %p"), build_rows(bsnap, bprev, rd), rd, bsnap, bprev,
                              blabels, bser, "history file", [], (), None, None, None, dry=True)
     phist = json.load(open(POSTS_HIST)) if os.path.exists(POSTS_HIST) else []
-    posts_html = sources_section() + game_section() + time_section(POSTS, now) + posts_section(POSTS, phist, now)   # Guy, Oct 29: App Store downloads by source first
+    posts_html = sources_section() + game_section() + posts_section(POSTS, phist, now)   # Guy, Oct 29: App Store downloads by source first
     if complete and POSTS:
         phist.append({"checked_at": now.strftime("%Y-%m-%d %H:%M"), "posts": {**CARRY, **{r["id"]: r["views"] for r in POSTS}}})
         json.dump(phist, open(POSTS_HIST, "w"))
