@@ -5,7 +5,9 @@ Key: Private Keys/ga4-token.json (same as ga4_lite). Property: beaker-lab (55807
 import datetime as dt
 import json
 import os
+import time
 
+import jwt
 import pandas as pd
 import requests
 from google.auth.transport.requests import AuthorizedSession, Request
@@ -35,15 +37,34 @@ def _ver(v):
         return ()
 
 
-def _live():
-    """Version on the App Store now + its release date; builds newer than this (in review / TestFlight) are test devices, so they're left out."""
+def _asc_live(keys_dir):
+    """Newest version on sale per App Store Connect. Guy, Nov 6: Apple's public lookup kept telling the report's server 1.3.2 hours after 1.3.3 went live, which dropped 1.3.3 players."""
+    c = json.load(open(os.path.join(keys_dir, "asc-metrics.json")))
+    now = int(time.time())
+    tok = jwt.encode({"iss": c["issuer_id"], "iat": now, "exp": now + 600, "aud": "appstoreconnect-v1"}, open(os.path.join(keys_dir, c["key_file"])).read(), algorithm="ES256", headers={"kid": c["key_id"], "typ": "JWT"})
+    r = requests.get(f"https://api.appstoreconnect.apple.com/v1/apps/{APP_ID}/appStoreVersions", headers={"Authorization": "Bearer " + tok}, timeout=30,
+                     params={"filter[platform]": "IOS", "filter[appStoreState]": "READY_FOR_SALE", "limit": 20, "fields[appStoreVersions]": "versionString"})
+    r.raise_for_status()
+    return max((_ver(x["attributes"]["versionString"]) for x in r.json()["data"]), default=())
+
+
+def _live(keys_dir):
+    """Version on the App Store now + its release date (None = unknown); builds newer than this (in review / TestFlight) are test devices, so they're left out."""
+    ver, day = (), None
     for _ in range(3):
         try:
             r = requests.get("https://itunes.apple.com/lookup", params={"id": APP_ID, "country": "us"}, timeout=20).json()["results"][0]
-            return _ver(r["version"]), pd.Timestamp(r["currentVersionReleaseDate"]).tz_convert("America/New_York").date()
+            ver, day = _ver(r["version"]), pd.Timestamp(r["currentVersionReleaseDate"]).tz_convert("America/New_York").date()
+            break
         except Exception:
             pass
-    return FIRST, START
+    try:
+        asc = _asc_live(keys_dir)
+        if asc and asc != ver:
+            ver, day = asc, None
+    except Exception:
+        pass
+    return (ver, day) if ver else (FIRST, START)
 
 
 def fetch(keys_dir, today):
@@ -54,7 +75,9 @@ def fetch(keys_dir, today):
     rng = lambda days, end=0: {"startDate": max(today - dt.timedelta(days=days), START).isoformat(), "endDate": max(today - dt.timedelta(days=end), START).isoformat()}
     ev = lambda name: {"filter": {"fieldName": "eventName", "stringFilter": {"value": name}}}
     d14, d7, dall = rng(14), rng(7, 1), rng(9999)   # d7 = last 7 complete days; dall = everything since Nov 1
-    live, released = _live()
+    live, released = _live(keys_dir)
+    first_day = lambda v: min((dt.date(int(d[:4]), int(d[4:6]), int(d[6:])) for (d,), (n,) in _run(s, {"dateRanges": [dall], "dimensions": [{"name": "date"}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": {"filter": {"fieldName": "appVersion", "stringFilter": {"value": v}}}}) if n >= 5), default=None)   # first day a version had 5+ players
+    released = released or first_day(".".join(map(str, live))) or today
     vers = [v[0] for v, _ in _run(s, {"dateRanges": [dall], "dimensions": [{"name": "appVersion"}], "metrics": [{"name": "activeUsers"}]}) if FIRST <= _ver(v[0]) <= live]
     out = {"versions": vers, "live": ".".join(map(str, live)), "daily": {}, "week": {}, "outcome": {}, "kind": {}, "reach": {}, "all": {}}
     if not vers:
@@ -96,9 +119,7 @@ def fetch(keys_dir, today):
     cmp = {"version": ".".join(map(str, COMPARE)), "live": live >= COMPARE}
     if live >= COMPARE:
         since = released if live == COMPARE else None
-        if not since:   # a later version is live, so Apple only gives that one's date: use the first day this version had 5+ players
-            days = _run(s, {"dateRanges": [dall], "dimensions": [{"name": "date"}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": {"filter": {"fieldName": "appVersion", "stringFilter": {"value": cmp["version"]}}}})
-            since = min((dt.date(int(d[:4]), int(d[4:6]), int(d[6:])) for (d,), (n,) in days if n >= 5), default=None)
+        since = since or first_day(cmp["version"])   # a later version is live, so Apple only gives that one's date
         if since:
             dates = lambda a, b: [(a + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((b - a).days + 1)]
             group = lambda vs, ds: {"andGroup": {"expressions": [newer, {"filter": {"fieldName": "appVersion", "inListFilter": {"values": vs}}}, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": ds}}}]}}
