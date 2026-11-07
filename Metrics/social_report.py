@@ -1359,7 +1359,6 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         cells["total"] = e(fmt(r["total"]) + delta(r["total"], r["ototal"]))
         cells["best"] = e(" / ".join(r["best"]))
         trows.append({"id": r["label"], "label": r["label"], "cells": cells})
-    trows.append({"id": "Pick for ads", "label": "Pick for ads", "full": f"<b>{e(pick(snap))}</b>"})
     table = json.dumps({"cols": cols, "rows": trows}).replace("</", "<\\/")
     asc_tpl = ""
     if ASCR.get("spd") is not None or ASCR.get("d1") is not None:   # Guy, Oct 26: App Store Connect numbers in the Retention card
@@ -1571,7 +1570,6 @@ body.editing #g{{display:none}} body:not(.editing) .tw{{display:none}} #m{{displ
 <div class="chart"><canvas id="c" role="img" aria-label="Views gained per day per platform"></canvas></div>
 <div class="rng" id="rng" hidden><canvas class="rng-c"></canvas><div class="rng-w"><i></i><i></i></div></div><div class="rng-l" id="rngl" hidden><span></span><span></span></div>
 {stale_html}<div id="g"></div>{asc_tpl}<div class="wrap tw"><table id="t"></table></div><div id="m"></div>
-<p class="note">YouTube average uses public posts only. Facebook comments = viewer comments (the Page's own link comments are left out). Comments = viewer comments only (our own replies and pinned comments are left out).</p>
 {posts_html}
 <p>{top_line}</p>
 {('<ul>' + err + '</ul>') if err else ''}
@@ -1774,7 +1772,6 @@ function renderG() {{   // Oct 26: Reach / Engagement / Retention cards, best ce
     if (rows.length) h += '</tbody></table>';
     h += asc + '</section>';
   }});
-  const pk = rid('Pick for ads'); if (pk && pk.full) h += `<p class="gpick">Pick for ads: ${{pk.full}}</p>`;
   g.innerHTML = h;
   // Guy, Oct 26: hover a row = pop-up with that metric split by site (share bar for counts, side-by-side bars for rates)
   let tip = document.querySelector('.rtt'); if (!tip) {{ tip = document.createElement('div'); tip.className = 'ctt rtt'; tip.style.position = 'fixed'; document.body.appendChild(tip); }}
