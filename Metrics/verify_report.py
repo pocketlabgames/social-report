@@ -97,8 +97,8 @@ def _check_store(C, page, keys, today):
     ds = sorted(per)
     y = (today - dt.timedelta(days=1)).isoformat()
     C.same("Total downloads", _num(r"([\d,]+)(?:<span class='ns'>.*?</span>)? <small><span class='nf'>total downloads", page, int), sum(per.values()))
-    C.same("Installs, last 7 days Apple has posted", _num(r"<b>([\d,]+)</b> last 7 days Apple has posted", page, int), sum(per[d] for d in ds[-7:]))
-    C.same("Installs this month", _num(r"last 7 days Apple has posted · <b>([\d,]+)</b> in ", page, int), sum(per[d] for d in ds if d[:7] == today.strftime("%Y-%m")))
+    C.same("Installs, last 7 days Apple has posted", _num(r"<b>([\d,]+)</b> last 7 days", page, int), sum(per[d] for d in ds[-7:]))
+    C.same("Installs this month", _num(r"last 7 days · <b>([\d,]+)</b> in ", page, int), sum(per[d] for d in ds if d[:7] == today.strftime("%Y-%m")))
     C.same("Installs since launch", _num(r"<b>([\d,]+)</b> total since launch", page, int), sum(per.values()))
     if y in per:
         C.same("Installs yesterday", _num(r"<b>([\d,]+)</b> yesterday · <b>[\d,]+</b> last 7", page, int), per[y])

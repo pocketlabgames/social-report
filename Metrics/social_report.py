@@ -1427,7 +1427,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
             m = sum(installs[d] for d in days if d[:7] == dt.date.today().strftime("%Y-%m"))
             month = dt.date.today().strftime("%B")
             tot = sum(installs[d] for d in days)
-            tail = f" · <b>{w:,}</b> last 7 days Apple has posted · <b>{m:,}</b> in {month} · <b>{tot:,}</b> total since launch</div>"
+            tail = f" · <b>{w:,}</b> last 7 days · <b>{m:,}</b> in {month} · <b>{tot:,}</b> total since launch</div>"
             today_est = f"<b>~{est[td_s]:,}</b> today · " if td_s in est else ""
             if installs.get(y) is not None:
                 inst = f"<div class='dayp dayi'>App Store installs: {today_est}<b>{installs[y]:,}</b> yesterday" + tail
