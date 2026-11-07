@@ -1,7 +1,8 @@
 """Guy, Nov 6: independent data check, run on every report build. It reads the numbers off the finished page, pulls them again
 straight from the source with its own queries, and puts a red banner at the top of the report when they disagree. If it can't
 run or can't find a number on the page, that is a failure too: it never passes by default.
-Allowed gaps: 1 player on counts that include today (players arrive between the two pulls), 10 cents on money. Complete days must match exactly.
+Allowed gaps: 1 player on counts that include today (players arrive between the two pulls), 10 cents on money. Days older than yesterday must match exactly.
+Guy, Nov 7: Firebase keeps processing yesterday, and its answers flip from pull to pull (wins 376, 382, 376; rewarded ads 69, 64), so event counts that include yesterday or today get wobble(): 10%, at least 2. Purchases stay exact.
 Not compared with a second source: Instagram, Facebook and TikTok views (only failed pulls and falling totals are caught), Google/Meta ad spend, ratings values."""
 import csv
 import datetime as dt
@@ -26,6 +27,11 @@ APP_ID = "6816478290"
 LAUNCH = dt.date(2026, 9, 26)
 START = dt.date(2026, 11, 1)
 UNDER = "Instagram, Facebook and TikTok views (only failed pulls and falling totals are caught), Google and Meta ad spend, and star ratings have no second source here."
+
+
+def wobble(n):
+    """Allowed gap on event counts Firebase is still processing: 10%, at least 2."""
+    return max(2, n * 0.10)
 
 
 class Checks:
@@ -164,16 +170,16 @@ def _check_game(C, page, keys, today, G, on_sale):
     tile = lambda l: tiles.get(l, ("", ""))
     n1 = lambda text, pat: _num(pat, text, int)
     wins, tries = outcome.get("win", 0), sum(outcome.values())
-    C.same("Win rate: wins", n1(tile("Win rate")[1], r"([\d,]+) wins"), wins)
-    C.same("Win rate: attempts", n1(tile("Win rate")[1], r"of ([\d,]+) level"), tries)
-    C.same("Win rate", n1(tile("Win rate")[0], r"(\d+)%"), round(wins / tries * 100) if tries else 0)
-    C.same("Super Stir uses", n1(tile("Super Stir / Solve uses")[1], r"([\d,]+) Super Stir"), ev.get("super_stir", 0))
-    C.same("Super Solve uses", n1(tile("Super Stir / Solve uses")[1], r"([\d,]+) Super Solve"), ev.get("super_solve", 0))
+    C.same("Win rate: wins", n1(tile("Win rate")[1], r"([\d,]+) wins"), wins, wobble(wins))
+    C.same("Win rate: attempts", n1(tile("Win rate")[1], r"of ([\d,]+) level"), tries, wobble(tries))
+    C.same("Win rate", n1(tile("Win rate")[0], r"(\d+)%"), round(wins / tries * 100) if tries else 0, 2)
+    C.same("Super Stir uses", n1(tile("Super Stir / Solve uses")[1], r"([\d,]+) Super Stir"), ev.get("super_stir", 0), wobble(ev.get("super_stir", 0)))
+    C.same("Super Solve uses", n1(tile("Super Stir / Solve uses")[1], r"([\d,]+) Super Solve"), ev.get("super_solve", 0), wobble(ev.get("super_solve", 0)))
     C.same("Purchases", n1(tile("Purchases")[0], r"([\d,]+)"), ev.get("purchase_ok", 0))
-    C.same("Players, last 7 days", n1(tile("Purchases")[1], r"by ([\d,]+) player"), players)
-    C.same("Ad views per player", _num(r"([\d.]+)", tile("Ad views per player")[0]), round(ev.get("ad_shown", 0) / players, 1) if players else 0)
-    C.same("Rewarded ads", n1(tile("Ad views per player")[1], r"([\d,]+) rewarded"), kind.get("rewarded", 0))
-    C.same("Ads between levels", n1(tile("Ad views per player")[1], r"([\d,]+) between levels"), kind.get("interstitial", 0))
+    C.same("Players, last 7 days", n1(tile("Purchases")[1], r"by ([\d,]+) player"), players, 1)
+    C.same("Ad views per player", _num(r"([\d.]+)", tile("Ad views per player")[0]), round(ev.get("ad_shown", 0) / players, 1) if players else 0, 0.3)
+    C.same("Rewarded ads", n1(tile("Ad views per player")[1], r"([\d,]+) rewarded"), kind.get("rewarded", 0), wobble(kind.get("rewarded", 0)))
+    C.same("Ads between levels", n1(tile("Ad views per player")[1], r"([\d,]+) between levels"), kind.get("interstitial", 0), wobble(kind.get("interstitial", 0)))
     C.same("Active players, last 7 days", n1(tile("Active players")[0], r"([\d,]+)"), one((today - dt.timedelta(days=6), today)), 1)
     C.same("Active players today", n1(tile("Active players")[1], r"([\d,]+) today"), one((today, today)), 1)
     C.same("Active players since launch", n1(tile("Active players")[1], r"([\d,]+) since launch"), one((dt.date(2026, 1, 1), today)), 1)
@@ -207,11 +213,11 @@ def _check_game(C, page, keys, today, G, on_sale):
     day_ev = {(r[0][0], r[0][1]): int(r[1][0]) for r in run((START, today), ["date", "eventName"], ["eventCount"], everyone)}
     for i, lab in enumerate(X["labels"]):
         d = dt.datetime.strptime(f"{lab} {today.year}", "%b %d %Y").date()
-        k, gap = d.strftime("%Y%m%d"), (1 if d == today else 0)
+        k, gap, recent_day = d.strftime("%Y%m%d"), (1 if d >= today - dt.timedelta(days=1) else 0), d >= today - dt.timedelta(days=1)
         C.same(f"Players on {lab}", X["players"][i], daily.get(k, 0), gap)
         C.same(f"Players on released versions, {lab}", X["newer"][i], newer.get(k, 0), gap)
         for e in ("purchase_ok", "super_solve", "super_stir", "ad_shown", "level_up", "level_end"):
-            C.same(f"{e} on {lab}", X[e][i], day_ev.get((k, e), 0), 2 if d == today else 0)
+            C.same(f"{e} on {lab}", X[e][i], day_ev.get((k, e), 0), 0 if e == "purchase_ok" and d < today else wobble(day_ev.get((k, e), 0)) if recent_day else 0)
     # new-version comparison
     if X.get("cver") and (G.get("compare") or {}).get("since"):
         since, ver = dt.date.fromisoformat(G["compare"]["since"]), _ver(X["cver"])
