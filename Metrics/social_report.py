@@ -1386,8 +1386,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
     tops = sorted(((snap[p]["top_views"], snap[p].get("top_url", ""), NAME[p]) for p in PLAT if snap.get(p)), reverse=True)
     top_line = f"Most popular post: {tops[0][2]}, {tops[0][0]:,} views: <a href='{e(tops[0][1])}'>{e(tops[0][1])}</a>" if tops else ""
     legend = "".join(
-        f"<span class='lg'><svg width='22' height='10'><line x1='0' y1='5' x2='22' y2='5' stroke='{COLOR[p]}' stroke-width='2'"
-        f"{' stroke-dasharray=\"4 3\"' if p == 'instagram' else ''}/></svg>{NAME[p]} {fmt((snap.get(p) or {}).get('views'))}"
+        f"<span class='lg'><svg width='10' height='10'><rect width='10' height='10' rx='2' fill='{COLOR[p]}'/></svg>{NAME[p]} {fmt((snap.get(p) or {}).get('views'))}"
         f"{delta((snap.get(p) or {}).get('views'), (prev.get(p) or {}).get('views') if prev else None) or ''}</span>" for p in sorted(PLAT, key=lambda q: -((snap.get(q) or {}).get('views') or 0)))   # Guy, Oct 27: most to least
     inst_series = None
     if installs:

@@ -26,7 +26,6 @@ PROPERTY = "558070583"
 APP_ID = "6816478290"
 LAUNCH = dt.date(2026, 9, 26)
 START = dt.date(2026, 11, 1)
-UNDER = "Instagram, Facebook and TikTok views (only failed pulls and falling totals are caught), Google and Meta ad spend, and star ratings have no second source here."
 
 
 def wobble(n):
@@ -248,7 +247,7 @@ def _check_views(C, page, snap, prev, stale, errors, plats):
 
 
 def run(html_path, keys, G, snap, prev, stale, errors, plats, today=None):
-    """Adds the result to the top of the page. Returns the Checks."""
+    """Adds a red banner to the top of the page if anything fails. Returns the Checks."""
     today = today or dt.date.today()
     page = open(html_path, encoding="utf-8").read()
     C = Checks()
@@ -266,7 +265,7 @@ def run(html_path, keys, G, snap, prev, stale, errors, plats, today=None):
         box = (f"<div id='dcheck' style='background:#b3261e;color:#fff;padding:14px 18px;font:15px/1.4 -apple-system,system-ui,sans-serif'><b style='font-size:17px'>⚠️ Don't trust this report yet: {n} number{'' if n == 1 else 's'} failed the data check ({when})</b>"
                f"<ul style='margin:8px 0 0;padding-left:20px'>{items}</ul></div>")
     else:
-        box = (f"<div id='dcheck' style='padding:6px 18px;font:12px/1.4 -apple-system,system-ui,sans-serif;color:#2e7d32'>✓ Data check passed at {when}: {C.ok:,} numbers match their sources. <span style='color:#898781'>{UNDER}</span></div>")
+        box = ""   # Guy, Nov 7: nothing on the page when everything matches; the result stays in the build log
     page, hits = re.subn(r"(<body[^>]*>)", lambda m: m.group(1) + box, page, count=1)
     if not hits:
         raise RuntimeError("no <body> tag to put the data check on")
