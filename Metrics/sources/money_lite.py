@@ -1,6 +1,5 @@
 """Money for the social report: AdMob estimated earnings per day (networkReport, USD) and App Store proceeds per day
-(Apple SALES/SUMMARY 'Developer Proceeds' for in-app purchases and paid units, in the proceeds currency converted by Apple
-to the report's currency column; we sum Developer Proceeds where 'Currency of Proceeds' is USD and convert nothing else).
+(Apple SALES/SUMMARY 'Developer Proceeds' for in-app purchases and paid units; other currencies converted to US dollars at that day's European Central Bank rate, so the figure is close to what Apple pays, not exact).
 Keys: Private Keys/youtube-oauth-client.json + admob-token.json (same as sources/admob.py) and asc-metrics.json + .p8.
 Cached per day in Metrics/money-cache.json; only missing days and the last 3 are re-fetched."""
 import datetime as dt
@@ -54,6 +53,20 @@ def _admob(keys_dir, start, end):
     return out
 
 
+_RATES = {}
+
+
+def usd_rate(cur, day):
+    """US dollars per 1 unit of cur on that day (European Central Bank rates). Guy, Nov 6: non-US sales were being dropped. Raises if there's no rate, so a sale is never silently lost."""
+    if cur == "USD":
+        return 1.0
+    if (cur, day) not in _RATES:
+        r = requests.get(f"https://api.frankfurter.dev/v1/{day}", params={"base": cur, "symbols": "USD"}, timeout=30)
+        r.raise_for_status()
+        _RATES[(cur, day)] = float(r.json()["rates"]["USD"])
+    return _RATES[(cur, day)]
+
+
 def _asc_day(c, key, day):
     """Apple proceeds (USD) for one day, or None when Apple hasn't posted it."""
     n = int(time.time())
@@ -69,9 +82,8 @@ def _asc_day(c, key, day):
     df = pd.read_csv(io.StringIO(gzip.decompress(r.content).decode("utf-8")), sep="\t", dtype=str)
     units = pd.to_numeric(df["Units"], errors="coerce").fillna(0)
     proceeds = pd.to_numeric(df["Developer Proceeds"], errors="coerce").fillna(0)
-    usd = df["Currency of Proceeds"].fillna("") == "USD"
-    sel = df["Product Type Identifier"].isin(IAP_TYPES) & usd
-    return round(float((units[sel] * proceeds[sel]).sum()), 2)
+    sel = df["Product Type Identifier"].isin(IAP_TYPES) & (proceeds != 0)
+    return round(sum(u * v * usd_rate(c, day.isoformat()) for u, v, c in zip(units[sel], proceeds[sel], df["Currency of Proceeds"][sel])), 2)
 
 
 def fetch(keys_dir, today):

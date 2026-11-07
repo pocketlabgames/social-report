@@ -87,6 +87,7 @@ def fetch(keys_dir, today):
     # Guy, Nov 4: before its release day a version only ran on review/test devices (1.3.2: 2 purchases, 14 Super Solves), so those days don't count.
     # Nov 6: this must hold for every version, not just the live one, or old test data comes back each time a new version ships.
     rel = lambda v: RELEASED.get(v) or (released if _ver(v) == live else first_day(v) or today)
+    out["released"] = {v: rel(v).isoformat() for v in vers}
     tests = [{"andGroup": {"expressions": [{"filter": {"fieldName": "appVersion", "stringFilter": {"value": v}}},
                                            {"filter": {"fieldName": "date", "inListFilter": {"values": pre}}}]}}
              for v in vers for pre in [[(START + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((rel(v) - START).days)]] if pre]
