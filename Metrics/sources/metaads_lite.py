@@ -32,7 +32,11 @@ def fetch(keys_dir, today):
         if "permission" in str(e).lower():
             if not os.path.exists(CACHE):   # report.yml saves this file every run, so it must exist (runs #444/#445 failed without it)
                 json.dump({}, open(CACHE, "w"))
-            return {"Meta Ads Lite": (pd.DataFrame(), None)}   # token has no ads_read yet
+            # token has no ads_read: use the numbers read daily from Ads Manager in Chrome (scheduled task meta-ads-daily; Guy, Nov 6)
+            cache = json.load(open(CACHE))
+            if not cache:
+                return {"Meta Ads Lite": (pd.DataFrame(), None)}
+            return {"Meta Ads Lite": (pd.DataFrame([{"date": k, **cache[k]} for k in sorted(cache)]), ["date"])}
         raise
     cache = json.load(open(CACHE)) if os.path.exists(CACHE) else {}
     start = START if not cache else min(dt.date.fromisoformat(max(cache)) - dt.timedelta(days=3), today)
