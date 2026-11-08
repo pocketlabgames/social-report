@@ -40,5 +40,16 @@ def fetch(keys_dir, today):
     s = AuthorizedSession(creds)
     d1 = _cohorts(s, today - dt.timedelta(days=8), today - dt.timedelta(days=2), 1)     # last 7 complete day-1 cohorts
     d7 = _cohorts(s, today - dt.timedelta(days=14), today - dt.timedelta(days=8), 7)    # last 7 complete day-7 cohorts
-    r1, n1 = _rate(d1, 1); r7, n7 = _rate(d7, 7)
+    r1, n1 = _rate(d1, 1)
+    # Guy, Nov 8: Day-7 = came back on day 7 OR LATER (distinct players), not "played exactly on day 7" (that showed 0% while 2 of 52 came back on day 8)
+    n7 = sum(v.get(0, 0) for v in d7.values()); back7 = 0
+    for c in d7:
+        d = dt.date.fromisoformat(c)
+        body = {"dateRanges": [{"startDate": (d + dt.timedelta(days=7)).isoformat(), "endDate": today.isoformat()}], "metrics": [{"name": "activeUsers"}],
+                "dimensionFilter": {"filter": {"fieldName": "firstSessionDate", "stringFilter": {"value": d.strftime("%Y%m%d")}}}}
+        r = s.post(f"https://analyticsdata.googleapis.com/v1beta/properties/{PROPERTY}:runReport", json=body, timeout=60)
+        if not r.ok:
+            raise RuntimeError(f"GA4 {r.status_code}: {r.text[:200]}")
+        back7 += sum(int(x["metricValues"][0]["value"]) for x in r.json().get("rows", []))
+    r7 = round(back7 / n7 * 100, 1) if n7 else None
     return {"GA4 Retention Lite": (pd.DataFrame([{"d1": r1, "d1_n": n1, "d7": r7, "d7_n": n7}]), None)}

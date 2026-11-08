@@ -1384,7 +1384,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         if ASCR.get("d1") is not None and ASC_D1_ON:   # Guy, Oct 27: hidden until Apple's Retention page shows data (opt-in sample too small); Firebase is the day-1 number for now
             tiles.append((f"{ASCR['d1']:.0f}%", "Day-1 return", f"of {ASCR.get('d1_n', 0):,} new devices opened it again the next day (estimate)"))
         if RET.get("d7") is not None:   # Guy, Oct 27: Day-7 return from Firebase (all players)
-            tiles.append((f"{RET['d7']:.0f}%", "Day-7 return", f"of {int(RET.get('d7_n') or 0):,} new players came back a week later (Firebase)"))
+            tiles.append((f"{RET['d7']:.0f}%", "Day-7 return", f"of {int(RET.get('d7_n') or 0):,} new players came back on day 7 or later (Firebase)"))
         if ASCR.get("spd") is not None:
             tiles.append((f"{ASCR['spd']:.1f}", "Sessions per device", "app opens per active device per day"))
         if ASCR.get("mins") is not None:
@@ -1483,7 +1483,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
             tip = f"Star ratings by country: {REVIEWS.get('top') or 'none yet'}. Written reviews: {int(REVIEWS.get('reviews') or 0):,}. Ratings refresh once a day."
             right += f"<div class='dayt' title='{html.escape(tip)}'>{int(REVIEWS['n']):,}{avg} <small>Ratings</small></div>"
         if RET.get("d1") is not None:   # Guy, Oct 26: Firebase next-day return of new players (last 7 complete days)
-            tip = f"Day-1: {RET['d1']:.0f}% of {int(RET.get('d1_n') or 0):,} new players came back the next day" + (f" · Day-7: {RET['d7']:.0f}%" if RET.get("d7") is not None else "") + " (Firebase, last 7 complete days)"
+            tip = f"Day-1: {RET['d1']:.0f}% of {int(RET.get('d1_n') or 0):,} new players came back the next day" + (f" · Day-7+: {RET['d7']:.0f}%" if RET.get("d7") is not None else "") + " (Firebase, last 7 complete days)"
             right += f"<div class='dayt' title='{tip}'>{RET['d1']:.0f}% {lab('day-1 retention', 'D-1')}</div>"
         if money:
             right += f"<div class='dayt eclick' title='Click for earnings by day, week, month or year'>${money['m']:,.2f} {lab('earned in ' + money['month'], 'Earned ' + money['month'][:3])}</div>"   # Guy, Nov 2: this month only; click = earnings chart"
