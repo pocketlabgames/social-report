@@ -1072,8 +1072,15 @@ def game_section():
     cn, co = cnew.get("1", 0), cold.get("1", 0)
     show_cmp = cn >= CMIN and co > 0
     md = lambda d: dt.date.fromisoformat(d).strftime("%b %-d")
+    LV = G.get("lv") or {}   # Guy, Nov 8: win rate per level (1.3.4+ lv_start_N / lv_win_N)
+    lvn = sorted(int(k) for k, v in LV.items() if v.get("start"))
+    LVD = {"lvn": lvn, "lvs": [LV[str(k)].get("start", 0) for k in lvn], "lvw": [min(LV[str(k)].get("win", 0), LV[str(k)].get("start", 0)) for k in lvn], "lvt": [LV[str(k)].get("starts", 0) for k in lvn]}
+    p1 = LVD["lvs"][0] if lvn else 0
+    winrate = ("<h3 class='sh3'>Win rate per level</h3><p class='sub'>Share of players who beat each level after starting it (1.3.4 and later). Red = hardest levels. Tap a bar for details."
+               + (f" Only {p1:,} player{'' if p1 == 1 else 's'} so far: an early sign." if p1 < 20 else "") + "</p><div class='chart' style='height:240px'><canvas id='glv' role='img' aria-label='Win rate per level, levels 1 to 25'></canvas></div>") if lvn else \
+              "<h3 class='sh3'>Win rate per level</h3><p class='sub gempty'>Starts once players on 1.3.4 or later play a level (Google Analytics needs up to a day).</p>"
     data = {"steps": steps, "reach": reach, "playing": playing, "mp": mp, "cver": CM.get("version", ""), "cn": cn, "co": co, "cnew": [round(cnew.get(str(s), 0) / cn * 100) for s in steps] if show_cmp else [], "cold": [round(cold.get(str(s), 0) / co * 100) for s in steps] if show_cmp else [], "labels": [md(d) for d in days], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in days],
-            "players": [A.get("daily", {}).get(d, 0) for d in days], "newer": [D[d].get("players", 0) for d in days], **{k: [D[d].get(k, 0) for d in days] for k in ("level_end", "level_up", "ad_shown", "super_stir", "super_solve")}, "purchase_ok": [(MONEY.get(d) or {}).get("n") or 0 for d in days]}
+            "players": [A.get("daily", {}).get(d, 0) for d in days], "newer": [D[d].get("players", 0) for d in days], **{k: [D[d].get(k, 0) for d in days] for k in ("level_end", "level_up", "ad_shown", "super_stir", "super_solve")}, "purchase_ok": [(MONEY.get(d) or {}).get("n") or 0 for d in days], **LVD}
     funnel = ("<div class='chart' style='height:260px'><canvas id='gfun' role='img' aria-label='How far players get: players who reached each level, split into still playing and quit, with players lost between levels in red'></canvas></div>" if steps else
               f"<p class='sub gempty'>No furthest-level data yet. Bars show once players on released versions send it (Google Analytics needs up to a day).</p>")
     legend = ("<div class='lgs' style='margin-top:6px'><span class='gk'><i style='background:#12A4A4'></i>Still playing</span> <span class='gk'><i style='background:var(--gleft)'></i>Quit (3+ days away)</span></div>" if playing and steps else "")
@@ -1123,6 +1130,14 @@ def game_section():
    options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false}, plugins: {legend: {display: true, labels: {color: muted, boxWidth: 18, boxHeight: 2}}, tooltip: {enabled: false, external: tip(f)}},
     scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: false, font: {size: innerWidth < 500 ? 9 : 11}}, title: {display: true, text: 'Level reached', color: muted}},
      y: {beginAtZero: true, max: 100, grid: {color: grid}, ticks: {color: muted, callback: v => v + '%'}, title: {display: true, text: 'New players', color: muted}}}}}); }
+ const gl = document.getElementById('glv');
+ if (gl && !Chart.getChart(gl) && X.lvn.length) { const r = X.lvn.map((k, i) => X.lvs[i] ? Math.round(X.lvw[i] / X.lvs[i] * 100) : 0), hard = [...r].sort((a, b) => a - b)[Math.min(2, r.length - 1)];
+  const f = i => `<div class="ctt-h">Level ${X.lvn[i]} · ${r[i]}% win rate</div><div class="ctt-r">${n(X.lvw[i])} of ${pl(X.lvs[i], 'player')} beat it</div><div class="ctt-r">${pl(X.lvt[i], 'try', )}`.replace('trys', 'tries') + (X.lvs[i] ? ` · ${(X.lvt[i] / X.lvs[i]).toFixed(1)} per player` : '') + '</div>';
+  const ch = new Chart(gl, {type: 'bar', data: {labels: X.lvn.map(String), datasets: [{data: r, backgroundColor: r.map(v => v <= hard && v < 100 ? '#E24B4A' : '#12A4A4'), borderRadius: 4, borderSkipped: 'start', maxBarThickness: 26}]},
+   options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false}, plugins: {legend: {display: false}, tooltip: {enabled: false, external: tip(f)}},
+    scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: false, font: {size: innerWidth < 500 ? 9 : 11}}, title: {display: true, text: 'Level', color: muted}},
+     y: {beginAtZero: true, max: 100, grid: {color: grid}, ticks: {color: muted, callback: v => v + '%'}, title: {display: true, text: 'Win rate', color: muted}}}}});
+  document.addEventListener('touchstart', e => { if (e.target !== gl) { const el = gl.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); } }, {passive: true}); }
  bar(document.getElementById('gday'), X.labels, X.players, '#8E6FD8', 'Players', i => `<div class="ctt-h">${X.full[i]} · ${pl(X.players[i], 'player')}</div>`
   + `<div class="ctt-r">${n(X.newer[i])} on 1.3.1+; the numbers below are theirs</div><div class="ctt-r">${pl(X.level_up[i], 'new level')} beaten · ${pl(X.level_end[i], 'level attempt')}</div><div class="ctt-r">${pl(X.ad_shown[i], 'ad')}` + (X.newer[i] ? ` (${(X.ad_shown[i] / X.newer[i]).toFixed(1)} per player)` : '') + '</div>'
   + `<div class="ctt-r">${n(X.super_stir[i])} Super Stir · ${n(X.super_solve[i])} Super Solve · ${pl(X.purchase_ok[i], 'purchase')}</div>`); }; </script>""".replace("__DATA__", json.dumps(data))
@@ -1131,7 +1146,7 @@ def game_section():
             f".gt span{{font-size:13px;color:var(--ink2)}} .gt small{{font-size:11px;color:var(--muted);line-height:1.3}} :root{{--gleft:#c9c7bd}} @media (prefers-color-scheme:dark){{:root{{--gleft:#55544f}}}} .gk{{font-size:12px;color:var(--muted);margin-right:12px;white-space:normal}} .gk i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}} @media (max-width:700px){{.gst{{grid-template-columns:1fr 1fr}} .gt b{{font-size:18px}}}}</style>"
             f"<h2 class='sh' id='sec-game'>Game stats</h2><p class='sub'>From Firebase (Google Analytics). Active players counts every app version. Everything else comes only from released versions that send game events ({e(', '.join(G['versions']))}), from Nov 1, when 1.3.1 went live. "
             f"Tiles = last 7 complete days unless noted. Small samples (under {MIN} players) are noted; read them as early signs only.</p>{tiles_html}"
-            f"<h3 class='sh3'>How far players get</h3><p class='sub'>Players who reached each level (since Nov 1{few(mp).replace(' (', '; ').rstrip(')')}). Red = players lost before the next level.</p>{legend}{funnel}{compare}"
+            f"<h3 class='sh3'>How far players get</h3><p class='sub'>Players who reached each level (since Nov 1{few(mp).replace(' (', '; ').rstrip(')')}). Red = players lost before the next level.</p>{legend}{funnel}{compare}{winrate}"
             f"<h3 class='sh3'>Players per day</h3><p class='sub'>Active players on all versions each day (from Nov 1, today so far on the right); hover or tap a day for levels, ads, Super Stir / Super Solve and purchases.</p>"
             f"<div class='chart' style='height:260px'><canvas id='gday' role='img' aria-label='Active players per day on all versions'></canvas></div>{js}")
 

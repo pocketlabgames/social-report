@@ -131,6 +131,14 @@ def fetch(keys_dir, today):
             cmp["new"] = reached(group([v for v in vers if _ver(v) >= COMPARE], dates(since, today)), dall, STEPS)
             cmp["old"] = reached(group([v for v in vers if _ver(v) < COMPARE], dates(START, since - dt.timedelta(days=1))), dall, STEPS)
     out["compare"] = cmp
+    # Guy, Nov 8: win rate per level. 1.3.4+ sends lv_start_N / lv_win_N for levels 1-25 (players = different people; tries = every start)
+    lvf = {"andGroup": {"expressions": [newer, {"filter": {"fieldName": "eventName", "stringFilter": {"matchType": "BEGINS_WITH", "value": "lv_"}}}]}}
+    out["lv"] = {}
+    for (e,), (u, c) in _run(s, {"dateRanges": [dall], "dimensions": [{"name": "eventName"}], "metrics": [{"name": "totalUsers"}, {"name": "eventCount"}], "dimensionFilter": lvf}):
+        kind, _, n = e.rpartition("_")
+        if kind in ("lv_start", "lv_win") and n.isdigit():
+            row = out["lv"].setdefault(n, {})
+            row[kind[3:]], row[kind[3:] + "s"] = int(u), int(c)
     # active players on every app version (the game events above only come from 1.3.1+)
     span = lambda a: {"startDate": a, "endDate": today.isoformat()}
     total = lambda a: int(next(iter(_run(s, {"dateRanges": [span(a)], "metrics": [{"name": "activeUsers"}]})), ([], [0]))[1][0])
