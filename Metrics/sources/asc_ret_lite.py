@@ -88,6 +88,9 @@ def summary(ses, ins):
         new = w[(w["Event"] == "Install") & (w["Download Type"] == "First-time download")]
         out["installs"] = int(num(new["Counts"]).sum())
         out["deletes"] = int(num(w[w["Event"] == "Delete"]["Counts"]).sum())
+        # Guy, Nov 8: "Installed (est.)" = deletions per first-time install inside Apple's own opt-in sample (all days loaded), applied to all downloads
+        out["s_first"] = int(num(ins[(ins["Event"] == "Install") & (ins["Download Type"] == "First-time download")]["Counts"]).sum())
+        out["s_del"] = int(num(ins[ins["Event"] == "Delete"]["Counts"]).sum())
         base = ins[(ins["Event"] == "Install") & (ins["Download Type"] == "First-time download")]
         base = base.assign(n=num(base["Unique Devices"])).groupby("Date")["n"].sum()
         have = set(ses["Date"].dropna())

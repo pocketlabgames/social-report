@@ -1392,6 +1392,11 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         if ASCR.get("deletes") is not None:
             # Guy, Nov 5 audit: no "% kept"; this Apple report caught 22 installs where the sales report had 83, so the two can't be compared
             tiles.append((f"{ASCR['deletes']:,}", "Deletions", "Apple's analytics count, which misses many devices"))
+        if installs and ASCR.get("s_first"):   # Guy, Nov 8: estimate of phones that still have the game (same-sample ratio, not sample vs sales)
+            dl = sum(v for v in installs.values() if v is not None)
+            kept = max(0.0, 1 - ASCR["s_del"] / ASCR["s_first"])
+            tiles.append((f"~{round(dl * kept):,}", "Installed (est.)",
+                          f"of {dl:,} downloads; in Apple's opt-in sample {ASCR['s_del']:,} deletions per {ASCR['s_first']:,} installs"))
         asc_tpl = ("<template id='ascret'><div class='asc'><div class='ash'>App · App Store Connect, "
                    f"{e(md(ASCR['first']))} – {e(md(ASCR['last']))} <small>(last {ASCR.get('days', 7)} days Apple has posted)</small></div><div class='atg'>"
                    + "".join(f"<div class='at'><b>{e(v)}</b><span>{e(l)}</span><small>{e(n)}</small></div>" for v, l, n in tiles)
