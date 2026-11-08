@@ -90,9 +90,8 @@ def _asc_day(c, key, day):
 def fetch(keys_dir, today):
     cache = json.load(open(CACHE)) if os.path.exists(CACHE) else {"ads": {}, "iap": {}}
     ads, iap, iapn = cache.get("ads", {}), cache.get("iap", {}), cache.get("iapn", {})
-    # ads: refetch the last 3 days plus any gap since launch (one API call)
-    have = sorted(d for d in ads)
-    start = LAUNCH if not have else min(dt.date.fromisoformat(have[-1]) - dt.timedelta(days=3), dt.date.fromisoformat(have[-1]))
+    # ads: refetch every day since launch (one API call). AdMob revises earlier days (Nov 3: $0.47 -> $0.12), so a 3-day window went stale (Nov 8)
+    start = LAUNCH
     try:
         ads.update(_admob(keys_dir, start, today))
     except Exception as e:
