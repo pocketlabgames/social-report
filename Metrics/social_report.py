@@ -1875,7 +1875,7 @@ const YDL = {{id:'ysame', afterDatasetsDraw(ch) {{   // Guy, Oct 29: medium pale
  rangeSlider(chart, D, O); 
  const hide = () => {{ if (chart.tooltip.getActiveElements().length) {{ chart.tooltip.setActiveElements([], {{x:0, y:0}}); chart.setActiveElements([]); chart.update('none'); }} const el = canvas.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; }};   // phones: no mouse-out, so tap outside the chart or scroll to close the pop-up
  document.addEventListener('touchstart', ev => {{ if (ev.target !== canvas) hide(); }}, {{passive:true}});
- addEventListener('scroll', hide, {{passive:true}}); }}
+ addEventListener('scroll', () => {{ hide(); document.querySelectorAll('canvas').forEach(c => {{ const k = window.Chart && Chart.getChart(c); if (k && k.tooltip && k.tooltip.getActiveElements().length) {{ k.tooltip.setActiveElements([], {{x:0, y:0}}); k.setActiveElements([]); k.update('none'); }} }}); document.querySelectorAll('.ctt').forEach(el => el.style.opacity = 0); const m = document.getElementById('cmtt'); if (m) m.hidden = true; }}, {{passive:true}}); }}   // Guy, Nov 7: every pop-up closes on scroll
 function rangeSlider(chart, D, O) {{   // Guy, Oct 27: drag the blue window to look further back
  const n = D.labels.length, win = matchMedia('(max-width:700px)').matches ? 8 : 14, box = document.getElementById('rng'); if (!box || n <= win) return;
  box.hidden = false; document.getElementById('rngl').hidden = false;
