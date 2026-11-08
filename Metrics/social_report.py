@@ -1068,7 +1068,7 @@ def game_section():
     playing = [min(ac.get(str(s), 0), r) for s, r in zip(steps, reach)] if ac else []
     CM = G.get("compare") or {}
     cnew, cold = CM.get("new") or {}, CM.get("old") or {}
-    CMIN = 50   # Guy, Nov 6: compare once the new version has about 50 new players
+    CMIN = 1   # Guy, Nov 8: show the comparison right away, small samples noted (was 50)
     cn, co = cnew.get("1", 0), cold.get("1", 0)
     show_cmp = cn >= CMIN and co > 0
     md = lambda d: dt.date.fromisoformat(d).strftime("%b %-d")
@@ -1079,7 +1079,7 @@ def game_section():
     legend = ("<div class='lgs' style='margin-top:6px'><span class='gk'><i style='background:#12A4A4'></i>Still playing</span> <span class='gk'><i style='background:var(--gleft)'></i>Quit (3+ days away)</span></div>" if playing and steps else "")
     cv = CM.get("version", "")
     if show_cmp:
-        compare = (f"<h3 class='sh3'>Did {e(cv)} help?</h3><p class='sub'>Share of new players reaching each level: {cn:,} who first opened the game on {e(cv)} or later vs {co:,} who first opened it before ({md(CM['since'])} is the dividing day). Earlier players have had more days to play, so the later levels favor them; levels 1-5 are the fairest read.</p>"
+        compare = (f"<h3 class='sh3'>Did {e(cv)} help?</h3><p class='sub'>Share of new players reaching each level: {cn:,} who first opened the game on {e(cv)} or later vs {co:,} who first opened it before ({md(CM['since'])} is the dividing day). Earlier players have had more days to play, so the later levels favor them; levels 1-5 are the fairest read." + (f" Only {cn:,} new player{'' if cn == 1 else 's'} so far: an early sign, not a result." if cn < 20 else "") + "</p>"
                    "<div class='chart' style='height:240px'><canvas id='gcmp' role='img' aria-label='Share of new players reaching each level, new version vs earlier'></canvas></div>")
     elif cv:
         compare = (f"<h3 class='sh3'>Did {e(cv)} help?</h3><p class='sub gempty'>" + (f"This comparison appears at {CMIN} new players on {e(cv)}; {cn:,} so far." if CM.get("live") else f"This comparison starts when {e(cv)} is live on the App Store and appears at {CMIN} new players.") + "</p>")
