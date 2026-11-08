@@ -194,9 +194,10 @@ def _check_game(C, page, keys, today, G, on_sale):
     top = by[levels[0]] if levels else 0
     avg = sum(lv * (by[lv] - (by[levels[i + 1]] if i + 1 < len(levels) else 0)) for i, lv in enumerate(levels)) / top if top else 0
     half = max((lv for lv in levels if by[lv] * 2 >= top), default=0)
-    C.same("Avg furthest level", _num(r"([\d.]+)", tile("Avg furthest level")[0]), round(avg, 1), 0.5)
-    C.same("All players on the level chart", n1(tile("Avg furthest level")[1], r"half of ([\d,]+) player"), top, 1)
-    C.same("Half of players reached level", n1(tile("Avg furthest level")[1], r"reached level (\d+)\+"), half, 1)
+    C.same("Typical furthest level", _num(r"([\d.]+)", tile("Typical furthest level")[0]), half, 0)   # Guy, Nov 8: middle player, not the average
+    C.same("All players on the level chart", n1(tile("Typical furthest level")[1], r"half of ([\d,]+) player"), top, 1)
+    C.same("Half of players reached level", n1(tile("Typical furthest level")[1], r"reached level (\d+)\+"), half, 1)
+    C.same("Top player's furthest level", n1(tile("Typical furthest level")[1], r"top player: ([\d,]+)"), levels[-1] if levels else 0, 0)
     m = re.search(r"window\.GAMECHART = \(\) => \{ const X = (\{.*?\}); if \(!window\.Chart\)", page, re.S)
     C.true("Level chart data found on the page", bool(m))
     if not m:

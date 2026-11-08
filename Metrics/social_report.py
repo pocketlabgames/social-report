@@ -1054,7 +1054,7 @@ def game_section():
     kd = G.get("kind", {})
     ads, sup, buy = W.get("ad_shown", 0), W.get("super_stir", 0) + W.get("super_solve", 0), sum((MONEY.get((dt.date.today() - dt.timedelta(days=i)).isoformat()) or {}).get("n") or 0 for i in range(7))   # Guy, Nov 7: real sales from Apple only, not Firebase (App Review test buys showed as purchases)
     tiles = [(f"{A.get('week', 0):,}", "Active players", f"last 7 days, all versions · {A.get('today', 0):,} today · {A.get('ever', 0):,} since launch"),
-             (f"{avg:.1f}" if mp else "—", "Avg furthest level", f"half of {mp:,} player{'' if mp == 1 else 's'} reached level {half}+, since Nov 1" if mp else "no level data yet"),
+             (f"{half}" if mp else "—", "Typical furthest level", f"half of {mp:,} player{'' if mp == 1 else 's'} reached level {half}+ · top player: {lv[-1]:,}, since Nov 1" if mp else "no level data yet"),   # Guy, Nov 8: middle player, not the average (one player at 531 pulled it to 16.7)
              (f"{oc.get('win', 0) / on * 100:.0f}%" if on else "—", "Win rate", f"{oc.get('win', 0):,} wins of {on:,} level attempts" if on else "no win/loss data yet"),
              (per(ads), "Ad views per player", (" · ".join(f"{v:,} {'between levels' if k == 'interstitial' else k}" for k, v in sorted(kd.items())) or f"{ads:,} ads") + " in 7 days" + few(P)),
              (f"{sup:,}", "Super Stir / Solve uses", f"{W.get('super_stir', 0):,} Super Stir · {W.get('super_solve', 0):,} Super Solve, by {P:,} player{'' if P == 1 else 's'} on 1.3.1+"),   # Guy, Nov 2: plain counts, not per 100
