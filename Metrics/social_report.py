@@ -1381,24 +1381,24 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
     if ASCR.get("spd") is not None or ASCR.get("d1") is not None:   # Guy, Oct 26: App Store Connect numbers in the Retention card
         md = lambda d: dt.date.fromisoformat(d).strftime("%b %-d")
         tiles = []
+        wk = f"{md(ASCR['first'])}–{md(ASCR['last'])}" if ASCR.get("first") else "last 7 days posted"
         if ASCR.get("d1") is not None and ASC_D1_ON:   # Guy, Oct 27: hidden until Apple's Retention page shows data (opt-in sample too small); Firebase is the day-1 number for now
             tiles.append((f"{ASCR['d1']:.0f}%", "Day-1 return", f"of {ASCR.get('d1_n', 0):,} new devices opened it again the next day (estimate)"))
         if RET.get("d7") is not None:   # Guy, Oct 27: Day-7 return from Firebase (all players)
             tiles.append((f"{RET['d7']:.0f}%", "Day-7 return", f"of {int(RET.get('d7_n') or 0):,} new players came back on day 7 or later (Firebase)"))
         if ASCR.get("spd") is not None:
-            tiles.append((f"{ASCR['spd']:.1f}", "Sessions per device", "app opens per active device per day"))
+            tiles.append((f"{ASCR['spd']:.1f}", "Sessions per device", f"app opens per active device per day (Apple, {wk})"))
         if ASCR.get("mins") is not None:
-            tiles.append((f"{ASCR['mins']:.1f} min", "Avg session", "time per app open"))
+            tiles.append((f"{ASCR['mins']:.1f} min", "Avg session", f"time per app open (Apple, {wk})"))
         if ASCR.get("deletes") is not None:
             # Guy, Nov 5 audit: no "% kept"; this Apple report caught 22 installs where the sales report had 83, so the two can't be compared
-            tiles.append((f"{ASCR['deletes']:,}", "Deletions", "Apple's analytics count, which misses many devices"))
+            tiles.append((f"{ASCR['deletes']:,}", "Deletions", f"Apple's analytics count, {wk}; misses many devices"))
         if installs and ASCR.get("s_first"):   # Guy, Nov 8: estimate of phones that still have the game (same-sample ratio, not sample vs sales)
             dl = sum(v for v in installs.values() if v is not None)
             kept = max(0.0, 1 - ASCR["s_del"] / ASCR["s_first"])
             tiles.append((f"~{round(dl * kept):,}", "Installed (est.)",
                           f"of {dl:,} downloads; in Apple's opt-in sample {ASCR['s_del']:,} deletions per {ASCR['s_first']:,} installs"))
-        asc_tpl = ("<template id='ascret'><div class='asc'><div class='ash'>App · App Store Connect, "
-                   f"{e(md(ASCR['first']))} – {e(md(ASCR['last']))} <small>(last {ASCR.get('days', 7)} days Apple has posted)</small></div><div class='atg'>"
+        asc_tpl = ("<template id='ascret'><div class='asc'><div class='ash'>App</div><div class='atg'>"   # Guy, Nov 8: short title; dates live on each Apple tile
                    + "".join(f"<div class='at'><b>{e(v)}</b><span>{e(l)}</span><small>{e(n)}</small></div>" for v, l, n in tiles)
                    + "</div></div></template>")
     layout = open(LAYOUT).read().replace("</", "<\\/") if os.path.exists(LAYOUT) else "null"
