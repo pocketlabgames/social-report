@@ -105,7 +105,7 @@ def _check_store(C, page, keys, today):
     countries = {x["Country Code"] for rows in sales.values() for x in rows if x["Product Type Identifier"] in first and float(x["Units"] or 0) > 0}
     C.same("Countries", _num(r"([\d,]+) <small>countries</small>", page, int), len(countries))
     # money: every currency, not only US dollars
-    ads = money_lite._admob(keys, LAUNCH, today)
+    ads = money_lite._admob(keys, LAUNCH, today)[0]
     iap = {}
     for d, rows in sales.items():
         v = 0.0
@@ -224,6 +224,18 @@ def _check_game(C, page, keys, today, G, on_sale):
         C.same(f"App Store purchases on {lab}", X["purchase_ok"][i], C.iapn.get(d.isoformat(), 0))
         for e in ("super_solve", "super_stir", "ad_shown", "level_up", "level_end"):
             C.same(f"{e} on {lab}", X[e][i], day_ev.get((k, e), 0), wobble(day_ev.get((k, e), 0)) if recent_day else 0)
+    # rewarded videos per day (AdMob), Guy Nov 9; recent days move as AdMob updates
+    try:
+        _, rw = money_lite._admob(keys, START - dt.timedelta(days=7), today)
+    except Exception as ex:
+        rw = None; C.true(f"AdMob rewarded counts readable ({ex})", False)
+    if rw is not None:
+        C.true("Rewarded videos found in AdMob (not all zero)", sum(rw.values()) > 0 and sum(v or 0 for v in X["rwd"]) > 0)
+        for i, lab in enumerate(X["labels"]):
+            d = dt.datetime.strptime(f"{lab} {today.year}", "%b %d %Y").date()
+            gap = 3 if d >= today - dt.timedelta(days=1) else 0
+            C.same(f"Rewarded videos on {lab}", X["rwd"][i] or 0, rw.get(d.isoformat(), 0), gap)
+            C.same(f"Rewarded videos week before {lab}", X["rwp"][i] or 0, rw.get((d - dt.timedelta(days=7)).isoformat(), 0), gap if d - dt.timedelta(days=7) >= today - dt.timedelta(days=1) else 0)
     # new-version comparison
     if X.get("cver") and (G.get("compare") or {}).get("since"):
         since, ver = dt.date.fromisoformat(G["compare"]["since"]), _ver(X["cver"])

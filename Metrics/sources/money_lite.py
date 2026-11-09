@@ -23,7 +23,7 @@ IAP_TYPES = {"IA1", "IA9", "IAY", "IAC", "FI1", "1", "1F", "1T"}   # in-app purc
 
 
 def _admob(keys_dir, start, end):
-    """{date: usd} from AdMob for start..end."""
+    """({date: usd}, {date: rewarded videos shown}) from AdMob for start..end."""
     tok = os.path.join(keys_dir, "admob-token.json")
     creds = Credentials.from_authorized_user_file(tok, ["https://www.googleapis.com/auth/admob.readonly", "https://www.googleapis.com/auth/admob.report"])
     if creds.expired and creds.refresh_token:
@@ -37,20 +37,23 @@ def _admob(keys_dir, start, end):
     acct = accounts[0]["name"]
     body = {"reportSpec": {"dateRange": {"startDate": {"year": start.year, "month": start.month, "day": start.day},
                                          "endDate": {"year": end.year, "month": end.month, "day": end.day}},
-                           "dimensions": ["DATE"], "metrics": ["ESTIMATED_EARNINGS"],
+                           "dimensions": ["DATE", "FORMAT"], "metrics": ["ESTIMATED_EARNINGS", "IMPRESSIONS"],
                            "localizationSettings": {"currencyCode": "USD"}}}
     r = s.post(f"{ADMOB}{acct}/networkReport:generate", json=body, timeout=120)
     if not r.ok:
         raise RuntimeError(f"AdMob report {r.status_code}: {r.text[:200]}")
-    out = {}
+    out, rwd = {}, {}
     for item in r.json():
         row = item.get("row")
         if not row:
             continue
-        d = row["dimensionValues"]["DATE"]["value"]
+        d = row["dimensionValues"]["DATE"]["value"]; d = f"{d[:4]}-{d[4:6]}-{d[6:]}"
         v = row["metricValues"]["ESTIMATED_EARNINGS"]
-        out[f"{d[:4]}-{d[4:6]}-{d[6:]}"] = round(int(v.get("microsValue", 0)) / 1e6, 4)
-    return out
+        out[d] = round(out.get(d, 0) + int(v.get("microsValue", 0)) / 1e6, 4)
+        rwd.setdefault(d, 0)
+        if row["dimensionValues"].get("FORMAT", {}).get("value", "").upper() == "REWARDED":   # Guy, Nov 9: rewarded videos per day chart
+            rwd[d] += int(row["metricValues"].get("IMPRESSIONS", {}).get("integerValue", 0))
+    return out, rwd
 
 
 _RATES = {}
@@ -89,11 +92,11 @@ def _asc_day(c, key, day):
 
 def fetch(keys_dir, today):
     cache = json.load(open(CACHE)) if os.path.exists(CACHE) else {"ads": {}, "iap": {}}
-    ads, iap, iapn = cache.get("ads", {}), cache.get("iap", {}), cache.get("iapn", {})
+    ads, iap, iapn, rwd = cache.get("ads", {}), cache.get("iap", {}), cache.get("iapn", {}), cache.get("rwd", {})
     # ads: refetch every day since launch (one API call). AdMob revises earlier days (Nov 3: $0.47 -> $0.12), so a 3-day window went stale (Nov 8)
     start = LAUNCH
     try:
-        ads.update(_admob(keys_dir, start, today))
+        a, w = _admob(keys_dir, start, today); ads.update(a); rwd.update(w)
     except Exception as e:
         if not ads:
             raise
@@ -109,6 +112,6 @@ def fetch(keys_dir, today):
             if v is not None or age > 1:
                 iap[d], iapn[d] = v if v is not None else (0.0, 0)
         day += dt.timedelta(days=1)
-    json.dump({"ads": ads, "iap": iap, "iapn": iapn}, open(CACHE, "w"), indent=0, sort_keys=True)
+    json.dump({"ads": ads, "iap": iap, "iapn": iapn, "rwd": rwd}, open(CACHE, "w"), indent=0, sort_keys=True)
     days = sorted(set(ads) | set(iap))
-    return {"Money Lite": (pd.DataFrame({"date": days, "ads": [ads.get(d) for d in days], "iap": [iap.get(d) for d in days], "iapn": [iapn.get(d) for d in days]}), ["date"])}
+    return {"Money Lite": (pd.DataFrame({"date": days, "ads": [ads.get(d) for d in days], "iap": [iap.get(d) for d in days], "iapn": [iapn.get(d) for d in days], "rwd": [rwd.get(d) for d in days]}), ["date"])}

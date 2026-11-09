@@ -161,7 +161,7 @@ def fetch():
                 RCNEW.update({r.date: int(r.new) for r in d.itertuples() if pd.notna(r.new)})
             if "Money Lite" in got:
                 d = got.pop("Money Lite")
-                MONEY.update({r.date: {"ads": None if pd.isna(r.ads) else float(r.ads), "iap": None if pd.isna(r.iap) else float(r.iap), "n": None if pd.isna(r.iapn) else int(r.iapn)} for r in d.itertuples()})
+                MONEY.update({r.date: {"ads": None if pd.isna(r.ads) else float(r.ads), "iap": None if pd.isna(r.iap) else float(r.iap), "n": None if pd.isna(r.iapn) else int(r.iapn), "rwd": None if pd.isna(r.rwd) else int(r.rwd)} for r in d.itertuples()})
             out.update(got)
             if err:
                 errors.append(err)
@@ -1075,6 +1075,7 @@ def game_section():
     cn, co = cnew.get("1", 0), cold.get("1", 0)
     show_cmp = cn >= CMIN and co > 0
     md = lambda d: dt.date.fromisoformat(d).strftime("%b %-d")
+    wk = lambda d: (dt.date.fromisoformat(d) - dt.timedelta(days=7)).isoformat()
     LV = G.get("lv") or {}   # Guy, Nov 8: win rate per level (1.3.4+ lv_start_N / lv_win_N)
     lvn = sorted(int(k) for k, v in LV.items() if v.get("start"))
     LVD = {"lvn": lvn, "lvs": [LV[str(k)].get("start", 0) for k in lvn], "lvw": [min(LV[str(k)].get("win", 0), LV[str(k)].get("start", 0)) for k in lvn], "lvt": [LV[str(k)].get("starts", 0) for k in lvn]}
@@ -1083,7 +1084,9 @@ def game_section():
                + (f" Only {p1:,} player{'' if p1 == 1 else 's'} so far: an early sign." if p1 < 20 else "") + "</p><div class='chart' style='height:240px'><canvas id='glv' role='img' aria-label='Win rate per level, levels 1 to 25'></canvas></div>") if lvn else \
               "<h3 class='sh3'>Win rate per level</h3><p class='sub gempty'>Starts once players on 1.3.4 or later play a level (Google Analytics needs up to a day).</p>"
     data = {"steps": steps, "reach": reach, "playing": playing, "mp": mp, "cver": CM.get("version", ""), "cn": cn, "co": co, "cnew": [round(cnew.get(str(s), 0) / cn * 100) for s in steps] if show_cmp else [], "cold": [round(cold.get(str(s), 0) / co * 100) for s in steps] if show_cmp else [], "labels": [md(d) for d in days], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in days],
-            "players": [A.get("daily", {}).get(d, 0) for d in days], "newer": [D[d].get("players", 0) for d in days], **{k: [D[d].get(k, 0) for d in days] for k in ("level_end", "level_up", "ad_shown", "super_stir", "super_solve")}, "purchase_ok": [(MONEY.get(d) or {}).get("n") or 0 for d in days], **LVD}
+            "players": [A.get("daily", {}).get(d, 0) for d in days], "newer": [D[d].get("players", 0) for d in days], **{k: [D[d].get(k, 0) for d in days] for k in ("level_end", "level_up", "ad_shown", "super_stir", "super_solve")}, "purchase_ok": [(MONEY.get(d) or {}).get("n") or 0 for d in days], **LVD,
+            # Guy, Nov 9: rewarded videos per day (AdMob, all players) replaces "Did 1.3.4 help?"; dashed = same weekday one week earlier
+            "rwd": [(MONEY.get(d) or {}).get("rwd") for d in days], "rwp": [(MONEY.get(wk(d)) or {}).get("rwd") for d in days], "pfull": [dt.date.fromisoformat(wk(d)).strftime("%a %b %-d") for d in days]}
     funnel = ("<div class='chart' style='height:260px'><canvas id='gfun' role='img' aria-label='How far players get: players who reached each level, split into still playing and quit, with players lost between levels in red'></canvas></div>" if steps else
               f"<p class='sub gempty'>No furthest-level data yet. Bars show once players on released versions send it (Google Analytics needs up to a day).</p>")
     legend = ("<div class='lgs' style='margin-top:6px'><span class='gk'><i style='background:#12A4A4'></i>Still playing</span> <span class='gk'><i style='background:var(--gleft)'></i>Quit (3+ days away)</span></div>" if playing and steps else "")
@@ -1095,6 +1098,8 @@ def game_section():
         compare = (f"<h3 class='sh3'>Did {e(cv)} help?</h3><p class='sub gempty'>" + (f"This comparison appears at {CMIN} new players on {e(cv)}; {cn:,} so far." if CM.get("live") else f"This comparison starts when {e(cv)} is live on the App Store and appears at {CMIN} new players.") + "</p>")
     else:
         compare = ""
+    rewarded = ("<h3 class='sh3'>Rewarded videos per day</h3><p class='sub'>Rewarded videos watched each day (AdMob, all players; today so far on the right). Dashed = the same day one week earlier.</p>"
+                "<div class='chart' style='height:240px'><canvas id='grw' role='img' aria-label='Rewarded videos watched per day, with the same day one week earlier'></canvas></div>") if any(v is not None for v in data["rwd"]) else ""
     js = """<script>window.GAMECHART = () => { const X = __DATA__; if (!window.Chart) return;
  const dark = matchMedia('(prefers-color-scheme: dark)').matches, grid = dark ? '#2c2c2a' : '#e1e0d9', muted = '#898781', n = v => (v || 0).toLocaleString(), pl = (v, w) => `${n(v)} ${w}${v === 1 ? '' : 's'}`;
  const tip = f => ({chart: ch, tooltip: t}) => { let el = ch.canvas.parentNode.querySelector('.ctt');
@@ -1126,13 +1131,13 @@ def game_section():
     scales: {x: {stacked: true, grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: false, font: {size: innerWidth < 500 ? 9 : 11}}, title: {display: true, text: 'Level reached', color: muted}},
      y: {stacked: true, beginAtZero: true, grid: {color: grid}, ticks: {color: muted, precision: 0}, title: {display: true, text: 'Players', color: muted}}}}});
   document.addEventListener('touchstart', e => { if (e.target !== gf) { const el = gf.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); } }, {passive: true}); }
- const gc = document.getElementById('gcmp');
- if (gc && !Chart.getChart(gc) && X.cnew.length) { const f = i => `<div class="ctt-h">Reached level ${lbl(X.steps[i])}</div><div class="ctt-r">${X.cver}+: ${X.cnew[i]}% of ${n(X.cn)}</div><div class="ctt-r">Before: ${X.cold[i]}% of ${n(X.co)}</div>`;
-  const line = (label, data, color, dash) => ({label, data, borderColor: color, backgroundColor: color, borderDash: dash, borderWidth: 2, pointRadius: 3, tension: 0.2});
-  new Chart(gc, {type: 'line', data: {labels: X.steps.map(lbl), datasets: [line(X.cver + ' and later', X.cnew, '#12A4A4', []), line('Before ' + X.cver, X.cold, muted, [5, 4])]},
+ const gr = document.getElementById('grw');
+ if (gr && !Chart.getChart(gr)) { const f = i => `<div class="ctt-h">${X.full[i]} · ${pl(X.rwd[i] || 0, 'video')}</div><div class="ctt-r">Week before (${X.pfull[i]}): ${pl(X.rwp[i] || 0, 'video')}</div>`;
+  const line = (label, data, color, dash) => ({label, data, borderColor: color, backgroundColor: color, borderDash: dash, borderWidth: 2, pointRadius: 3, tension: 0.2, spanGaps: true});
+  new Chart(gr, {type: 'line', data: {labels: X.labels, datasets: [line('Rewarded videos', X.rwd, '#12A4A4', []), line('Same day, week before', X.rwp, muted, [5, 4])]},
    options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false}, plugins: {legend: {display: true, labels: {color: muted, boxWidth: 18, boxHeight: 2}}, tooltip: {enabled: false, external: tip(f)}},
-    scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: false, font: {size: innerWidth < 500 ? 9 : 11}}, title: {display: true, text: 'Level reached', color: muted}},
-     y: {beginAtZero: true, max: 100, grid: {color: grid}, ticks: {color: muted, callback: v => v + '%'}, title: {display: true, text: 'New players', color: muted}}}}}); }
+    scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: innerWidth < 500 ? 9 : 11}}, title: {display: true, text: 'Day', color: muted}},
+     y: {beginAtZero: true, grid: {color: grid}, ticks: {color: muted, precision: 0}, title: {display: true, text: 'Rewarded videos', color: muted}}}}}); }
  const gl = document.getElementById('glv');
  if (gl && !Chart.getChart(gl) && X.lvn.length) { const r = X.lvn.map((k, i) => X.lvs[i] ? Math.round(X.lvw[i] / X.lvs[i] * 100) : 0), hard = [...r].sort((a, b) => a - b)[Math.min(2, r.length - 1)];
   const f = i => `<div class="ctt-h">Level ${X.lvn[i]} · ${r[i]}% win rate</div><div class="ctt-r">${n(X.lvw[i])} of ${pl(X.lvs[i], 'player')} beat it</div><div class="ctt-r">${pl(X.lvt[i], 'try', )}`.replace('trys', 'tries') + (X.lvs[i] ? ` · ${(X.lvt[i] / X.lvs[i]).toFixed(1)} per player` : '') + '</div>';
@@ -1149,7 +1154,7 @@ def game_section():
             f".gt span{{font-size:13px;color:var(--ink2)}} .gt small{{font-size:11px;color:var(--muted);line-height:1.3}} :root{{--gleft:#c9c7bd}} @media (prefers-color-scheme:dark){{:root{{--gleft:#55544f}}}} .gk{{font-size:12px;color:var(--muted);margin-right:12px;white-space:normal}} .gk i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}} @media (max-width:700px){{.gst{{grid-template-columns:1fr 1fr}} .gt b{{font-size:18px}}}}</style>"
             f"<h2 class='sh' id='sec-game'>Game stats</h2><p class='sub'>From Firebase (Google Analytics). Active players counts every app version. Everything else comes only from released versions that send game events ({e(', '.join(G['versions']))}), from Nov 1, when 1.3.1 went live. "
             f"Tiles = last 7 complete days unless noted. Small samples (under {MIN} players) are noted; read them as early signs only.</p>{tiles_html}"
-            f"<h3 class='sh3'>How far players get</h3><p class='sub'>Players who reached each level (since Nov 1{few(mp).replace(' (', '; ').rstrip(')')}). Red = players lost before the next level.</p>{legend}{funnel}{compare}{winrate}"
+            f"<h3 class='sh3'>How far players get</h3><p class='sub'>Players who reached each level (since Nov 1{few(mp).replace(' (', '; ').rstrip(')')}). Red = players lost before the next level.</p>{legend}{funnel}{rewarded}{winrate}"
             f"<h3 class='sh3'>Players per day</h3><p class='sub'>Active players on all versions each day (from Nov 1, today so far on the right); hover or tap a day for levels, ads, Super Stir / Super Solve and purchases.</p>"
             f"<div class='chart' style='height:260px'><canvas id='gday' role='img' aria-label='Active players per day on all versions'></canvas></div>{js}")
 
