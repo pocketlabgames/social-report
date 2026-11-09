@@ -1052,11 +1052,14 @@ def game_section():
     A = G.get("all", {})
     oc = G.get("outcome", {}); on = sum(oc.values())
     kd = G.get("kind", {})
+    MV = G.get("moves") or {}
+    mo, mw, mwp = (MV.get("rewarded_offer_shown") or [0, 0])[0], (MV.get("rewarded_watched") or [0, 0])[0], (MV.get("rewarded_watched") or [0, 0])[1]
     ads, sup, buy = W.get("ad_shown", 0), W.get("super_stir", 0) + W.get("super_solve", 0), sum((MONEY.get((dt.date.today() - dt.timedelta(days=i)).isoformat()) or {}).get("n") or 0 for i in range(7))   # Guy, Nov 7: real sales from Apple only, not Firebase (App Review test buys showed as purchases)
     tiles = [(f"{A.get('week', 0):,}", "Active players", f"last 7 days, all versions · {A.get('today', 0):,} today · {A.get('ever', 0):,} since launch"),
              (f"{half}" if mp else "—", "Typical furthest level", f"half of {mp:,} player{'' if mp == 1 else 's'} reached level {half}+ · top player: {lv[-1]:,}, since Nov 1" if mp else "no level data yet"),   # Guy, Nov 8: middle player, not the average (one player at 531 pulled it to 16.7)
              (f"{oc.get('win', 0) / on * 100:.0f}%" if on else "—", "Win rate", f"{oc.get('win', 0):,} wins of {on:,} level attempts" if on else "no win/loss data yet"),
              (per(ads), "Ad views per player", (" · ".join(f"{v:,} {'between levels' if k == 'interstitial' else k}" for k, v in sorted(kd.items())) or f"{ads:,} ads") + " in 7 days" + few(P)),
+             (f"{mw:,}", "+Moves videos watched", f"{mw:,} of {mo:,} offers{f' ({mw / mo * 100:.0f}%)' if mo else ''} · {mwp:,} player{'' if mwp == 1 else 's'} · out of moves popup, 7 days"),   # Guy, Nov 9: +5 moves per video from Nov 9 (was 10)
              (f"{sup:,}", "Super Stir / Solve uses", f"{W.get('super_stir', 0):,} Super Stir · {W.get('super_solve', 0):,} Super Solve, by {P:,} player{'' if P == 1 else 's'} on 1.3.1+"),   # Guy, Nov 2: plain counts, not per 100
              (f"{buy:,}", "Purchases", "App Store sales, last 7 days")]
     e = html.escape

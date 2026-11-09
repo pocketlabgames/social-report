@@ -109,6 +109,12 @@ def fetch(keys_dir, today):
     for (k,), (n,) in _run(s, {"dateRanges": [d7], "dimensions": [{"name": "customEvent:kind"}], "metrics": [{"name": "eventCount"}], "dimensionFilter": one("ad_shown")}):
         if k != "(not set)":
             out["kind"][k] = int(n)
+    # Guy, Nov 9: +Moves videos (out of moves popup) are revenue: offers vs watched, last 7 complete days
+    out["moves"] = {}
+    for e in ("rewarded_offer_shown", "rewarded_watched"):
+        f = {"andGroup": {"expressions": [one(e), {"filter": {"fieldName": "customEvent:placement", "stringFilter": {"value": "out_of_moves"}}}]}}
+        r = _run(s, {"dateRanges": [d7], "metrics": [{"name": "eventCount"}, {"name": "totalUsers"}], "dimensionFilter": f})
+        out["moves"][e] = [int(r[0][1][0]), int(r[0][1][1])] if r else [0, 0]
     # Guy, Nov 4: a player whose furthest level changes shows up once per level in a by-level report (285 "players" vs 53 real),
     # so ask for each level how many different players reached it or beyond
     lvs = sorted(int(lv) for (lv,), _ in _run(s, {"dateRanges": [dall], "dimensions": [{"name": "customUser:max_level"}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": newer, "limit": 1000}) if lv.isdigit())
