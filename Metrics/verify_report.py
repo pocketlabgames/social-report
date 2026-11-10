@@ -122,6 +122,10 @@ def _check_store(C, page, keys, today):
                            ("Earned last 7 days", r"yesterday · <b>\$([\d,.]+)</b> last 7 days · <b>\$", both(week)), ("Earned this month", r"last 7 days · <b>\$([\d,.]+)</b> in ", both(month)),
                            ("Earned from ads this month", r"\(ads \$([\d,.]+) \+ App Store", sum(ads.get(d, 0) for d in month)), ("Earned from App Store this month", r"App Store \$([\d,.]+)\)", sum(iap.get(d, 0) for d in month))):
         C.same(name, _num(pat, page), round(val, 2), 0.10)
+    # Earned pop-up (since launch): dollars only (Guy, Nov 9: it showed $390.99 because video and sale counts were added as dollars)
+    m = re.search(r"const EM = (\{.*?\});", page)
+    if m:
+        C.same("Earned since launch (pop-up)", round(sum(json.loads(m.group(1)).values()), 2), round(both(set(ads) | set(iap)), 2), 0.10)
     return on_sale
 
 

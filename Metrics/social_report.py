@@ -1356,7 +1356,7 @@ def earn_html(money_daily):
     """Pop-up chart of money earned (ads + App Store) by day, week, month (default) or year; opened from the header tile (Guy, Nov 2)."""
     if not money_daily:
         return ""
-    em = {d: round(sum(v for v in (m or {}).values() if v is not None), 4) for d, m in money_daily.items()}
+    em = {d: round(sum(v for k, v in (m or {}).items() if k in ("ads", "iap") and v is not None), 4) for d, m in money_daily.items()}   # dollars only: "n" (sales) and "rwd" (videos) are counts (Guy, Nov 9: popup showed $390.99)
     return (f"<style>{CMAP_CSS if not COUNTRIES else ''}{EARN_CSS}</style>"
             f"<div class='cmo' id='earn' hidden><div class='cmc'><button class='cmx' id='ecx' aria-label='Close'>×</button>"
             f"<div class='cmh'><h2>Earned</h2><small id='etot'></small></div>"
