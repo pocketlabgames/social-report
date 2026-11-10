@@ -958,7 +958,7 @@ SLOTS = [("Morning", 5, 11), ("Midday", 11, 14), ("Afternoon", 14, 17), ("Evenin
 
 def sources_section():
     """Guy, Nov 6: App Store downloads by where people came from, as a stacked bar chart; hover/tap a day for each source's
-    downloads and Google Ads spend. App referrer = inside another app (our Google Ads); social posts have no App Store
+    downloads and Google Ads spend. App referrer = inside another app: Google Ads in games plus Meta ads in the Facebook app (Apple detailed report, Nov 10; was mislabeled "Google Ads"); social posts have no App Store
     link, so their viewers search."""
     days = sorted(d for d, r in ASCSRC.items() if any(k.startswith("pv_") for k in r))[-14:]
     if not days:
@@ -984,7 +984,7 @@ def sources_section():
     ad_dl = tot("ads")
     per = f", ${spend / ad_dl:.2f} per download" if ad_dl and spend else ""
     md = lambda d: dt.date.fromisoformat(d).strftime("%b %-d")
-    summ = (f"Last 7 days ({md(wk[0])} – {md(wk[-1])}): <b>Google Ads:</b> <b>{ad_dl:,}</b> downloads, ${spend:,.2f} spent{per} · "
+    summ = (f"Last 7 days ({md(wk[0])} – {md(wk[-1])}): <b>Ads in other apps</b> (Google + Meta; Apple's &ldquo;App referrer&rdquo;): <b>{ad_dl:,}</b> downloads, ${spend:,.2f} Google Ads spent{per} · "
             f"<b>Search:</b> <b>{tot('search'):,}</b> · <b>Browse:</b> <b>{tot('browse'):,}</b> · <b>Other:</b> <b>{tot('other'):,}</b>")
     if METAADS:   # Guy, Nov 1: Meta ads line (spend, link clicks, Meta's install count)
         mw = [METAADS.get(d) or {} for d in wk]
@@ -993,7 +993,7 @@ def sources_section():
         summ += f"<br><b>Meta ads (FB + IG):</b> ${ms:,.2f} spent, {mc:,} link click{'' if mc == 1 else 's'}, <b>{mi:,}</b> install{'' if mi == 1 else 's'} (Meta's count){mper}"
     else:
         summ += "<br><b>Meta ads (FB + IG):</b> not connected yet (the Meta token needs the ads_read permission)"
-    src = [("ads", "Google Ads", "#C9A227"), ("other", "Other", "#A8A8A8"), ("search", "Search", "#12A4A4"), ("browse", "Browse", "#8E6FD8")]
+    src = [("ads", "Ads in other apps", "#C9A227"), ("other", "Other", "#A8A8A8"), ("search", "Search", "#12A4A4"), ("browse", "Browse", "#8E6FD8")]
     src.sort(key=lambda x: -sum(dlx[d][x[0]] for d in days))   # most to least (bottom of the stack = biggest)
     data = {"labels": [md(d) for d in days], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in days],
             "spend": [GADS.get(d) for d in days], "meta": [METAADS.get(d) for d in days], "src": [{"k": k, "l": l, "c": c} for k, l, c in src],
