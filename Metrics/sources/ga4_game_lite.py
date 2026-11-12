@@ -68,6 +68,51 @@ def _live(keys_dir):
     return (ver, day) if ver else (FIRST, START)
 
 
+AB_START = dt.date(2026, 11, 12)   # Guy, Nov 12: ad A/B test switched on (config abAds.on 1); only new 1.3.8+ installs get group A or B
+AB_LEVELS = [2, 3, 5, 10, 15, 20]
+
+
+def _ab(s, today):
+    """Guy, Nov 10 + 12: between-level ad A/B test. A = normal ad pacing, B = an ad after every level (60 s apart).
+    Per group: players, between-level ads + rewarded videos per player, Remove Ads popup / taps / buys, day-1 + day-7 return, furthest level."""
+    dr = {"startDate": AB_START.isoformat(), "endDate": today.isoformat()}
+    grp = lambda g: {"filter": {"fieldName": "customUser:ab_ads", "stringFilter": {"value": g}}}
+    both = lambda g, *x: {"andGroup": {"expressions": [grp(g), *x]}}
+    evf = lambda name: {"filter": {"fieldName": "eventName", "stringFilter": {"value": name}}}
+    out = {"since": AB_START.isoformat()}
+    for g in ("A", "B"):
+        r = {}
+        p = _run(s, {"dateRanges": [dr], "metrics": [{"name": "totalUsers"}], "dimensionFilter": grp(g)})
+        r["players"] = int(p[0][1][0]) if p else 0
+        for (e,), (c, u) in _run(s, {"dateRanges": [dr], "dimensions": [{"name": "eventName"}], "metrics": [{"name": "eventCount"}, {"name": "totalUsers"}],
+                                     "dimensionFilter": both(g, {"filter": {"fieldName": "eventName", "inListFilter": {"values": ["rewarded_watched", "noads_nudge", "noads_nudge_tap"]}}})}):
+            r[e] = [int(c), int(u)]
+        for (k,), (c, u) in _run(s, {"dateRanges": [dr], "dimensions": [{"name": "customEvent:kind"}], "metrics": [{"name": "eventCount"}, {"name": "totalUsers"}], "dimensionFilter": both(g, evf("ad_shown"))}):
+            if k != "(not set)":
+                r["ad_" + k] = [int(c), int(u)]
+        for (i,), (c, u) in _run(s, {"dateRanges": [dr], "dimensions": [{"name": "customEvent:id"}], "metrics": [{"name": "eventCount"}, {"name": "totalUsers"}], "dimensionFilter": both(g, evf("purchase_ok"))}):
+            r["buy_" + i] = [int(c), int(u)]
+        # furthest level: different players who reached each level or beyond (max_level = current level, so level L+1 = beat L)
+        lvs = sorted(int(lv) for (lv,), _ in _run(s, {"dateRanges": [dr], "dimensions": [{"name": "customUser:max_level"}], "metrics": [{"name": "totalUsers"}], "dimensionFilter": grp(g), "limit": 1000}) if lv.isdigit())
+        r["reach"] = {}
+        for lv in sorted(set(AB_LEVELS + [1])):
+            vals = [str(x) for x in lvs if x >= lv]
+            q = _run(s, {"dateRanges": [dr], "metrics": [{"name": "totalUsers"}], "dimensionFilter": both(g, {"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": vals}}})}) if vals else []
+            r["reach"][str(lv)] = int(q[0][1][0]) if q else 0
+        # return: players who first opened the game on day D, and how many came back on day D+1 / D+7 (only days old enough count)
+        r["ret"] = {}
+        for n in (1, 7):
+            first = [AB_START + dt.timedelta(days=i) for i in range((today - AB_START).days - n + 1)]
+            if not first:
+                continue
+            cohorts = [{"name": d.isoformat(), "dimension": "firstSessionDate", "dateRange": {"startDate": d.isoformat(), "endDate": d.isoformat()}} for d in first][-12:]
+            q = _run(s, {"cohortSpec": {"cohorts": cohorts, "cohortsRange": {"granularity": "DAILY", "startOffset": 0, "endOffset": n}},
+                         "dimensions": [{"name": "cohort"}, {"name": "cohortNthDay"}], "metrics": [{"name": "cohortActiveUsers"}, {"name": "cohortTotalUsers"}], "dimensionFilter": grp(g)})
+            r["ret"][str(n)] = [int(sum(m[0] for (_, nth), m in q if int(nth) == n)), int(sum(m[1] for (_, nth), m in q if int(nth) == n))]   # daily cohorts must start at offset 0
+        out[g] = r
+    return out
+
+
 def fetch(keys_dir, today):
     creds = Credentials.from_authorized_user_file(os.path.join(keys_dir, "ga4-token.json"), SCOPES)
     if not creds.valid:
@@ -145,6 +190,10 @@ def fetch(keys_dir, today):
         if kind in ("lv_start", "lv_win") and n.isdigit():
             row = out["lv"].setdefault(n, {})
             row[kind[3:]], row[kind[3:] + "s"] = int(u), int(c)
+    try:
+        out["ab"] = _ab(s, today)
+    except Exception as x:   # the rest of the game stats still show
+        out["ab"] = {"error": str(x)[:200]}
     # active players on every app version (the game events above only come from 1.3.1+)
     span = lambda a: {"startDate": a, "endDate": today.isoformat()}
     total = lambda a: int(next(iter(_run(s, {"dateRanges": [span(a)], "metrics": [{"name": "activeUsers"}]})), ([], [0]))[1][0])
