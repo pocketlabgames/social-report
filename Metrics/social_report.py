@@ -1035,7 +1035,7 @@ def ab_html(AB):
     A, B = AB.get("A") or {}, AB.get("B") or {}
     since = dt.date.fromisoformat(AB["since"]).strftime("%b %-d")
     if not (A.get("players") or B.get("players")):
-        return head + f"<p class='sub gempty'>Test on since {since}: new players on 1.3.8 are split into A (normal ads) and B (an ad after every level from level 6). Numbers show once Google Analytics posts them (up to a day).</p>"
+        return head + f"<p class='sub gempty'>Test on since {since}: new players on 1.3.8 are split into A (normal ads) and B (an ad after every level). Numbers show once Google Analytics posts them (up to a day).</p>"
     pct = lambda a, b: f"{a / b * 100:.0f}%" if b else "—"
     pp = lambda r, k: f"{(r.get(k) or [0])[0] / r['players']:.1f}" if r.get("players") else "—"
     def ret(r, n):
@@ -1056,7 +1056,7 @@ def ab_html(AB):
            [(f"Beat level {lv}", (lambda lv: lambda r: reach(r, lv + 1))(lv)) for lv in (1, 2, 4, 9, 14, 19)]
     body = "".join(f"<tr><td class='rl'>{html.escape(l)}</td><td>{f(A)}</td><td>{f(B)}</td></tr>" for l, f in rows)
     n = min(A.get("players", 0), B.get("players", 0))
-    return (head + f"<p class='sub'>New players on 1.3.8 since {since}, split at random. A = normal ad pacing; B = an ad after every level from level 6 (at least 60 s apart). "
+    return (head + f"<p class='sub'>New players on 1.3.8 since {since}, split at random. A = normal ad pacing; B = an ad after every level (at least 60 s apart). "
             "Next day / day 7 count only players old enough to have had that day. Remove Ads buys come from the game (Firebase), not Apple."
             + (f" Only {n:,} player{'' if n == 1 else 's'} in the smaller group so far: early sign, not a result (aim: ~300 each, 2-3 weeks)." if n < 300 else "") + "</p>"
             f"<div class='wrap'><table class='abt'><thead><tr><th class='rl'></th><th>A · normal ads</th><th>B · ad every level</th></tr></thead><tbody>{body}</tbody></table></div>"
