@@ -1026,43 +1026,6 @@ def sources_section():
     return (f"<h2 class='sh' id='sec-sources'>App Store downloads by source</h2><div class='lgs' style='margin-top:6px'>{legend}</div><div class='chart' style='height:300px'><canvas id='srcc' role='img' aria-label='App Store downloads per day by source'></canvas></div>{js}")
 
 
-def ab_html(AB):
-    """Guy, Nov 12: ad A/B test split (config abAds.on 1 from Nov 12). New 1.3.8+ players are put in group A or B for good.
-    A = normal ad pacing, B = a between-level ad after every level (60 s apart). Judge after 2-3 weeks (~300 players per group)."""
-    head = "<h3 class='sh3' id='sec-abtest'>Ad test: A vs B</h3>"
-    if not AB or AB.get("error"):
-        return head + "<p class='sub gempty'>Ad test numbers couldn't be read this run" + (f" ({html.escape(AB['error'][:80])})" if AB.get("error") else "") + ".</p>"
-    A, B = AB.get("A") or {}, AB.get("B") or {}
-    since = dt.date.fromisoformat(AB["since"]).strftime("%b %-d")
-    if not (A.get("players") or B.get("players")):
-        return head + f"<p class='sub gempty'>Test on since {since}: new players on 1.3.8 are split into A (normal ads) and B (an ad after every level). Numbers show once Google Analytics posts them (up to a day).</p>"
-    pct = lambda a, b: f"{a / b * 100:.0f}%" if b else "—"
-    pp = lambda r, k: f"{(r.get(k) or [0])[0] / r['players']:.1f}" if r.get("players") else "—"
-    def ret(r, n):
-        a, b = (r.get("ret") or {}).get(n) or [0, 0]
-        return f"{pct(a, b)} <small>({a:,} of {b:,})</small>" if b else "—"
-    def reach(r, lv):
-        a, b = (r.get("reach") or {}).get(str(lv), 0), (r.get("reach") or {}).get("1", 0) or r.get("players", 0)
-        return f"{pct(a, b)} <small>({a:,})</small>" if b else "—"
-    cnt = lambda r, k: f"{(r.get(k) or [0, 0])[0]:,} <small>({(r.get(k) or [0, 0])[1]:,} player{'' if (r.get(k) or [0, 0])[1] == 1 else 's'})</small>"
-    rows = [("Players", lambda r: f"{r.get('players', 0):,}"),
-            ("Between-level ads per player", lambda r: pp(r, "ad_interstitial")),
-            ("Rewarded videos per player", lambda r: pp(r, "rewarded_watched")),
-            ("Remove Ads popup shown", lambda r: cnt(r, "noads_nudge")),
-            ("Remove Ads popup taps", lambda r: cnt(r, "noads_nudge_tap")),
-            ("Remove Ads bought", lambda r: cnt(r, "buy_beakerlab_remove_ads")),
-            ("Came back next day", lambda r: ret(r, "1")),
-            ("Came back on day 7", lambda r: ret(r, "7"))] + \
-           [(f"Beat level {lv}", (lambda lv: lambda r: reach(r, lv + 1))(lv)) for lv in (1, 2, 4, 9, 14, 19)]
-    body = "".join(f"<tr><td class='rl'>{html.escape(l)}</td><td>{f(A)}</td><td>{f(B)}</td></tr>" for l, f in rows)
-    n = min(A.get("players", 0), B.get("players", 0))
-    return (head + f"<p class='sub'>New players on 1.3.8 since {since}, split at random. A = normal ad pacing; B = an ad after every level (at least 60 s apart). "
-            "Next day / day 7 count only players old enough to have had that day. Remove Ads buys come from the game (Firebase), not Apple."
-            + (f" Only {n:,} player{'' if n == 1 else 's'} in the smaller group so far: early sign, not a result (aim: ~300 each, 2-3 weeks)." if n < 300 else "") + "</p>"
-            f"<div class='wrap'><table class='abt'><thead><tr><th class='rl'></th><th>A · normal ads</th><th>B · ad every level</th></tr></thead><tbody>{body}</tbody></table></div>"
-            "<style>.abt td small{color:var(--muted);font-size:11px}</style>")
-
-
 def game_section():
     """Guy, Nov 2: game stats from Firebase / GA4 (builds 1.3.1+ only): players, furthest level, win rate, ads, Super Stir /
     Super Solve and purchases, with a furthest-level funnel (where players stop) and players per day."""
@@ -1137,7 +1100,6 @@ def game_section():
         compare = ""
     rewarded = ("<h3 class='sh3'>Rewarded videos per day</h3><p class='sub'>Rewarded videos watched each day (AdMob, all players; today so far on the right). Dashed = the same day one week earlier.</p>"
                 "<div class='chart' style='height:240px'><canvas id='grw' role='img' aria-label='Rewarded videos watched per day, with the same day one week earlier'></canvas></div>") if any(v is not None for v in data["rwd"]) else ""
-    abtest = ab_html(G.get("ab") or {})
     js = """<script>window.GAMECHART = () => { const X = __DATA__; if (!window.Chart) return;
  const dark = matchMedia('(prefers-color-scheme: dark)').matches, grid = dark ? '#2c2c2a' : '#e1e0d9', muted = '#898781', n = v => (v || 0).toLocaleString(), pl = (v, w) => `${n(v)} ${w}${v === 1 ? '' : 's'}`;
  const tip = f => ({chart: ch, tooltip: t}) => { let el = ch.canvas.parentNode.querySelector('.ctt');
@@ -1192,7 +1154,7 @@ def game_section():
             f".gt span{{font-size:13px;color:var(--ink2)}} .gt small{{font-size:11px;color:var(--muted);line-height:1.3}} :root{{--gleft:#c9c7bd}} @media (prefers-color-scheme:dark){{:root{{--gleft:#55544f}}}} .gk{{font-size:12px;color:var(--muted);margin-right:12px;white-space:normal}} .gk i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}} @media (max-width:700px){{.gst{{grid-template-columns:1fr 1fr}} .gt b{{font-size:18px}}}}</style>"
             f"<h2 class='sh' id='sec-game'>Game stats</h2><p class='sub'>From Firebase (Google Analytics). Active players counts every app version. Everything else comes only from released versions that send game events ({e(', '.join(G['versions']))}), from Nov 1, when 1.3.1 went live. "
             f"Tiles = last 7 complete days unless noted. Small samples (under {MIN} players) are noted; read them as early signs only.</p>{tiles_html}"
-            f"<h3 class='sh3'>How far players get</h3><p class='sub'>Players who reached each level (since Nov 1{few(mp).replace(' (', '; ').rstrip(')')}). Red = players lost before the next level.</p>{legend}{funnel}{abtest}{rewarded}{winrate}"
+            f"<h3 class='sh3'>How far players get</h3><p class='sub'>Players who reached each level (since Nov 1{few(mp).replace(' (', '; ').rstrip(')')}). Red = players lost before the next level.</p>{legend}{funnel}{rewarded}{winrate}"
             f"<h3 class='sh3'>Players per day</h3><p class='sub'>Active players on all versions each day (from Nov 1, today so far on the right); hover or tap a day for levels, ads, Super Stir / Super Solve and purchases.</p>"
             f"<div class='chart' style='height:260px'><canvas id='gday' role='img' aria-label='Active players per day on all versions'></canvas></div>{js}")
 
