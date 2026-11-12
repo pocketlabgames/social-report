@@ -109,6 +109,12 @@ def fetch(keys_dir, today):
     for (k,), (n,) in _run(s, {"dateRanges": [d7], "dimensions": [{"name": "customEvent:kind"}], "metrics": [{"name": "eventCount"}], "dimensionFilter": one("ad_shown")}):
         if k != "(not set)":
             out["kind"][k] = int(n)
+    # Guy, Nov 12: finished shares (game save 205+ logs share_done; kind = what was shared), last 7 complete days
+    out["shares"] = {"by": {}}
+    for (k,), (c, u) in _run(s, {"dateRanges": [d7], "dimensions": [{"name": "customEvent:kind"}], "metrics": [{"name": "eventCount"}, {"name": "totalUsers"}], "dimensionFilter": one("share_done")}):
+        out["shares"]["by"][k] = int(c)
+    r = _run(s, {"dateRanges": [d7], "metrics": [{"name": "eventCount"}, {"name": "totalUsers"}], "dimensionFilter": one("share_done")})
+    out["shares"]["n"], out["shares"]["players"] = (int(r[0][1][0]), int(r[0][1][1])) if r else (0, 0)
     # Guy, Nov 9: +Moves videos (out of moves popup) are revenue: offers vs watched, last 7 complete days
     out["moves"] = {}
     for e in ("rewarded_offer_shown", "rewarded_watched"):

@@ -1054,6 +1054,7 @@ def game_section():
     kd = G.get("kind", {})
     MV = G.get("moves") or {}
     mo, mw, mwp = (MV.get("rewarded_offer_shown") or [0, 0])[0], (MV.get("rewarded_watched") or [0, 0])[0], (MV.get("rewarded_watched") or [0, 0])[1]
+    SH, SHN = G.get("shares") or {}, {"invite": "invites", "team": "team invites", "result": "win results", "challenge": "challenges", "clip": "solve clips", "other": "other"}
     ads, sup, buy = W.get("ad_shown", 0), W.get("super_stir", 0) + W.get("super_solve", 0), sum((MONEY.get((dt.date.today() - dt.timedelta(days=i)).isoformat()) or {}).get("n") or 0 for i in range(7))   # Guy, Nov 7: real sales from Apple only, not Firebase (App Review test buys showed as purchases)
     tiles = [(f"{A.get('week', 0):,}", "Active players", f"last 7 days, all versions · {A.get('today', 0):,} today · {A.get('ever', 0):,} since launch"),
              (f"{half}" if mp else "—", "Typical furthest level", f"half of {mp:,} player{'' if mp == 1 else 's'} reached level {half}+ · top player: {lv[-1]:,}, since Nov 1" if mp else "no level data yet"),   # Guy, Nov 8: middle player, not the average (one player at 531 pulled it to 16.7)
@@ -1061,6 +1062,7 @@ def game_section():
              (per(ads), "Ad views per player", (" · ".join(f"{v:,} {'between levels' if k == 'interstitial' else k}" for k, v in sorted(kd.items())) or f"{ads:,} ads") + " in 7 days" + few(P)),
              (f"{mw:,}", "+Moves videos watched", f"{mw:,} of {mo:,} offers{f' ({mw / mo * 100:.0f}%)' if mo else ''} · {mwp:,} player{'' if mwp == 1 else 's'} · out of moves popup, 7 days"),   # Guy, Nov 9: +5 moves per video from Nov 9 (was 10)
              (f"{sup:,}", "Super Stir / Solve uses", f"{W.get('super_stir', 0):,} Super Stir · {W.get('super_solve', 0):,} Super Solve, by {P:,} player{'' if P == 1 else 's'} on 1.3.1+"),   # Guy, Nov 2: plain counts, not per 100
+             (f"{SH.get('n', 0):,}" if SH.get('n') else "—", "Shares", (f"{SH.get('players', 0):,} player{'' if SH.get('players', 0) == 1 else 's'} · " + " · ".join(f"{v:,} {SHN.get(k, k)}" for k, v in sorted((SH.get('by') or {}).items(), key=lambda x: -x[1])) + " · 7 days") if SH.get('n') else "finished shares, 7 days · counted from the next app update (save 205)"),   # Guy, Nov 12: shares weren't counted before save 205
              (f"{buy:,}", "Purchases", "App Store sales, last 7 days")]
     e = html.escape
     tiles_html = "<div class='gst'>" + "".join(f"<div class='gt'><b>{e(v)}</b><span>{e(l)}</span><small>{e(n)}</small></div>" for v, l, n in tiles) + "</div>"
@@ -1149,7 +1151,7 @@ def game_section():
  bar(document.getElementById('gday'), X.labels, X.players, '#8E6FD8', 'Players', i => `<div class="ctt-h">${X.full[i]} · ${pl(X.players[i], 'player')}</div>`
   + `<div class="ctt-r">${n(X.newer[i])} on 1.3.1+; the numbers below are theirs</div><div class="ctt-r">${pl(X.level_up[i], 'new level')} beaten · ${pl(X.level_end[i], 'level attempt')}</div><div class="ctt-r">${pl(X.ad_shown[i], 'ad')}` + (X.newer[i] ? ` (${(X.ad_shown[i] / X.newer[i]).toFixed(1)} per player)` : '') + '</div>'
   + `<div class="ctt-r">${n(X.super_stir[i])} Super Stir · ${n(X.super_solve[i])} Super Solve · ${pl(X.purchase_ok[i], 'purchase')}</div>`); }; </script>""".replace("__DATA__", json.dumps(data))
-    return (f"<style>.sh3{{font-size:18px;margin:22px 0 4px}} .gst{{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:4px 0 18px}} "
+    return (f"<style>.sh3{{font-size:18px;margin:22px 0 4px}} .gst{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:4px 0 18px}} "
             f".gt{{border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:1px}} .gt b{{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}} "
             f".gt span{{font-size:13px;color:var(--ink2)}} .gt small{{font-size:11px;color:var(--muted);line-height:1.3}} :root{{--gleft:#c9c7bd}} @media (prefers-color-scheme:dark){{:root{{--gleft:#55544f}}}} .gk{{font-size:12px;color:var(--muted);margin-right:12px;white-space:normal}} .gk i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}} @media (max-width:700px){{.gst{{grid-template-columns:1fr 1fr}} .gt b{{font-size:18px}}}}</style>"
             f"<h2 class='sh' id='sec-game'>Game stats</h2><p class='sub'>From Firebase (Google Analytics). Active players counts every app version. Everything else comes only from released versions that send game events ({e(', '.join(G['versions']))}), from Nov 1, when 1.3.1 went live. "
