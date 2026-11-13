@@ -45,6 +45,7 @@ GADS = {}       # {date: Google Ads spend in USD} (gads_lite; empty if keys are 
 METAADS = {}    # {date: {spend, clicks, installs}} Meta ads, FB + IG (metaads_lite; empty until the token has ads_read; Guy, Nov 1)
 ASCSRC = {}     # {date: {pv_ads, pv_search, pv_browse, pv_other, dl_...}} App Store page views + first downloads by source (asc_ret_lite; Guy, Oct 29)
 RCNEW = {}      # {date: RevenueCat new customers (first opens)} for the same-day download estimate
+GAMEC = os.path.join(HERE, "game-cache.json")   # last good Game stats + Firebase retention: shown when Google Analytics fails (502s dropped the section Nov 13; Guy: "Wasn't there another section?")
 LAST = os.path.join(HERE, "cache", "report-last.json")   # the previous run's table + chart, shown at the bottom (one run only, not a history)
 SITE = os.environ.get("REPORT_SITE") == "1"   # GitHub Actions build for the website (no local helper, no xlsx)
 ACTIONS = "https://github.com/pocketlabgames/social-report/actions/workflows/report.yml"
@@ -165,6 +166,14 @@ def fetch():
             out.update(got)
             if err:
                 errors.append(err)
+    if GAME:
+        try: json.dump({"at": dt.datetime.now().strftime("%b %-d, %-I:%M %p"), "game": GAME, "ret": RET}, open(GAMEC, "w"), default=str)
+        except Exception: pass
+    elif os.path.exists(GAMEC):
+        try:
+            c = json.load(open(GAMEC)); GAME.update(c["game"]); GAME["_stale"] = c["at"]
+            if not RET: RET.update(c.get("ret") or {})
+        except Exception: pass
     snap = {}
 
     def watch(d):   # views-weighted average watch time (s) over the posts that report one
@@ -1151,10 +1160,11 @@ def game_section():
  bar(document.getElementById('gday'), X.labels, X.players, '#8E6FD8', 'Players', i => `<div class="ctt-h">${X.full[i]} · ${pl(X.players[i], 'player')}</div>`
   + `<div class="ctt-r">${n(X.newer[i])} on 1.3.1+; the numbers below are theirs</div><div class="ctt-r">${pl(X.level_up[i], 'new level')} beaten · ${pl(X.level_end[i], 'level attempt')}</div><div class="ctt-r">${pl(X.ad_shown[i], 'ad')}` + (X.newer[i] ? ` (${(X.ad_shown[i] / X.newer[i]).toFixed(1)} per player)` : '') + '</div>'
   + `<div class="ctt-r">${n(X.super_stir[i])} Super Stir · ${n(X.super_solve[i])} Super Solve · ${pl(X.purchase_ok[i], 'purchase')}</div>`); }; </script>""".replace("__DATA__", json.dumps(data))
+    stale_note = f"<p class='sub' style='color:#C0392B'>Google Analytics didn't answer this run; showing the last numbers from {e(GAME['_stale'])}.</p>" if GAME.get("_stale") else ""
     return (f"<style>.sh3{{font-size:18px;margin:22px 0 4px}} .gst{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:4px 0 18px}} "
             f".gt{{border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:1px}} .gt b{{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}} "
             f".gt span{{font-size:13px;color:var(--ink2)}} .gt small{{font-size:11px;color:var(--muted);line-height:1.3}} :root{{--gleft:#c9c7bd}} @media (prefers-color-scheme:dark){{:root{{--gleft:#55544f}}}} .gk{{font-size:12px;color:var(--muted);margin-right:12px;white-space:normal}} .gk i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}} @media (max-width:700px){{.gst{{grid-template-columns:1fr 1fr}} .gt b{{font-size:18px}}}}</style>"
-            f"<h2 class='sh' id='sec-game'>Game stats</h2><p class='sub'>From Firebase (Google Analytics). Active players counts every app version. Everything else comes only from released versions that send game events ({e(', '.join(G['versions']))}), from Nov 1, when 1.3.1 went live. "
+            f"<h2 class='sh' id='sec-game'>Game stats</h2>{stale_note}<p class='sub'>From Firebase (Google Analytics). Active players counts every app version. Everything else comes only from released versions that send game events ({e(', '.join(G['versions']))}), from Nov 1, when 1.3.1 went live. "
             f"Tiles = last 7 complete days unless noted. Small samples (under {MIN} players) are noted; read them as early signs only.</p>{tiles_html}"
             f"<h3 class='sh3'>How far players get</h3><p class='sub'>Players who reached each level (since Nov 1{few(mp).replace(' (', '; ').rstrip(')')}). Red = players lost before the next level.</p>{legend}{funnel}{rewarded}{winrate}"
             f"<h3 class='sh3'>Players per day</h3><p class='sub'>Active players on all versions each day (from Nov 1, today so far on the right); hover or tap a day for levels, ads, Super Stir / Super Solve and purchases.</p>"
