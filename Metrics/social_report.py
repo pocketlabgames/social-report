@@ -969,7 +969,7 @@ def sources_section():
     """Guy, Nov 6: App Store downloads by where people came from, as a stacked bar chart; hover/tap a day for each source's
     downloads and Google Ads spend. App referrer = inside another app: Google Ads in games plus Meta ads in the Facebook app (Apple detailed report, Nov 10; was mislabeled "Google Ads"); social posts have no App Store
     link, so their viewers search."""
-    days = sorted(d for d, r in ASCSRC.items() if any(k.startswith("pv_") for k in r))[-14:]
+    days = sorted(d for d, r in ASCSRC.items() if any(k.startswith("pv_") for k in r))[-30:]   # Guy, Nov 16: up to 30 days, scroll bar shows 14 (8 on a phone)
     if not days:
         return ""
     KS = ("ads", "search", "browse", "other")
@@ -1004,35 +1004,86 @@ def sources_section():
         summ += "<br><b>Meta ads (FB + IG):</b> not connected yet (the Meta token needs the ads_read permission)"
     src = [("ads", "Ads in other apps", "#C9A227"), ("other", "Other", "#A8A8A8"), ("search", "Search", "#12A4A4"), ("browse", "Browse", "#8E6FD8")]
     src.sort(key=lambda x: -sum(dlx[d][x[0]] for d in days))   # most to least (bottom of the stack = biggest)
-    data = {"labels": [md(d) for d in days], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in days],
+    sd = lambda d: dt.date.fromisoformat(d).strftime("%-m/%-d")   # Guy, Nov 16: short dates ("11/16") under both bar charts
+    data = {"labels": [sd(d) for d in days], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in days],
             "spend": [GADS.get(d) for d in days], "meta": [METAADS.get(d) for d in days], "src": [{"k": k, "l": l, "c": c} for k, l, c in src],
             **{"dl_" + k: [dlx[d][k] for d in days] for k, _, _ in src}}
-    legend = "".join(f"<span class='lg'><svg width='10' height='10'><rect width='10' height='10' rx='2' fill='{c}'/></svg>{l} {sum(dlx[d][k] for d in days):,}</span>" for k, l, c in src)
-    js = """<script>window.SRCCHART = () => { const X = __DATA__, cv = document.getElementById('srcc'); if (!cv || !window.Chart || Chart.getChart(cv)) return;   // started by the main chart script (the password page writes this page in after 'load' has fired)
- const dark = matchMedia('(prefers-color-scheme: dark)').matches, grid = dark ? '#2c2c2a' : '#e1e0d9', muted = '#898781', n = v => (v || 0).toLocaleString();
- const tt = ({chart: ch, tooltip: t}) => { let el = ch.canvas.parentNode.querySelector('.ctt');
+    legend = "".join(f"<span class='lg'><svg width='10' height='10'><rect width='10' height='10' rx='2' fill='{c}'/></svg>{l} <b class='lgn' data-k='dl_{k}'>{sum(dlx[d][k] for d in days):,}</b></span>" for k, l, c in src)
+    # Guy, Nov 16: earnings per day as stacked bars, AdMob ads vs App Store purchases (both USD), same scroll bar as the views chart
+    today = dt.date.today()
+    edays = [d for d in sorted(MONEY) if (today - dt.timedelta(days=29)).isoformat() <= d <= today.isoformat()]
+    edata = {"labels": [sd(d) for d in edays], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in edays],
+             "ads": [round((MONEY[d] or {}).get("ads") or 0, 2) for d in edays], "iap": [round((MONEY[d] or {}).get("iap") or 0, 2) for d in edays],
+             "n": [(MONEY[d] or {}).get("n") or 0 for d in edays], "posted": [(MONEY[d] or {}).get("iap") is not None for d in edays]}
+    ES = [("ads", "Ads (AdMob)", "#1E9E55"), ("iap", "Purchases (App Store)", "#2A78D6")]
+    elegend = "".join(f"<span class='lg'><svg width='10' height='10'><rect width='10' height='10' rx='2' fill='{c}'/></svg>{l} <b class='lgn' data-k='{k}'>${sum(edata[k]):,.2f}</b></span>" for k, l, c in ES)
+    js = """<script>window.SRCCHART = () => { const X = __DATA__, E = __EDATA__, cv = document.getElementById('srcc'), ecv = document.getElementById('ernc'); if (!window.Chart || (cv && Chart.getChart(cv))) return;   // started by the main chart script (the password page writes this page in after 'load' has fired)
+ const dark = matchMedia('(prefers-color-scheme: dark)').matches, grid = dark ? '#2c2c2a' : '#e1e0d9', muted = '#898781', n = v => (v || 0).toLocaleString(), usd = v => '$' + (v || 0).toFixed(2);
+ const pop = (ch, t, html) => { let el = ch.canvas.parentNode.querySelector('.ctt');
   if (!el) { el = document.createElement('div'); el.className = 'ctt'; ch.canvas.parentNode.appendChild(el); }
   if (!t.opacity || !t.dataPoints.length) { el.style.opacity = 0; return; }
-  const i = t.dataPoints[0].dataIndex, dall = X.src.reduce((a, s) => a + X['dl_' + s.k][i], 0);
-  const rows = X.src.filter(s => X['dl_' + s.k][i]).sort((a, b) => X['dl_' + b.k][i] - X['dl_' + a.k][i]);   // Guy, Nov 6: most to least, no 0-download sources
-  let h = `<div class="ctt-h">${X.full[i]} · ${n(dall)} download${dall === 1 ? '' : 's'}</div>`;
-  if (dall) h += '<div class="rtt-bar">' + rows.map(s => `<i style="width:${X['dl_' + s.k][i] / dall * 100}%;background:${s.c}"></i>`).join('') + '</div>';
-  rows.forEach(s => { const d = X['dl_' + s.k][i];
-   h += `<div class="ctt-r"><i style="background:${s.c}"></i>${s.l}: ${n(d)} download${d === 1 ? '' : 's'} (${Math.round(d / dall * 100)}%)</div>`; });
-  if (X.spend[i] != null) h += `<div class="ctt-sep"></div><div class="ctt-r"><i style="background:#C9A227"></i>Google Ads spend: $${X.spend[i].toFixed(2)}` + (X.dl_ads[i] ? ` ($${(X.spend[i] / X.dl_ads[i]).toFixed(2)} per download)` : '') + '</div>';
-  const M = X.meta[i]; if (M && (M.spend || M.clicks || M.installs)) h += `<div class="ctt-r"><i style="background:#1877F2"></i>Meta ads: $${M.spend.toFixed(2)} · ${n(M.clicks)} click${M.clicks === 1 ? '' : 's'} · ${n(M.installs)} install${M.installs === 1 ? '' : 's'} (Meta's count)</div>`;   // Guy, Nov 1
-  el.innerHTML = h; el.style.opacity = 1;
+  el.innerHTML = html(t.dataPoints[0].dataIndex + (ch.$off || 0)); el.style.opacity = 1;
   const W = ch.canvas.parentNode.clientWidth, w = el.offsetWidth, hh = el.offsetHeight;
   let x = t.caretX + 16; if (x + w > W) x = t.caretX - w - 16; if (x < 0) x = Math.max(0, (W - w) / 2);
   el.style.left = x + 'px'; el.style.top = Math.max(0, Math.min(t.caretY - hh / 2, ch.canvas.clientHeight - hh)) + 'px'; };
- const ch = new Chart(cv, {type: 'bar', data: {labels: X.labels, datasets: X.src.map(s => ({label: s.l, data: X['dl_' + s.k], backgroundColor: s.c, maxBarThickness: 32}))},
-  options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false},
-   plugins: {legend: {display: false}, tooltip: {enabled: false, external: tt}},
-   scales: {x: {stacked: true, grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: 12}}},
-    y: {stacked: true, beginAtZero: true, grid: {color: grid}, ticks: {color: muted, precision: 0, callback: v => v.toLocaleString()}, title: {display: true, text: 'Downloads', color: muted}}}}});
- const hide = () => { const el = cv.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); };
- document.addEventListener('touchstart', e => { if (e.target !== cv) hide(); }, {passive: true}); }; </script>""".replace("__DATA__", json.dumps(data))
-    return (f"<h2 class='sh' id='sec-sources'>App Store downloads by source</h2><div class='lgs' style='margin-top:6px'>{legend}</div><div class='chart' style='height:300px'><canvas id='srcc' role='img' aria-label='App Store downloads per day by source'></canvas></div>{js}")
+ const RANGE = (ch, labels, tot, box, lab, legend) => {   // Guy, Nov 16: same drag bar as the views chart (14 days on a computer, 8 on a phone)
+  const N = labels.length, win = matchMedia('(max-width:700px)').matches ? 8 : 14; if (!box || N <= win) return;
+  box.hidden = false; lab.hidden = false;
+  const w = box.querySelector('.rng-w'), c2 = box.querySelector('.rng-c'), L = lab.children, mx = Math.max(1e-9, ...tot), FULL = ch.data.datasets.map(d => d.data.slice());
+  const draw = () => { const r = devicePixelRatio || 1, W = box.clientWidth, H = box.clientHeight; c2.width = W * r; c2.height = H * r; const x = c2.getContext('2d'); x.scale(r, r);
+   const bw = W / N; x.fillStyle = dark ? 'rgba(255,255,255,.22)' : 'rgba(0,0,0,.16)'; tot.forEach((v, i) => { const h = Math.max(1, (H - 8) * v / mx); x.fillRect(i * bw + bw * .2, H - 4 - h, bw * .6, h); }); };
+  ch.options.scales.y.max = ch.scales.y.max;   // lock the axis to the full range so sliding never rescales
+  let s = N - win;
+  const set = v => { s = Math.max(0, Math.min(N - win, Math.round(v))); w.style.left = (100 * s / N) + '%'; w.style.width = (100 * win / N) + '%';
+   L[0].textContent = labels[s]; L[1].textContent = labels[s + win - 1]; ch.$off = s;
+   ch.data.labels = labels.slice(s, s + win); ch.data.datasets.forEach((d, i) => d.data = FULL[i].slice(s, s + win)); ch.stop(); ch.update('none'); if (legend) legend(s, s + win); };
+  set(s); draw(); addEventListener('resize', draw);
+  let x0 = null, s0 = 0;
+  box.addEventListener('pointerdown', e => { box.setPointerCapture(e.pointerId); const bw = box.clientWidth / N;
+   if (e.target.closest('.rng-w')) { x0 = e.clientX; s0 = s; box.classList.add('drag'); }
+   else set((e.clientX - box.getBoundingClientRect().left) / bw - win / 2); });
+  box.addEventListener('pointermove', e => { if (x0 == null) return; const ns = Math.round(s0 + (e.clientX - x0) / (box.clientWidth / N)); if (ns !== s) set(ns); });
+  const up = () => { x0 = null; box.classList.remove('drag'); }; box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up); };
+ const sum = (a, i0, i1) => a.slice(i0, i1).reduce((p, v) => p + (v || 0), 0);
+ const charts = [];
+ if (cv) {
+  const html = i => { const dall = X.src.reduce((a, s) => a + X['dl_' + s.k][i], 0);
+   const rows = X.src.filter(s => X['dl_' + s.k][i]).sort((a, b) => X['dl_' + b.k][i] - X['dl_' + a.k][i]);   // Guy, Nov 6: most to least, no 0-download sources
+   let h = `<div class="ctt-h">${X.full[i]} · ${n(dall)} download${dall === 1 ? '' : 's'}</div>`;
+   if (dall) h += '<div class="rtt-bar">' + rows.map(s => `<i style="width:${X['dl_' + s.k][i] / dall * 100}%;background:${s.c}"></i>`).join('') + '</div>';
+   rows.forEach(s => { const d = X['dl_' + s.k][i];
+    h += `<div class="ctt-r"><i style="background:${s.c}"></i>${s.l}: ${n(d)} download${d === 1 ? '' : 's'} (${Math.round(d / dall * 100)}%)</div>`; });
+   if (X.spend[i] != null) h += `<div class="ctt-sep"></div><div class="ctt-r"><i style="background:#C9A227"></i>Google Ads spend: $${X.spend[i].toFixed(2)}` + (X.dl_ads[i] ? ` ($${(X.spend[i] / X.dl_ads[i]).toFixed(2)} per download)` : '') + '</div>';
+   const M = X.meta[i]; if (M && (M.spend || M.clicks || M.installs)) h += `<div class="ctt-r"><i style="background:#1877F2"></i>Meta ads: $${M.spend.toFixed(2)} · ${n(M.clicks)} click${M.clicks === 1 ? '' : 's'} · ${n(M.installs)} install${M.installs === 1 ? '' : 's'} (Meta's count)</div>`;   // Guy, Nov 1
+   return h; };
+  const ch = new Chart(cv, {type: 'bar', data: {labels: X.labels, datasets: X.src.map(s => ({label: s.l, data: X['dl_' + s.k], backgroundColor: s.c, maxBarThickness: 32}))},
+   options: {responsive: true, maintainAspectRatio: false, animation: false, interaction: {mode: 'index', intersect: false},
+    plugins: {legend: {display: false}, tooltip: {enabled: false, external: ({chart, tooltip}) => pop(chart, tooltip, html)}},
+    scales: {x: {stacked: true, grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: 12}}},
+     y: {stacked: true, beginAtZero: true, grid: {color: grid}, ticks: {color: muted, precision: 0, callback: v => v.toLocaleString()}, title: {display: true, text: 'Downloads', color: muted}}}}});
+  charts.push(ch);
+  RANGE(ch, X.labels, X.labels.map((_, i) => X.src.reduce((a, s) => a + X['dl_' + s.k][i], 0)), document.getElementById('rngs'), document.getElementById('rngsl'),
+   (i0, i1) => document.querySelectorAll('#lgs-src .lgn').forEach(b => b.textContent = n(sum(X[b.dataset.k], i0, i1)))); }
+ if (ecv && E.labels.length) {
+  const html = i => { const t = E.ads[i] + E.iap[i];
+   let h = `<div class="ctt-h">${E.full[i]} · ${usd(t)} earned</div>`;
+   if (t) h += `<div class="rtt-bar"><i style="width:${E.ads[i] / t * 100}%;background:#1E9E55"></i><i style="width:${E.iap[i] / t * 100}%;background:#2A78D6"></i></div>`;
+   h += `<div class="ctt-r"><i style="background:#1E9E55"></i>Ads (AdMob): ${usd(E.ads[i])}</div>`;
+   h += `<div class="ctt-r"><i style="background:#2A78D6"></i>Purchases (App Store): ` + (E.posted[i] ? `${usd(E.iap[i])}` + (E.n[i] ? ` · ${E.n[i]} purchase${E.n[i] === 1 ? '' : 's'}` : '') : 'not posted by Apple yet') + '</div>';
+   return h; };
+  const ch = new Chart(ecv, {type: 'bar', data: {labels: E.labels, datasets: [{label: 'Ads (AdMob)', data: E.ads, backgroundColor: '#1E9E55', maxBarThickness: 32}, {label: 'Purchases (App Store)', data: E.iap, backgroundColor: '#2A78D6', maxBarThickness: 32}]},
+   options: {responsive: true, maintainAspectRatio: false, animation: false, interaction: {mode: 'index', intersect: false},
+    plugins: {legend: {display: false}, tooltip: {enabled: false, external: ({chart, tooltip}) => pop(chart, tooltip, html)}},
+    scales: {x: {stacked: true, grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: 12}}},
+     y: {stacked: true, beginAtZero: true, grid: {color: grid}, ticks: {color: muted, callback: v => '$' + v.toFixed(v < 10 ? 2 : 0)}, title: {display: true, text: 'Earned (USD)', color: muted}}}}});
+  charts.push(ch);
+  RANGE(ch, E.labels, E.labels.map((_, i) => E.ads[i] + E.iap[i]), document.getElementById('rnge'), document.getElementById('rngel'),
+   (i0, i1) => document.querySelectorAll('#lgs-earn .lgn').forEach(b => b.textContent = usd(sum(E[b.dataset.k], i0, i1)))); }
+ const hide = () => charts.forEach(ch => { const el = ch.canvas.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); });
+ document.addEventListener('touchstart', e => { if (!charts.some(ch => e.target === ch.canvas)) hide(); }, {passive: true}); }; </script>""".replace("__DATA__", json.dumps(data)).replace("__EDATA__", json.dumps(edata))
+    rng = lambda i: f"<div class='rng' id='{i}' hidden><canvas class='rng-c'></canvas><div class='rng-w'><i></i><i></i></div></div><div class='rng-l' id='{i}l' hidden><span></span><span></span></div>"
+    earn = (f"<h2 class='sh' id='sec-earnday'>Earnings by day</h2><div class='lgs' id='lgs-earn' style='margin-top:6px'>{elegend}</div><div class='chart' style='height:300px'><canvas id='ernc' role='img' aria-label='Earnings per day: AdMob ads and App Store purchases'></canvas></div>{rng('rnge')}") if edays else ""
+    return (f"<h2 class='sh' id='sec-sources'>App Store downloads by source</h2><div class='lgs' id='lgs-src' style='margin-top:6px'>{legend}</div><div class='chart' style='height:300px'><canvas id='srcc' role='img' aria-label='App Store downloads per day by source'></canvas></div>{rng('rngs')}{earn}{js}")
 
 
 def game_section():
