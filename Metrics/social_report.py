@@ -1002,88 +1002,73 @@ def sources_section():
         summ += f"<br><b>Meta ads (FB + IG):</b> ${ms:,.2f} spent, {mc:,} link click{'' if mc == 1 else 's'}, <b>{mi:,}</b> install{'' if mi == 1 else 's'} (Meta's count){mper}"
     else:
         summ += "<br><b>Meta ads (FB + IG):</b> not connected yet (the Meta token needs the ads_read permission)"
-    src = [("ads", "Ads in other apps", "#C9A227"), ("other", "Other", "#A8A8A8"), ("search", "Search", "#12A4A4"), ("browse", "Browse", "#8E6FD8")]
+    src = [("ads", "Ads", "#E8A23A"), ("other", "Other", "#A8A8A8"), ("search", "Search", "#8E6FD8"), ("browse", "Browse", "#E06C9F")]   # Guy, Nov 16: "Ads", orange-yellow ads, purple search, pink browse
     src.sort(key=lambda x: -sum(dlx[d][x[0]] for d in days))   # most to least (bottom of the stack = biggest)
-    sd = lambda d: dt.date.fromisoformat(d).strftime("%-m/%-d")   # Guy, Nov 16: short dates ("11/16") under both bar charts
-    data = {"labels": [sd(d) for d in days], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in days],
-            "spend": [GADS.get(d) for d in days], "meta": [METAADS.get(d) for d in days], "src": [{"k": k, "l": l, "c": c} for k, l, c in src],
-            **{"dl_" + k: [dlx[d][k] for d in days] for k, _, _ in src}}
-    legend = "".join(f"<span class='lg'><svg width='10' height='10'><rect width='10' height='10' rx='2' fill='{c}'/></svg>{l} <b class='lgn' data-k='dl_{k}'>{sum(dlx[d][k] for d in days):,}</b></span>" for k, l, c in src)
-    # Guy, Nov 16: earnings per day as stacked bars, AdMob ads vs App Store purchases (both USD), same scroll bar as the views chart
+    sd = lambda d: dt.date.fromisoformat(d).strftime("%-m/%-d")   # Guy, Nov 16: short dates ("11/16")
+    # Guy, Nov 16: one chart, two bars per day: downloads by source (left bar, left axis) and earnings (right bar, right axis: AdMob ads + App Store purchases, USD)
     today = dt.date.today()
-    edays = [d for d in sorted(MONEY) if (today - dt.timedelta(days=29)).isoformat() <= d <= today.isoformat()]
-    edata = {"labels": [sd(d) for d in edays], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in edays],
-             "ads": [round((MONEY[d] or {}).get("ads") or 0, 2) for d in edays], "iap": [round((MONEY[d] or {}).get("iap") or 0, 2) for d in edays],
-             "n": [(MONEY[d] or {}).get("n") or 0 for d in edays], "posted": [(MONEY[d] or {}).get("iap") is not None for d in edays]}
+    alld = sorted(set(days) | {d for d in MONEY if (today - dt.timedelta(days=29)).isoformat() <= d <= today.isoformat()})[-30:]
+    m = lambda d, k: round(((MONEY.get(d) or {}).get(k) or 0), 2)
+    data = {"labels": [sd(d) for d in alld], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in alld],
+            "spend": [GADS.get(d) for d in alld], "meta": [METAADS.get(d) for d in alld], "src": [{"k": k, "l": l, "c": c} for k, l, c in src],
+            "hasdl": [d in dlx for d in alld],
+            **{"dl_" + k: [(dlx.get(d) or {}).get(k, 0) for d in alld] for k, _, _ in src},
+            "ads": [m(d, "ads") for d in alld], "iap": [m(d, "iap") for d in alld], "n": [(MONEY.get(d) or {}).get("n") or 0 for d in alld],
+            "posted": [(MONEY.get(d) or {}).get("iap") is not None for d in alld]}
     ES = [("ads", "Ads (AdMob)", "#1E9E55"), ("iap", "Purchases (App Store)", "#2A78D6")]
-    elegend = "".join(f"<span class='lg'><svg width='10' height='10'><rect width='10' height='10' rx='2' fill='{c}'/></svg>{l} <b class='lgn' data-k='{k}'>${sum(edata[k]):,.2f}</b></span>" for k, l, c in ES)
-    js = """<script>window.SRCCHART = () => { const X = __DATA__, E = __EDATA__, cv = document.getElementById('srcc'), ecv = document.getElementById('ernc'); if (!window.Chart || (cv && Chart.getChart(cv))) return;   // started by the main chart script (the password page writes this page in after 'load' has fired)
+    sw = lambda c: f"<svg width='10' height='10'><rect width='10' height='10' rx='2' fill='{c}'/></svg>"
+    legend = ("".join(f"<span class='lg'>{sw(c)}{l} <b class='lgn' data-k='dl_{k}'>{sum(data['dl_' + k]):,}</b></span>" for k, l, c in src)
+              + "<br>" + "".join(f"<span class='lg'>{sw(c)}{l} <b class='lgn' data-k='{k}' data-usd='1'>${sum(data[k]):,.2f}</b></span>" for k, l, c in ES))
+    js = """<script>window.SRCCHART = () => { const X = __DATA__, cv = document.getElementById('srcc'); if (!cv || !window.Chart || Chart.getChart(cv)) return;   // started by the main chart script (the password page writes this page in after 'load' has fired)
  const dark = matchMedia('(prefers-color-scheme: dark)').matches, grid = dark ? '#2c2c2a' : '#e1e0d9', muted = '#898781', n = v => (v || 0).toLocaleString(), usd = v => '$' + (v || 0).toFixed(2);
- const pop = (ch, t, html) => { let el = ch.canvas.parentNode.querySelector('.ctt');
+ const html = i => { const dall = X.src.reduce((a, s) => a + X['dl_' + s.k][i], 0), t = X.ads[i] + X.iap[i];
+  const rows = X.src.filter(s => X['dl_' + s.k][i]).sort((a, b) => X['dl_' + b.k][i] - X['dl_' + a.k][i]);   // Guy, Nov 6: most to least, no 0-download sources
+  let h = `<div class="ctt-h">${X.full[i]}</div><div class="ctt-y">${X.hasdl[i] ? n(dall) + ' download' + (dall === 1 ? '' : 's') : 'Downloads not posted by Apple yet'} · ${usd(t)} earned</div>`;
+  if (dall) h += '<div class="rtt-bar">' + rows.map(s => `<i style="width:${X['dl_' + s.k][i] / dall * 100}%;background:${s.c}"></i>`).join('') + '</div>';
+  rows.forEach(s => { const d = X['dl_' + s.k][i]; h += `<div class="ctt-r"><i style="background:${s.c}"></i>${s.l}: ${n(d)} download${d === 1 ? '' : 's'} (${Math.round(d / dall * 100)}%)</div>`; });
+  h += `<div class="ctt-sep"></div><div class="ctt-r"><i style="background:#1E9E55"></i>Ads (AdMob): ${usd(X.ads[i])}</div>`;
+  h += `<div class="ctt-r"><i style="background:#2A78D6"></i>Purchases (App Store): ` + (X.posted[i] ? usd(X.iap[i]) + (X.n[i] ? ` · ${X.n[i]} purchase${X.n[i] === 1 ? '' : 's'}` : '') : 'not posted by Apple yet') + '</div>';
+  if (X.spend[i] != null) h += `<div class="ctt-sep"></div><div class="ctt-r"><i style="background:#E8A23A"></i>Google Ads spend: $${X.spend[i].toFixed(2)}` + (X.dl_ads[i] ? ` ($${(X.spend[i] / X.dl_ads[i]).toFixed(2)} per download)` : '') + '</div>';
+  const M = X.meta[i]; if (M && (M.spend || M.clicks || M.installs)) h += `<div class="ctt-r"><i style="background:#1877F2"></i>Meta ads: $${M.spend.toFixed(2)} · ${n(M.clicks)} click${M.clicks === 1 ? '' : 's'} · ${n(M.installs)} install${M.installs === 1 ? '' : 's'} (Meta's count)</div>`;   // Guy, Nov 1
+  return h; };
+ const tt = ({chart: ch, tooltip: t}) => { let el = ch.canvas.parentNode.querySelector('.ctt');
   if (!el) { el = document.createElement('div'); el.className = 'ctt'; ch.canvas.parentNode.appendChild(el); }
   if (!t.opacity || !t.dataPoints.length) { el.style.opacity = 0; return; }
   el.innerHTML = html(t.dataPoints[0].dataIndex + (ch.$off || 0)); el.style.opacity = 1;
   const W = ch.canvas.parentNode.clientWidth, w = el.offsetWidth, hh = el.offsetHeight;
   let x = t.caretX + 16; if (x + w > W) x = t.caretX - w - 16; if (x < 0) x = Math.max(0, (W - w) / 2);
   el.style.left = x + 'px'; el.style.top = Math.max(0, Math.min(t.caretY - hh / 2, ch.canvas.clientHeight - hh)) + 'px'; };
- const RANGE = (ch, labels, tot, box, lab, legend) => {   // Guy, Nov 16: same drag bar as the views chart (14 days on a computer, 8 on a phone)
-  const N = labels.length, win = matchMedia('(max-width:700px)').matches ? 8 : 14; if (!box || N <= win) return;
+ const ds = X.src.map(s => ({label: s.l, data: X['dl_' + s.k], backgroundColor: s.c, stack: 'dl', yAxisID: 'y', barPercentage: .74, maxBarThickness: 18}))
+  .concat([{label: 'Ads (AdMob)', data: X.ads, backgroundColor: '#1E9E55', stack: 'er', yAxisID: 'y2', barPercentage: 1.1, maxBarThickness: 26}, {label: 'Purchases (App Store)', data: X.iap, backgroundColor: '#2A78D6', stack: 'er', yAxisID: 'y2', barPercentage: 1.1, maxBarThickness: 26}]);
+ const ch = new Chart(cv, {type: 'bar', data: {labels: X.labels, datasets: ds},
+  options: {responsive: true, maintainAspectRatio: false, animation: false, interaction: {mode: 'index', intersect: false}, datasets: {bar: {categoryPercentage: .8, barPercentage: .92}},
+   plugins: {legend: {display: false}, tooltip: {enabled: false, external: tt}},
+   scales: {x: {stacked: true, grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: 12}}},
+    y: {stacked: true, beginAtZero: true, grid: {color: grid}, ticks: {color: muted, precision: 0, callback: v => v.toLocaleString()}, title: {display: true, text: 'Downloads', color: muted}},
+    y2: {stacked: true, beginAtZero: true, position: 'right', grid: {display: false}, ticks: {color: '#1E9E55', callback: v => '$' + v.toFixed(v < 10 ? 2 : 0)}, title: {display: true, text: 'Earned (USD)', color: '#1E9E55'}}}}});
+ const sum = (a, i0, i1) => a.slice(i0, i1).reduce((p, v) => p + (v || 0), 0);
+ const box = document.getElementById('rngs'), lab = document.getElementById('rngsl'), N = X.labels.length, win = matchMedia('(max-width:700px)').matches ? 8 : 14;
+ if (box && N > win) {   // Guy, Nov 16: same drag bar as the views chart (14 days on a computer, 8 on a phone)
   box.hidden = false; lab.hidden = false;
-  const w = box.querySelector('.rng-w'), c2 = box.querySelector('.rng-c'), L = lab.children, mx = Math.max(1e-9, ...tot), FULL = ch.data.datasets.map(d => d.data.slice());
+  const tot = X.labels.map((_, i) => X.src.reduce((a, s) => a + X['dl_' + s.k][i], 0)), w = box.querySelector('.rng-w'), c2 = box.querySelector('.rng-c'), L = lab.children, mx = Math.max(1, ...tot), FULL = ch.data.datasets.map(d => d.data.slice());
   const draw = () => { const r = devicePixelRatio || 1, W = box.clientWidth, H = box.clientHeight; c2.width = W * r; c2.height = H * r; const x = c2.getContext('2d'); x.scale(r, r);
    const bw = W / N; x.fillStyle = dark ? 'rgba(255,255,255,.22)' : 'rgba(0,0,0,.16)'; tot.forEach((v, i) => { const h = Math.max(1, (H - 8) * v / mx); x.fillRect(i * bw + bw * .2, H - 4 - h, bw * .6, h); }); };
-  ch.options.scales.y.max = ch.scales.y.max;   // lock the axis to the full range so sliding never rescales
+  ch.options.scales.y.max = ch.scales.y.max; ch.options.scales.y2.max = ch.scales.y2.max;   // lock both axes to the full range so sliding never rescales
   let s = N - win;
   const set = v => { s = Math.max(0, Math.min(N - win, Math.round(v))); w.style.left = (100 * s / N) + '%'; w.style.width = (100 * win / N) + '%';
-   L[0].textContent = labels[s]; L[1].textContent = labels[s + win - 1]; ch.$off = s;
-   ch.data.labels = labels.slice(s, s + win); ch.data.datasets.forEach((d, i) => d.data = FULL[i].slice(s, s + win)); ch.stop(); ch.update('none'); if (legend) legend(s, s + win); };
+   L[0].textContent = X.labels[s]; L[1].textContent = X.labels[s + win - 1]; ch.$off = s;
+   ch.data.labels = X.labels.slice(s, s + win); ch.data.datasets.forEach((d, i) => d.data = FULL[i].slice(s, s + win)); ch.stop(); ch.update('none');
+   document.querySelectorAll('#lgs-src .lgn').forEach(b => { const v = sum(X[b.dataset.k], s, s + win); b.textContent = b.dataset.usd ? usd(v) : n(v); }); };
   set(s); draw(); addEventListener('resize', draw);
   let x0 = null, s0 = 0;
   box.addEventListener('pointerdown', e => { box.setPointerCapture(e.pointerId); const bw = box.clientWidth / N;
-   if (e.target.closest('.rng-w')) { x0 = e.clientX; s0 = s; box.classList.add('drag'); }
-   else set((e.clientX - box.getBoundingClientRect().left) / bw - win / 2); });
+   if (e.target.closest('.rng-w')) { x0 = e.clientX; s0 = s; box.classList.add('drag'); } else set((e.clientX - box.getBoundingClientRect().left) / bw - win / 2); });
   box.addEventListener('pointermove', e => { if (x0 == null) return; const ns = Math.round(s0 + (e.clientX - x0) / (box.clientWidth / N)); if (ns !== s) set(ns); });
-  const up = () => { x0 = null; box.classList.remove('drag'); }; box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up); };
- const sum = (a, i0, i1) => a.slice(i0, i1).reduce((p, v) => p + (v || 0), 0);
- const charts = [];
- if (cv) {
-  const html = i => { const dall = X.src.reduce((a, s) => a + X['dl_' + s.k][i], 0);
-   const rows = X.src.filter(s => X['dl_' + s.k][i]).sort((a, b) => X['dl_' + b.k][i] - X['dl_' + a.k][i]);   // Guy, Nov 6: most to least, no 0-download sources
-   let h = `<div class="ctt-h">${X.full[i]} · ${n(dall)} download${dall === 1 ? '' : 's'}</div>`;
-   if (dall) h += '<div class="rtt-bar">' + rows.map(s => `<i style="width:${X['dl_' + s.k][i] / dall * 100}%;background:${s.c}"></i>`).join('') + '</div>';
-   rows.forEach(s => { const d = X['dl_' + s.k][i];
-    h += `<div class="ctt-r"><i style="background:${s.c}"></i>${s.l}: ${n(d)} download${d === 1 ? '' : 's'} (${Math.round(d / dall * 100)}%)</div>`; });
-   if (X.spend[i] != null) h += `<div class="ctt-sep"></div><div class="ctt-r"><i style="background:#C9A227"></i>Google Ads spend: $${X.spend[i].toFixed(2)}` + (X.dl_ads[i] ? ` ($${(X.spend[i] / X.dl_ads[i]).toFixed(2)} per download)` : '') + '</div>';
-   const M = X.meta[i]; if (M && (M.spend || M.clicks || M.installs)) h += `<div class="ctt-r"><i style="background:#1877F2"></i>Meta ads: $${M.spend.toFixed(2)} · ${n(M.clicks)} click${M.clicks === 1 ? '' : 's'} · ${n(M.installs)} install${M.installs === 1 ? '' : 's'} (Meta's count)</div>`;   // Guy, Nov 1
-   return h; };
-  const ch = new Chart(cv, {type: 'bar', data: {labels: X.labels, datasets: X.src.map(s => ({label: s.l, data: X['dl_' + s.k], backgroundColor: s.c, maxBarThickness: 32}))},
-   options: {responsive: true, maintainAspectRatio: false, animation: false, interaction: {mode: 'index', intersect: false},
-    plugins: {legend: {display: false}, tooltip: {enabled: false, external: ({chart, tooltip}) => pop(chart, tooltip, html)}},
-    scales: {x: {stacked: true, grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: 12}}},
-     y: {stacked: true, beginAtZero: true, grid: {color: grid}, ticks: {color: muted, precision: 0, callback: v => v.toLocaleString()}, title: {display: true, text: 'Downloads', color: muted}}}}});
-  charts.push(ch);
-  RANGE(ch, X.labels, X.labels.map((_, i) => X.src.reduce((a, s) => a + X['dl_' + s.k][i], 0)), document.getElementById('rngs'), document.getElementById('rngsl'),
-   (i0, i1) => document.querySelectorAll('#lgs-src .lgn').forEach(b => b.textContent = n(sum(X[b.dataset.k], i0, i1)))); }
- if (ecv && E.labels.length) {
-  const html = i => { const t = E.ads[i] + E.iap[i];
-   let h = `<div class="ctt-h">${E.full[i]} · ${usd(t)} earned</div>`;
-   if (t) h += `<div class="rtt-bar"><i style="width:${E.ads[i] / t * 100}%;background:#1E9E55"></i><i style="width:${E.iap[i] / t * 100}%;background:#2A78D6"></i></div>`;
-   h += `<div class="ctt-r"><i style="background:#1E9E55"></i>Ads (AdMob): ${usd(E.ads[i])}</div>`;
-   h += `<div class="ctt-r"><i style="background:#2A78D6"></i>Purchases (App Store): ` + (E.posted[i] ? `${usd(E.iap[i])}` + (E.n[i] ? ` · ${E.n[i]} purchase${E.n[i] === 1 ? '' : 's'}` : '') : 'not posted by Apple yet') + '</div>';
-   return h; };
-  const ch = new Chart(ecv, {type: 'bar', data: {labels: E.labels, datasets: [{label: 'Ads (AdMob)', data: E.ads, backgroundColor: '#1E9E55', maxBarThickness: 32}, {label: 'Purchases (App Store)', data: E.iap, backgroundColor: '#2A78D6', maxBarThickness: 32}]},
-   options: {responsive: true, maintainAspectRatio: false, animation: false, interaction: {mode: 'index', intersect: false},
-    plugins: {legend: {display: false}, tooltip: {enabled: false, external: ({chart, tooltip}) => pop(chart, tooltip, html)}},
-    scales: {x: {stacked: true, grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: 12}}},
-     y: {stacked: true, beginAtZero: true, grid: {color: grid}, ticks: {color: muted, callback: v => '$' + v.toFixed(v < 10 ? 2 : 0)}, title: {display: true, text: 'Earned (USD)', color: muted}}}}});
-  charts.push(ch);
-  RANGE(ch, E.labels, E.labels.map((_, i) => E.ads[i] + E.iap[i]), document.getElementById('rnge'), document.getElementById('rngel'),
-   (i0, i1) => document.querySelectorAll('#lgs-earn .lgn').forEach(b => b.textContent = usd(sum(E[b.dataset.k], i0, i1)))); }
- const hide = () => charts.forEach(ch => { const el = ch.canvas.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); });
- document.addEventListener('touchstart', e => { if (!charts.some(ch => e.target === ch.canvas)) hide(); }, {passive: true}); }; </script>""".replace("__DATA__", json.dumps(data)).replace("__EDATA__", json.dumps(edata))
-    rng = lambda i: f"<div class='rng' id='{i}' hidden><canvas class='rng-c'></canvas><div class='rng-w'><i></i><i></i></div></div><div class='rng-l' id='{i}l' hidden><span></span><span></span></div>"
-    earn = (f"<h2 class='sh' id='sec-earnday'>Earnings by day</h2><div class='lgs' id='lgs-earn' style='margin-top:6px'>{elegend}</div><div class='chart' style='height:300px'><canvas id='ernc' role='img' aria-label='Earnings per day: AdMob ads and App Store purchases'></canvas></div>{rng('rnge')}") if edays else ""
-    return (f"<h2 class='sh' id='sec-sources'>App Store downloads by source</h2><div class='lgs' id='lgs-src' style='margin-top:6px'>{legend}</div><div class='chart' style='height:300px'><canvas id='srcc' role='img' aria-label='App Store downloads per day by source'></canvas></div>{rng('rngs')}{earn}{js}")
+  const up = () => { x0 = null; box.classList.remove('drag'); }; box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up); }
+ const hide = () => { const el = cv.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); };
+ document.addEventListener('touchstart', e => { if (e.target !== cv) hide(); }, {passive: true}); }; </script>""".replace("__DATA__", json.dumps(data))
+    rng = "<div class='rng' id='rngs' hidden><canvas class='rng-c'></canvas><div class='rng-w'><i></i><i></i></div></div><div class='rng-l' id='rngsl' hidden><span></span><span></span></div>"
+    return (f"<h2 class='sh' id='sec-sources'>Downloads and earnings by day</h2><div class='lgs' id='lgs-src' style='margin-top:6px'>{legend}</div><div class='chart' style='height:320px'><canvas id='srcc' role='img' aria-label='Per day: App Store downloads by source (left bar) and earnings, AdMob ads and App Store purchases (right bar)'></canvas></div>{rng}{js}")
 
 
 def game_section():
@@ -1215,8 +1200,7 @@ def game_section():
     return (f"<style>.sh3{{font-size:18px;margin:22px 0 4px}} .gst{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:4px 0 18px}} "
             f".gt{{border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:1px}} .gt b{{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}} "
             f".gt span{{font-size:13px;color:var(--ink2)}} .gt small{{font-size:11px;color:var(--muted);line-height:1.3}} :root{{--gleft:#c9c7bd}} @media (prefers-color-scheme:dark){{:root{{--gleft:#55544f}}}} .gk{{font-size:12px;color:var(--muted);margin-right:12px;white-space:normal}} .gk i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}} @media (max-width:700px){{.gst{{grid-template-columns:1fr 1fr}} .gt b{{font-size:18px}}}}</style>"
-            f"<h2 class='sh' id='sec-game'>Game stats</h2>{stale_note}<p class='sub'>From Firebase (Google Analytics). Active players counts every app version. Everything else comes only from released versions that send game events ({e(', '.join(G['versions']))}), from Nov 1, when 1.3.1 went live. "
-            f"Tiles = last 7 complete days unless noted. Small samples (under {MIN} players) are noted; read them as early signs only.</p>{tiles_html}"
+            f"<h2 class='sh' id='sec-game'>Game stats</h2>{stale_note}<p class='sub'>From Firebase (Google Analytics).</p>{tiles_html}"   # Guy, Nov 16: rest of the note removed
             f"<h3 class='sh3'>How far players get</h3><p class='sub'>Players who reached each level (since Nov 1{few(mp).replace(' (', '; ').rstrip(')')}). Red = players lost before the next level.</p>{legend}{funnel}{rewarded}{winrate}"
             f"<h3 class='sh3'>Players per day</h3><p class='sub'>Active players on all versions each day (from Nov 1, today so far on the right); hover or tap a day for levels, ads, Super Stir / Super Solve and purchases.</p>"
             f"<div class='chart' style='height:260px'><canvas id='gday' role='img' aria-label='Active players per day on all versions'></canvas></div>{js}")
