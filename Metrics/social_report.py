@@ -965,6 +965,30 @@ def week_box(snap, hist, posts, phist, installs, now):
 SLOTS = [("Morning", 5, 11), ("Midday", 11, 14), ("Afternoon", 14, 17), ("Evening", 17, 21), ("Late night", 21, 29)]   # 21:00-04:59
 
 
+HELPERS_JS = """<script>   // Guy, Nov 16: shared chart helpers
+window.TWO = s => { if (typeof s !== 'string' || !/^\\d+\\/\\d+$/.test(s)) return s; const [m, d] = s.split('/').map(Number), t = new Date(), y = t.getFullYear() - (m > t.getMonth() + 1 ? 1 : 0);
+ return [s, '(' + new Date(y, m - 1, d).toLocaleDateString('en-US', {weekday: 'short'}) + ')']; };   // 11/16 with (Mon) below
+window.RANGE = (ch, labels, tot, box, lab, onSet) => {   // drag bar like the views chart: 14 days on a computer, 8 on a phone
+ const N = labels.length, win = matchMedia('(max-width:700px)').matches ? 8 : 14; if (!box || N <= win) return;
+ box.hidden = false; lab.hidden = false; const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+ const w = box.querySelector('.rng-w'), c2 = box.querySelector('.rng-c'), L = lab.children, mx = Math.max(1e-9, ...tot), FULL = ch.data.datasets.map(d => d.data.slice());
+ const draw = () => { const r = devicePixelRatio || 1, W = box.clientWidth, H = box.clientHeight; c2.width = W * r; c2.height = H * r; const x = c2.getContext('2d'); x.scale(r, r);
+  const bw = W / N; x.fillStyle = dark ? 'rgba(255,255,255,.22)' : 'rgba(0,0,0,.16)'; tot.forEach((v, i) => { const h = Math.max(1, (H - 8) * (v || 0) / mx); x.fillRect(i * bw + bw * .2, H - 4 - h, bw * .6, h); }); };
+ Object.keys(ch.scales).forEach(id => { if (id !== 'x') ch.options.scales[id].max = ch.scales[id].max; });   // lock the axes so sliding never rescales
+ let s = N - win;
+ const set = v => { s = Math.max(0, Math.min(N - win, Math.round(v))); w.style.left = (100 * s / N) + '%'; w.style.width = (100 * win / N) + '%';
+  L[0].textContent = labels[s]; L[1].textContent = labels[s + win - 1]; ch.$off = s;
+  ch.data.labels = labels.slice(s, s + win); ch.data.datasets.forEach((d, i) => d.data = FULL[i].slice(s, s + win)); ch.stop(); ch.update('none'); if (onSet) onSet(s, s + win); };
+ set(s); draw(); addEventListener('resize', draw);
+ let x0 = null, s0 = 0;
+ box.addEventListener('pointerdown', e => { box.setPointerCapture(e.pointerId); const bw = box.clientWidth / N;
+  if (e.target.closest('.rng-w')) { x0 = e.clientX; s0 = s; box.classList.add('drag'); } else set((e.clientX - box.getBoundingClientRect().left) / bw - win / 2); });
+ box.addEventListener('pointermove', e => { if (x0 == null) return; const ns = Math.round(s0 + (e.clientX - x0) / (box.clientWidth / N)); if (ns !== s) set(ns); });
+ const up = () => { x0 = null; box.classList.remove('drag'); }; box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up); };
+</script>"""
+RNG = lambda i: f"<div class='rng' id='{i}' hidden><canvas class='rng-c'></canvas><div class='rng-w'><i></i><i></i></div></div><div class='rng-l' id='{i}l' hidden><span></span><span></span></div>"
+
+
 def sources_section():
     """Guy, Nov 6: App Store downloads by where people came from, as a stacked bar chart; hover/tap a day for each source's
     downloads and Google Ads spend. App referrer = inside another app: Google Ads in games plus Meta ads in the Facebook app (Apple detailed report, Nov 10; was mislabeled "Google Ads"); social posts have no App Store
@@ -1043,7 +1067,7 @@ def sources_section():
  const ch = new Chart(cv, {type: 'bar', data: {labels: X.labels, datasets: ds},
   options: {responsive: true, maintainAspectRatio: false, animation: false, interaction: {mode: 'index', intersect: false}, datasets: {bar: {categoryPercentage: .8, barPercentage: .92}},
    plugins: {legend: {display: false}, tooltip: {enabled: false, external: tt}},
-   scales: {x: {stacked: true, grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: 12}}},
+   scales: {x: {stacked: true, grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: 12}, callback(v) { return window.TWO ? TWO(this.getLabelForValue(v)) : this.getLabelForValue(v); }}},
     y: {stacked: true, beginAtZero: true, grid: {color: grid}, ticks: {color: muted, precision: 0, callback: v => v.toLocaleString()}, title: {display: true, text: 'Downloads', color: muted}},
     y2: {stacked: true, beginAtZero: true, position: 'right', grid: {display: false}, ticks: {color: '#1E9E55', callback: v => '$' + v.toFixed(v < 10 ? 2 : 0)}, title: {display: true, text: 'Earned (USD)', color: '#1E9E55'}}}}});
  const sum = (a, i0, i1) => a.slice(i0, i1).reduce((p, v) => p + (v || 0), 0);
@@ -1078,7 +1102,7 @@ def game_section():
     if not G.get("versions"):
         return ""
     today = dt.date.today()
-    days = [(today - dt.timedelta(days=i)).isoformat() for i in range(13, -1, -1)]
+    days = [(today - dt.timedelta(days=i)).isoformat() for i in range(59, -1, -1)]   # Guy, Nov 16: up to 60 days; the drag bar shows 14 (8 on a phone)
     D = {d: G.get("daily", {}).get(d, {}) for d in days}
     days = [d for d in days if d >= "2026-11-01"] or days[-1:]   # 1.3.1 went live Nov 1
     D = {d: D[d] for d in days}
@@ -1121,7 +1145,7 @@ def game_section():
     CMIN = 1   # Guy, Nov 8: show the comparison right away, small samples noted (was 50)
     cn, co = cnew.get("1", 0), cold.get("1", 0)
     show_cmp = cn >= CMIN and co > 0
-    md = lambda d: dt.date.fromisoformat(d).strftime("%b %-d")
+    md = lambda d: dt.date.fromisoformat(d).strftime("%-m/%-d")   # Guy, Nov 16: 11/16 (weekday added under it in the chart)
     wk = lambda d: (dt.date.fromisoformat(d) - dt.timedelta(days=7)).isoformat()
     LV = G.get("lv") or {}   # Guy, Nov 8: win rate per level (1.3.4+ lv_start_N / lv_win_N)
     lvn = sorted(int(k) for k, v in LV.items() if v.get("start"))
@@ -1152,16 +1176,16 @@ def game_section():
  const tip = f => ({chart: ch, tooltip: t}) => { let el = ch.canvas.parentNode.querySelector('.ctt');
   if (!el) { el = document.createElement('div'); el.className = 'ctt'; ch.canvas.parentNode.appendChild(el); }
   if (!t.opacity || !t.dataPoints.length) { el.style.opacity = 0; return; }
-  el.innerHTML = f(t.dataPoints[0].dataIndex); el.style.opacity = 1;
+  el.innerHTML = f(t.dataPoints[0].dataIndex + (ch.$off || 0)); el.style.opacity = 1;
   const W = ch.canvas.parentNode.clientWidth, w = el.offsetWidth, hh = el.offsetHeight;
   let x = t.caretX + 16; if (x + w > W) x = t.caretX - w - 16; if (x < 0) x = Math.max(0, (W - w) / 2);
   el.style.left = x + 'px'; el.style.top = Math.max(0, Math.min(t.caretY - hh / 2, ch.canvas.clientHeight - hh)) + 'px'; };
  const bar = (cv, labels, data, color, ytitle, f) => { if (!cv || Chart.getChart(cv)) return;
   const ch = new Chart(cv, {type: 'bar', data: {labels, datasets: [{data, backgroundColor: color, borderRadius: 4, borderSkipped: 'start', maxBarThickness: 34}]},
    options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false}, plugins: {legend: {display: false}, tooltip: {enabled: false, external: tip(f)}},
-    scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: 12}}},
+    scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: 12}, callback(v) { return window.TWO ? TWO(this.getLabelForValue(v)) : this.getLabelForValue(v); }}},
      y: {beginAtZero: true, grid: {color: grid}, ticks: {color: muted, precision: 0}, title: {display: true, text: ytitle, color: muted}}}}});
-  document.addEventListener('touchstart', e => { if (e.target !== cv) { const el = cv.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); } }, {passive: true}); };
+  document.addEventListener('touchstart', e => { if (e.target !== cv) { const el = cv.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); } }, {passive: true}); return ch; };
  const pctOf = i => Math.round(X.reach[i] / X.mp * 100), lbl = s => s > 10 ? s + '+' : String(s), has = X.playing.length > 0, leftAt = i => X.reach[i] - (X.playing[i] || 0);
  const range = i => { const a = X.steps[i], b = X.steps[i + 1]; return b === undefined ? `level ${a}+` : b === a + 1 ? `level ${a}` : `levels ${a}–${b - 1}`; };
  const gf = document.getElementById('gfun');
@@ -1183,7 +1207,7 @@ def game_section():
   const line = (label, data, color, dash) => ({label, data, borderColor: color, backgroundColor: color, borderDash: dash, borderWidth: 2, pointRadius: 3, tension: 0.2, spanGaps: true});
   new Chart(gr, {type: 'line', data: {labels: X.labels, datasets: [line('Rewarded videos', X.rwd, '#12A4A4', []), line('Same day, week before', X.rwp, muted, [5, 4])]},
    options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false}, plugins: {legend: {display: true, labels: {color: muted, boxWidth: 18, boxHeight: 2}}, tooltip: {enabled: false, external: tip(f)}},
-    scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: innerWidth < 500 ? 9 : 11}}, title: {display: true, text: 'Day', color: muted}},
+    scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: innerWidth < 500 ? 9 : 11}, callback(v) { return window.TWO ? TWO(this.getLabelForValue(v)) : this.getLabelForValue(v); }}, title: {display: true, text: 'Day', color: muted}},
      y: {beginAtZero: true, grid: {color: grid}, ticks: {color: muted, precision: 0}, title: {display: true, text: 'Rewarded videos', color: muted}}}}}); }
  const gl = document.getElementById('glv');
  if (gl && !Chart.getChart(gl) && X.lvn.length) { const r = X.lvn.map((k, i) => X.lvs[i] ? Math.round(X.lvw[i] / X.lvs[i] * 100) : 0), g1 = k => k === 1, rr = r.filter((v, i) => !g1(X.lvn[i])), hard = [...rr].sort((a, b) => a - b)[Math.min(2, rr.length - 1)];   // Guy, Nov 12: level 1 is guided, not hard; players who don't finish it left the game
@@ -1193,9 +1217,10 @@ def game_section():
     scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: false, font: {size: innerWidth < 500 ? 9 : 11}}, title: {display: true, text: 'Level', color: muted}},
      y: {beginAtZero: true, max: 100, grid: {color: grid}, ticks: {color: muted, callback: v => v + '%'}, title: {display: true, text: 'Win rate', color: muted}}}}});
   document.addEventListener('touchstart', e => { if (e.target !== gl) { const el = gl.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); } }, {passive: true}); }
- bar(document.getElementById('gday'), X.labels, X.players, '#8E6FD8', 'Players', i => `<div class="ctt-h">${X.full[i]} · ${pl(X.players[i], 'player')}</div>`
+ const gdc = bar(document.getElementById('gday'), X.labels, X.players, '#8E6FD8', 'Players', i => `<div class="ctt-h">${X.full[i]} · ${pl(X.players[i], 'player')}</div>`
   + `<div class="ctt-r">${n(X.newer[i])} on 1.3.1+; the numbers below are theirs</div><div class="ctt-r">${pl(X.level_up[i], 'new level')} beaten · ${pl(X.level_end[i], 'level attempt')}</div><div class="ctt-r">${pl(X.ad_shown[i], 'ad')}` + (X.newer[i] ? ` (${(X.ad_shown[i] / X.newer[i]).toFixed(1)} per player)` : '') + '</div>'
-  + `<div class="ctt-r">${n(X.super_stir[i])} Super Stir · ${n(X.super_solve[i])} Super Solve · ${pl(X.purchase_ok[i], 'purchase')}</div>`); }; </script>""".replace("__DATA__", json.dumps(data))
+  + `<div class="ctt-r">${n(X.super_stir[i])} Super Stir · ${n(X.super_solve[i])} Super Solve · ${pl(X.purchase_ok[i], 'purchase')}</div>`);
+ if (gdc && window.RANGE) RANGE(gdc, X.labels, X.players, document.getElementById('rngg'), document.getElementById('rnggl')); }; </script>""".replace("__DATA__", json.dumps(data))
     stale_note = f"<p class='sub' style='color:#C0392B'>Google Analytics didn't answer this run; showing the last numbers from {e(GAME['_stale'])}.</p>" if GAME.get("_stale") else ""
     return (f"<style>.sh3{{font-size:18px;margin:22px 0 4px}} .gst{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:4px 0 18px}} "
             f".gt{{border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:1px}} .gt b{{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}} "
@@ -1203,7 +1228,7 @@ def game_section():
             f"<h2 class='sh' id='sec-game'>Game stats</h2>{stale_note}<p class='sub'>From Firebase (Google Analytics).</p>{tiles_html}"   # Guy, Nov 16: rest of the note removed
             f"<h3 class='sh3'>How far players get</h3><p class='sub'>Players who reached each level (since Nov 1{few(mp).replace(' (', '; ').rstrip(')')}). Red = players lost before the next level.</p>{legend}{funnel}{rewarded}{winrate}"
             f"<h3 class='sh3'>Players per day</h3><p class='sub'>Active players on all versions each day (from Nov 1, today so far on the right); hover or tap a day for levels, ads, Super Stir / Super Solve and purchases.</p>"
-            f"<div class='chart' style='height:260px'><canvas id='gday' role='img' aria-label='Active players per day on all versions'></canvas></div>{js}")
+            f"<div class='chart' style='height:260px'><canvas id='gday' role='img' aria-label='Active players per day on all versions'></canvas></div>{RNG('rngg')}{js}")
 
 
 def time_section(posts, now):
@@ -1412,7 +1437,7 @@ def earn_html(money_daily):
             f"<script>const EM = {json.dumps(em, sort_keys=True)};{EARN_JS}</script>")
 
 
-def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None, old=None, dry=False, posts_html="", week_html="", installs=None, today=None, day_base=None, money=None, money_daily=None, est=None):
+def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist=(), stale=None, day=None, old=None, dry=False, posts_html="", src_html="", week_html="", installs=None, today=None, day_base=None, money=None, money_daily=None, est=None):
     e = html.escape
     cols = [{"id": "label", "label": stamp}] + [{"id": p, "label": NAME[p]} for p in PLAT] + [
         {"id": "total", "label": "Total"}, {"id": "best", "label": "Best for ads"}]   # Reddit column paused (Guy, Oct 22)
@@ -1642,7 +1667,7 @@ body.editing #g{{display:none}} body:not(.editing) .tw{{display:none}} #m{{displ
 <div class="bar"><button id="refresh" class="b red" aria-label="Refresh"><span class="nf">Refresh</span><span class="ns"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg></span></button><a class="b gray jump" href="#sec-sources"><span class="nf">App Store Sources</span><span class="ns">Sources</span></a><a class="b gray jump" href="#sec-game"><span class="nf">Game Stats</span><span class="ns">Game</span></a><a class="b gray jump" href="#sec-videos">Videos</a><a class="b gray jump" href="#sec-history">History</a><button id="edit" class="b blue">Edit Layout</button>
 <span id="tools" hidden><select id="addc"></select><select id="addr"></select><button id="cancel" class="b gray">Cancel</button><button id="reset" class="b gray">Reset Layout</button></span>
 <span id="msg" class="note"></span></div>
-{day_html}<h2 class="sh" style="margin-top:4px">Views gained per day</h2>
+{HELPERS_JS}{day_html}{src_html}<h2 class="sh" style="margin-top:4px">Views gained per day</h2>
 <div class="lgs" style="margin-top:0">{legend}</div>
 <div class="chart"><canvas id="c" role="img" aria-label="Views gained per day per platform"></canvas></div>
 <div class="rng" id="rng" hidden><canvas class="rng-c"></canvas><div class="rng-w"><i></i><i></i></div></div><div class="rng-l" id="rngl" hidden><span></span><span></span></div>
@@ -1946,7 +1971,7 @@ const YDL = {{id:'ysame', afterDatasetsDraw(ch) {{   // Guy, Oct 29: medium pale
    labelColor: c => ({{borderColor:'rgba(0,0,0,0)', backgroundColor: c.dataset.type === 'line' ? c.dataset.borderColor : c.dataset.backgroundColor, borderWidth:1, borderRadius:2}}),
    title: it => {{ const t = it.filter(c => c.dataset.type !== 'line' && c.dataset.stack !== 's').reduce((s, c) => s + (c.parsed.y || 0), 0); return it[0].label + ' · ' + sg(t) + ' views'; }},
    label: c => c.dataset.stack === 's' ? 'Google Ads spend: $' + (c.parsed.y || 0).toFixed(2) : c.dataset.label === 'Earned' ? 'Earned: $' + c.parsed.y.toFixed(2) + (EP.has(c.dataIndex + O.v) ? ' (Ads only)' : '') + VSP(D.earned, c.dataIndex + O.v) : c.dataset.type === 'line' ? 'Installs: ' + (EST.has(c.dataIndex + O.v) ? '~' : '') + fmt(c.parsed.y) + (EST.has(c.dataIndex + O.v) ? ' (estimate)' : '') + VSP(D.installs, c.dataIndex + O.v) : c.dataset.label + ': ' + sg(c.parsed.y) }}}}}},
-  scales:{{x:{{stacked:true, grid:{{display:false}}, ticks:{{color:muted, maxRotation:0, autoSkip:false, font:{{size:12}}, callback(v) {{ return this.getLabelForValue(v).split(' ')[0]; }}}}}}, y:{{stacked:true, beginAtZero:true, min:0, grid:{{color:grid}}, ticks:{{color:muted, callback:v => v.toLocaleString()}}, title:{{display:true, text:'Views gained', color:muted}}}},
+  scales:{{x:{{stacked:true, grid:{{display:false}}, ticks:{{color:muted, maxRotation:0, autoSkip:false, font:{{size:12}}, callback(v) {{ return TWO(this.getLabelForValue(v).split(' ')[0]); }}}}}}, y:{{stacked:true, beginAtZero:true, min:0, grid:{{color:grid}}, ticks:{{color:muted, callback:v => v.toLocaleString()}}, title:{{display:true, text:'Views gained', color:muted}}}},
    ...(D.installs ? {{y2:{{position:'right', beginAtZero:true, grid:{{display:false}}, ticks:{{color:'#7B4FD6', precision:0}}, title:{{display:true, text:'Installs', color:'#7B4FD6'}}}}}} : {{}}),
    ...(D.earned ? {{y3:{{display:false, beginAtZero:true}}}} : {{}}),
    ...(D.spend && !D.installs ? {{y4:{{display:false, beginAtZero:true, stacked:false}}}} : {{}})}}}}}}); 
@@ -2084,7 +2109,8 @@ def main():
             old = write_html(day["since"].strftime("%b %-d, %Y · %-I:%M %p"), build_rows(bsnap, bprev, rd), rd, bsnap, bprev,
                              blabels, bser, "history file", [], (), None, None, None, dry=True)
     phist = json.load(open(POSTS_HIST)) if os.path.exists(POSTS_HIST) else []
-    posts_html = sources_section() + game_section() + posts_section(POSTS, phist, now)   # Guy, Oct 29: App Store downloads by source first
+    src_html = sources_section()   # Guy, Nov 16: downloads + earnings chart at the top, above the views chart
+    posts_html = game_section() + posts_section(POSTS, phist, now)
     if complete and POSTS:
         phist.append({"checked_at": now.strftime("%Y-%m-%d %H:%M"), "posts": {**CARRY, **{r["id"]: r["views"] for r in POSTS}}})
         json.dump(phist, open(POSTS_HIST, "w"))
@@ -2093,7 +2119,7 @@ def main():
         if r["label"] == "Top post views":
             r["olds"] = {p: ((base or {}).get(p) or {}).get("top_views") for p in PLAT}
     week_html = week_box(snap, before, POSTS, phist[:-1] if (complete and POSTS) else phist, INSTALLS, now)
-    write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist, stale, day, old, posts_html=posts_html,
+    write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist, stale, day, old, posts_html=posts_html, src_html=src_html,
                week_html=week_html, installs=dict(INSTALLS) or None, today=today,
                day_base=base,
                money=money_bits(dict(MONEY), now), money_daily=dict(MONEY), est=dl_estimate(dict(INSTALLS), dict(RCNEW), now))
