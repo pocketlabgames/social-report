@@ -35,6 +35,7 @@ CARRY = {}   # post id -> last known views, for posts a site stopped returning (
 YSAME = None   # Guy, Oct 29: views gained yesterday by this time of day (gray line left of today's bar)
 INSTALLS = {}   # {date: first downloads} from App Store Connect (filled by fetch(); empty if the key is missing)
 REVIEWS = {}    # {app_id, n, avg, top, reviews} App Store star ratings + written reviews (asc_reviews_lite; Guy, Oct 30)
+CFIRST = {}     # {country code: day of its first App Store download} (Guy, Nov 16: "New countries" list)
 COUNTRIES = {}  # {country code: first downloads since launch} from App Store Connect (asc_lite; Guy, Oct 29)
 MONEY = {}      # {date: {"ads": usd, "iap": usd}} (filled by fetch(); empty if keys are missing)
 ASCR = {}       # App Store Connect app numbers for the Retention card (asc_ret_lite; Guy, Oct 26)
@@ -107,7 +108,7 @@ def fetch():
                     return {}, f"{m.__name__.split('.')[-1]} (3 tries): {msg}"[:200]
                 time.sleep(10 * attempt)
 
-    INSTALLS.clear(); COUNTRIES.clear(); REVIEWS.clear(); MONEY.clear(); RCNEW.clear(); GADS.clear(); METAADS.clear(); RET.clear(); ASCR.clear(); GAME.clear()
+    INSTALLS.clear(); COUNTRIES.clear(); CFIRST.clear(); REVIEWS.clear(); MONEY.clear(); RCNEW.clear(); GADS.clear(); METAADS.clear(); RET.clear(); ASCR.clear(); GAME.clear()
     srcs = [youtube, meta, tiktok] + ([asc_lite] if asc_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")) else [])
     if money_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")) and os.path.exists(os.path.join(KEYS, "admob-token.json")):
         srcs.append(money_lite)
@@ -138,6 +139,8 @@ def fetch():
             if "ASC Countries Lite" in got:
                 for r in got.pop("ASC Countries Lite").itertuples():
                     COUNTRIES[r.country] = COUNTRIES.get(r.country, 0) + int(r.installs)
+                    if int(r.installs) > 0 and (r.country not in CFIRST or str(r.date) < CFIRST[r.country]):
+                        CFIRST[r.country] = str(r.date)
             if "GA4 Retention Lite" in got:
                 r0 = got.pop("GA4 Retention Lite").iloc[0].to_dict()
                 RET.update({k: (None if pd.isna(v) else v) for k, v in r0.items()})
@@ -1329,6 +1332,8 @@ MA504F DZ012F TN788F LY434F EG818F EH732F DJ262F NG566F GH288F CI384F SN686F ML4
 PG598O AU036O NZ554O FJ242O SB090O VU548O NC540O PF258O WS882O TO776O KI296O FM583O MH584O PW585O NR520O TV798O GU316O MP580O AS016O CK184O NU570O WF876O NF574O"""
 
 CMAP_CSS = """
+.cmnt{width:100%;border-collapse:collapse;margin:6px 0 16px} .cmnt td{padding:8px 6px;border-bottom:1px solid var(--line);font-size:15px} .cmnt td small{color:var(--muted);font-size:12px;margin-left:4px}
+.cmnt td.cmnf{width:34px;font-size:24px;line-height:1;text-align:left} .cmnt td.cmnm{text-align:left;width:auto} .cmnt td.cmnn{text-align:right;font-weight:600;font-variant-numeric:tabular-nums} .cmne{color:var(--muted);font-size:14px;margin:6px 0 16px}
 .cclick{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
 .cmo{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.45);display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 16px}
 .cmo[hidden]{display:none}
@@ -1366,6 +1371,11 @@ CMAP_JS = """
   const LO = [41, 96, 214], HI = [231, 117, 35];   // same blue + orange as the legend
   const heat = v => { const k = max <= 1 ? 1 : t(v); return `rgb(${LO.map((c, i) => Math.round(c + (HI[i] - c) * k)).join(', ')})`; };
   const fmt = n => n.toLocaleString();
+  // Guy, Nov 16: new countries (first download in the last 7 days): flag on the left, downloads on the right
+  const flag = c => /^[A-Z]{2}$/.test(c) ? String.fromCodePoint(...[...c].map(ch => 127397 + ch.charCodeAt(0))) : '🏳️';
+  const md = d => { const [, m, dd] = d.split('-').map(Number); return m + '/' + dd; };
+  document.getElementById('cmnew').innerHTML = `<div class="cmreg"><span class="cmrh">New countries <small>first download in the last 7 days · ${CM_NEW.length}</small></span>`
+   + (CM_NEW.length ? `<table class="cmnt">${CM_NEW.map(([c, n, d]) => `<tr><td class="cmnf">${flag(c)}</td><td class="cmnm">${nm(c)} <small>${md(d)}</small></td><td class="cmnn">${fmt(n)}</td></tr>`).join('')}</table>` : '<p class="cmne">None in the last 7 days.</p>') + '</div>';
   // list by region (most downloads first), countries most to least
   const by = {}; Object.entries(CM).forEach(([c, n]) => { const r = (G[c] || {}).r || '?'; (by[r] = by[r] || []).push([c, n]); });
   const regs = Object.entries(by).map(([r, l]) => [r, l.sort((a, b) => b[1] - a[1] || nm(a[0]).localeCompare(nm(b[0]))), l.reduce((a, x) => a + x[1], 0)]).sort((a, b) => b[2] - a[2]);
@@ -1414,13 +1424,15 @@ def cmap_html():
         return ""
     tot = sum(COUNTRIES.values())
     lo = "rgb(41, 96, 214)"; hi = "rgb(231, 117, 35)"
+    since = (dt.date.today() - dt.timedelta(days=6)).isoformat()   # Guy, Nov 16: countries whose first download came in the last 7 days, newest first
+    new = [[c, COUNTRIES.get(c, 0), d] for c, d in sorted(CFIRST.items(), key=lambda x: (x[1], COUNTRIES.get(x[0], 0)), reverse=True) if d >= since]
     return (f"<style>{CMAP_CSS}</style>"
             f"<div class='cmo' id='cmap' hidden><div class='cmc'><button class='cmx' id='cmx' aria-label='Close'>×</button>"
             f"<div class='cmh'><h2>{len(COUNTRIES):,} countries</h2><small>{tot:,} App Store first downloads since launch</small></div>"
             f"<svg id='cmsvg' viewBox='0 0 960 470' role='img' aria-label='World map of downloads'></svg>"
             f"<div class='cmleg'>1<i style='background:linear-gradient(90deg,{lo},{hi})'></i>{max(COUNTRIES.values()):,} downloads</div>"
-            f"<div id='cmlist'></div></div></div><div class='cmtt' id='cmtt' hidden></div>"
-            f"<script>const CM = {json.dumps(COUNTRIES, sort_keys=True)}; const CM_GEO = {json.dumps(GEO)};{CMAP_JS}</script>")
+            f"<div id='cmnew'></div><div id='cmlist'></div></div></div><div class='cmtt' id='cmtt' hidden></div>"
+            f"<script>const CM = {json.dumps(COUNTRIES, sort_keys=True)}; const CM_NEW = {json.dumps(new)}; const CM_GEO = {json.dumps(GEO)};{CMAP_JS}</script>")
 
 
 EARN_CSS = """
