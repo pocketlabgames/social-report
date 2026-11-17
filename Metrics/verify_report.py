@@ -288,6 +288,25 @@ def _check_social_split(C, page):
         bad += X["dl_search"][i] != want
     C.same("Social (est.) days split wrong", bad, 0, 0)
 
+def _check_search_chart(C, page):
+    """Guy, Nov 17: App Store search chart: actual times shown match the saved search history, and the projected next Sunday
+    is recomputed independently (same weekday last week x last week's growth, Mon-Sat and Sunday separately, clamped 1-3x)."""
+    m = re.search(r"window\.SRCHCHART = \(\) => \{ const X = (\{.*?\}), cv = ", page, re.S)
+    if not m:
+        C.fails.append("App Store search check: chart data not found"); return
+    X = json.loads(m.group(1))
+    SS = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "search-split-cache.json")))
+    imp = {d: v["imp"] for d, v in SS.items() if v.get("imp")}
+    days = sorted(imp)[-60:]
+    C.same("Search days with wrong times shown", sum(a != b for a, b in zip(X["imp"][:X["n0"]], [imp[d] for d in days])) + abs(X["n0"] - len(days)), 0, 0)
+    D = dt.date.fromisoformat; last = days[-1]
+    w = lambda k, sun: sum(imp.get((D(last) - dt.timedelta(days=i + k)).isoformat(), 0) for i in range(7) if ((D(last) - dt.timedelta(days=i + k)).weekday() == 6) == sun)
+    f = lambda sun: max(1.0, min(w(0, sun) / w(7, sun), 3.0)) if w(7, sun) else 1.0
+    end = D(last) + dt.timedelta(days=(6 - D(last).weekday()) or 7)
+    b = imp.get((end - dt.timedelta(days=7)).isoformat(), 0)
+    C.same("Search projected Sunday (middle)", X["mid"][-1], round(b * (1 + f(True)) / 2), 0)
+    C.same("Search projected Sunday (high)", X["hi"][-1], round(b * f(True)), 0)
+
 def _check_views(C, page, snap, prev, stale, errors, plats):
     C.true("Every source pulled", not errors, "; ".join(errors)[:300])
     C.true("No site showing old numbers", not stale, ", ".join(stale))
@@ -305,7 +324,7 @@ def run(html_path, keys, G, snap, prev, stale, errors, plats, today=None):
     page = open(html_path, encoding="utf-8").read()
     C = Checks()
     for name, step in (("Views", lambda: _check_views(C, page, snap, prev, stale, errors, plats)), ("App Store, downloads and money", lambda: C.__setattr__("on_sale", _check_store(C, page, keys, today))),
-                       ("Game stats", lambda: _check_game(C, page, keys, today, G, C.on_sale)), ("Social (est.)", lambda: _check_social_split(C, page))):
+                       ("Game stats", lambda: _check_game(C, page, keys, today, G, C.on_sale)), ("Social (est.)", lambda: _check_social_split(C, page)), ("App Store search", lambda: _check_search_chart(C, page))):
         try:
             step()
         except Exception as e:

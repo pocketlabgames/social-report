@@ -1149,6 +1149,77 @@ def sources_section():
     return (f"<h2 class='sh' id='sec-sources'>Downloads and earnings by day</h2><div class='lgs' id='lgs-src' style='margin-top:6px'>{legend}</div><div class='chart' style='height:320px'><canvas id='srcc' role='img' aria-label='Per day: App Store downloads by source (left bar) and earnings, AdMob ads and App Store purchases (right bar)'></canvas></div>{rng}{js}")
 
 
+def search_section():
+    """Guy, Nov 17: App Store search, times shown (gray dotted, light gray fill, left axis) vs downloads from search
+    (solid blue, light blue fill, right axis), with a projection to the next Sunday. Projection: each day = the same weekday
+    last week; low = no growth, high = last week's growth (Mon-Sat and Sunday grown separately), line = halfway;
+    downloads = times shown x last 7 days' download rate."""
+    SS = json.load(open(SSPLIT)) if os.path.exists(SSPLIT) else {}
+    imp = {d: v["imp"] for d, v in SS.items() if v.get("imp")}
+    if len(imp) < 15:
+        return ""
+    dl = {d: v.get("dl", 0) for d, v in SS.items() if v.get("imp")}
+    for d, r in ASCSRC.items():   # days Apple has downloads for but no search impressions yet (e.g. yesterday)
+        if d not in dl and any(k.startswith("dl_") for k in r):
+            dl[d] = r.get("dl_search", 0)
+    D = lambda x: dt.date.fromisoformat(x)
+    last = max(imp)
+    day = lambda d, k: (D(d) + dt.timedelta(days=k)).isoformat()
+    wk1 = [day(last, -i) for i in range(7)]; wk0 = [day(last, -i - 7) for i in range(7)]
+    g = lambda days, sun: sum(imp.get(d, 0) for d in days if (D(d).weekday() == 6) == sun)
+    gw = (g(wk1, False) / g(wk0, False)) if g(wk0, False) else 1.0
+    gs = (g(wk1, True) / g(wk0, True)) if g(wk0, True) else 1.0
+    gw, gs = max(1.0, min(gw, 3.0)), max(1.0, min(gs, 3.0))
+    rate = sum(dl.get(d, 0) for d in wk1) / max(1, sum(imp.get(d, 0) for d in wk1))
+    end = D(last) + dt.timedelta(days=(6 - D(last).weekday()) or 7)   # through the next Sunday
+    proj = []
+    x = D(last) + dt.timedelta(days=1)
+    while x <= end:
+        b = imp.get((x - dt.timedelta(days=7)).isoformat(), 0); f = gs if x.weekday() == 6 else gw
+        proj.append((x.isoformat(), round(b), round(b * (1 + f) / 2), round(b * f)))
+        x += dt.timedelta(days=1)
+    days = sorted(imp)[-60:] + [p[0] for p in proj]
+    n0 = len(days) - len(proj)
+    sd = lambda d: D(d).strftime("%-m/%-d")
+    pad = lambda: [None] * (n0 - 1)
+    data = {"labels": [sd(d) for d in days], "full": [D(d).strftime("%a %b %-d") for d in days],
+            "imp": [imp.get(d) for d in days[:n0]] + [None] * len(proj),
+            "dl": [dl.get(d) for d in days],
+            "lo": pad() + [imp[last]] + [p[1] for p in proj], "mid": pad() + [imp[last]] + [p[2] for p in proj], "hi": pad() + [imp[last]] + [p[3] for p in proj],
+            "dlo": pad() + [dl.get(last, 0)] + [round(p[1] * rate) for p in proj], "dmid": pad() + [dl.get(last, 0)] + [round(p[2] * rate) for p in proj],
+            "dhi": pad() + [dl.get(last, 0)] + [round(p[3] * rate) for p in proj], "n0": n0}
+    P = proj[-1]
+    note = (f"Projected {D(P[0]).strftime('%a %-m/%-d')}: about <b>{P[2]:,}</b> times shown ({P[1]:,}-{P[3]:,}) and "
+            f"<b>{round(P[2] * rate):,}</b> downloads ({round(P[1] * rate):,}-{round(P[3] * rate):,}).")
+    js = """<script>window.SRCHCHART = () => { const X = __DATA__, cv = document.getElementById('srchc'); if (!cv || !window.Chart || Chart.getChart(cv)) return;
+ const dark = matchMedia('(prefers-color-scheme: dark)').matches, grid = dark ? '#2c2c2a' : '#e1e0d9', muted = '#898781';
+ const L = (o) => Object.assign({pointRadius: 0, pointHoverRadius: 3, tension: .2, spanGaps: false}, o);
+ const ds = [
+  L({label: 'Times shown', data: X.imp, yAxisID: 'y', borderColor: '#888780', borderDash: [2, 3], borderWidth: 2, backgroundColor: dark ? 'rgba(180,178,169,.15)' : 'rgba(180,178,169,.25)', fill: true}),
+  L({label: 'hi', data: X.hi, yAxisID: 'y', borderWidth: 0, fill: false}),
+  L({label: 'lo', data: X.lo, yAxisID: 'y', borderWidth: 0, backgroundColor: 'rgba(136,135,128,.15)', fill: '-1'}),
+  L({label: 'Times shown (projected)', data: X.mid, yAxisID: 'y', borderColor: '#888780', borderDash: [6, 4], borderWidth: 1.5, fill: false}),
+  L({label: 'Downloads', data: X.dl, yAxisID: 'y2', borderColor: '#2a78d6', borderWidth: 2, backgroundColor: 'rgba(42,120,214,.15)', fill: true}),
+  L({label: 'dhi', data: X.dhi, yAxisID: 'y2', borderWidth: 0, fill: false}),
+  L({label: 'dlo', data: X.dlo, yAxisID: 'y2', borderWidth: 0, backgroundColor: 'rgba(42,120,214,.12)', fill: '-1'}),
+  L({label: 'Downloads (projected)', data: X.dmid, yAxisID: 'y2', borderColor: '#2a78d6', borderDash: [6, 4], borderWidth: 1.5, fill: false})];
+ const ch = new Chart(cv, {type: 'line', data: {labels: X.labels, datasets: ds},
+  options: {responsive: true, maintainAspectRatio: false, animation: false, interaction: {mode: 'index', intersect: false},
+   plugins: {legend: {display: false}, tooltip: {filter: i => i.parsed.y != null && !/^d?(hi|lo)$/.test(i.dataset.label) && !(i.dataset.label.includes('projected') && i.dataIndex + (ch.$off || 0) < X.n0),
+     callbacks: {title: t => t.length ? X.full[t[0].dataIndex + (ch.$off || 0)] : '', label: c => c.dataset.label + ': ' + Math.round(c.parsed.y).toLocaleString()}}},
+   scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: 12}, callback(v) { return window.TWO ? TWO(this.getLabelForValue(v)) : this.getLabelForValue(v); }}},
+    y: {beginAtZero: true, grid: {color: grid}, ticks: {color: muted, precision: 0, callback: v => Math.round(v).toLocaleString()}, title: {display: true, text: 'Times shown', color: muted}},
+    y2: {beginAtZero: true, position: 'right', grid: {display: false}, ticks: {color: '#2a78d6', precision: 0}, title: {display: true, text: 'Downloads', color: '#2a78d6'}}}}});
+ if (window.RANGE) RANGE(ch, X.labels, X.labels.map((_, i) => X.imp[i] != null ? X.imp[i] : X.mid[i]), document.getElementById('rngh'), document.getElementById('rnghl')); }; </script>""".replace("__DATA__", json.dumps(data))
+    sw = lambda st: f"<svg width='16' height='10'><line x1='0' y1='5' x2='16' y2='5' stroke-width='2' {st}/></svg>"
+    s1, s2, s3 = sw("stroke='#888780' stroke-dasharray='2 3'"), sw("stroke='#2a78d6'"), sw("stroke='#2a78d6' stroke-dasharray='6 4' opacity='.7'")
+    legend = (f"<span class='lg'>{s1}Times shown in search (left)</span><span class='lg'>{s2}Downloads from search (right)</span>"
+              f"<span class='lg'>{s3}Projected (shaded = range)</span>")
+    return (f"<h2 class='sh' id='sec-search'>App Store search</h2><div class='lgs' style='margin-top:6px'>{legend}</div>"
+            f"<div class='chart' style='height:300px'><canvas id='srchc' role='img' aria-label='App Store search: times shown and downloads per day, with a projection to next Sunday'></canvas></div>{RNG('rngh')}"
+            f"<p class='sub' style='margin:4px 0 14px'>{note}</p>{js}")
+
+
 def game_section():
     """Guy, Nov 2: game stats from Firebase / GA4 (builds 1.3.1+ only): players, furthest level, win rate, ads, Super Stir /
     Super Solve and purchases, with a furthest-level funnel (where players stop) and players per day."""
@@ -2109,6 +2180,7 @@ function rangeSlider(chart, D, O) {{   // Guy, Oct 27: drag the blue window to l
  const up = () => {{ x0 = null; box.classList.remove('drag'); }}; box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up); }}
 mk(document.getElementById('c'), D);
 if (window.SRCCHART) SRCCHART();
+if (window.SRCHCHART) SRCHCHART();   // Guy, Nov 17: App Store search chart
 if (window.GAMECHART) GAMECHART();   // Guy, Nov 2: Firebase game stats charts   // Guy, Oct 29: App Store sources chart
 </script>{cmap_html()}{earn_html(money_daily)}</body></html>"""
     open(OUT_HTML, "w").write(doc)
@@ -2217,7 +2289,7 @@ def main():
             old = write_html(day["since"].strftime("%b %-d, %Y · %-I:%M %p"), build_rows(bsnap, bprev, rd), rd, bsnap, bprev,
                              blabels, bser, "history file", [], (), None, None, None, dry=True)
     phist = json.load(open(POSTS_HIST)) if os.path.exists(POSTS_HIST) else []
-    src_html = sources_section()   # Guy, Nov 16: downloads + earnings chart at the top, above the views chart
+    src_html = sources_section() + search_section()   # Guy, Nov 17: search chart under it; Guy, Nov 16: downloads + earnings chart at the top, above the views chart
     posts_html = game_section() + posts_section(POSTS, phist, now)
     if complete and POSTS:
         phist.append({"checked_at": now.strftime("%Y-%m-%d %H:%M"), "posts": {**CARRY, **{r["id"]: r["views"] for r in POSTS}}})
