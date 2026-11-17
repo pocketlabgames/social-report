@@ -35,6 +35,7 @@ CARRY = {}   # post id -> last known views, for posts a site stopped returning (
 YSAME = None   # Guy, Oct 29: views gained yesterday by this time of day (gray line left of today's bar)
 INSTALLS = {}   # {date: first downloads} from App Store Connect (filled by fetch(); empty if the key is missing)
 REVIEWS = {}    # {app_id, n, avg, top, reviews} App Store star ratings + written reviews (asc_reviews_lite; Guy, Oct 30)
+SSPLIT = os.path.join(HERE, "search-split-cache.json")   # Guy, Nov 16: {day: {imp, dl}} App Store search impressions + search downloads (Search vs Social (est.))
 CFIRST = {}     # {country code: day of its first App Store download} (Guy, Nov 16: "New countries" list)
 COUNTRIES = {}  # {country code: first downloads since launch} from App Store Connect (asc_lite; Guy, Oct 29)
 MONEY = {}      # {date: {"ads": usd, "iap": usd}} (filled by fetch(); empty if keys are missing)
@@ -1025,6 +1026,21 @@ def sources_section():
         for k in sorted(KS, key=lambda k: -(raw[k] - r[k]))[:T - sum(r.values())]:   # largest remainder, so the split adds up to T
             r[k] += 1
         dlx[d] = r
+    # Guy, Nov 16 (via the Ad Pacing session): split Search into expected search + Social (est.).
+    # expected = min(search, round(search impressions x base)); base = lower quartile of daily search downloads / search impressions since Oct 5
+    SS = json.load(open(SSPLIT)) if os.path.exists(SSPLIT) else {}
+    for d, r in ASCSRC.items():   # keep a history so the base doesn't depend on Apple's 3-week window
+        if r.get("imp_search") and any(k.startswith("dl_") for k in r):   # only days Apple's download report also covers (edge days of the window have none)
+            SS[d] = {"imp": int(r["imp_search"]), "dl": int(r.get("dl_search", 0))}
+    if SS:
+        json.dump(SS, open(SSPLIT, "w"), indent=0, sort_keys=True)
+    rates = [v["dl"] / v["imp"] for d, v in SS.items() if d >= "2026-10-05" and v.get("imp")]
+    base = float(pd.Series(rates).quantile(0.25)) if rates else 0.0
+    for d in days:
+        imp = (SS.get(d) or {}).get("imp")
+        sch = dlx[d].get("search", 0)
+        exp = min(sch, round(imp * base)) if imp and base else sch   # no impressions yet (Apple runs 1-2 days late): all Search
+        dlx[d]["search"], dlx[d]["social"] = exp, sch - exp
     wk = days[-7:]
     tot = lambda k: sum(dlx[d][k] for d in wk)
     spend = sum(GADS.get(d) or 0 for d in wk)
@@ -1041,7 +1057,9 @@ def sources_section():
     else:
         summ += "<br><b>Meta ads (FB + IG):</b> not connected yet (the Meta token needs the ads_read permission)"
     src = [("ads", "Ads", "#E8A23A"), ("other", "Other", "#A8A8A8"), ("search", "Search", "#8E6FD8"), ("browse", "Browse", "#E06C9F")]   # Guy, Nov 16: "Ads", orange-yellow ads, purple search, pink browse
-    src.sort(key=lambda x: -sum(dlx[d][x[0]] for d in days))   # most to least (bottom of the stack = biggest)
+    src.sort(key=lambda x: -sum(dlx[d][x[0]] + (dlx[d].get("social", 0) if x[0] == "search" else 0) for d in days))   # most to least (bottom of the stack = biggest); Search counts with its Social part
+    i = [k for k, _, _ in src].index("search")
+    src.insert(i + 1, ("social", "Social (est.)", "#2BB5C8"))   # Guy, Nov 16: stacked right above Search
     sd = lambda d: dt.date.fromisoformat(d).strftime("%-m/%-d")   # Guy, Nov 16: short dates ("11/16")
     # Guy, Nov 16: one chart, two bars per day: downloads by source (left bar, left axis) and earnings (right bar, right axis: AdMob ads + App Store purchases, USD)
     today = dt.date.today()
@@ -1049,7 +1067,7 @@ def sources_section():
     m = lambda d, k: round(((MONEY.get(d) or {}).get(k) or 0), 2)
     data = {"labels": [sd(d) for d in alld], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in alld],
             "spend": [GADS.get(d) for d in alld], "meta": [METAADS.get(d) for d in alld], "src": [{"k": k, "l": l, "c": c} for k, l, c in src],
-            "hasdl": [d in dlx for d in alld],
+            "hasdl": [d in dlx for d in alld], "base": base, "imp": [(SS.get(d) or {}).get("imp") for d in alld],
             **{"dl_" + k: [(dlx.get(d) or {}).get(k, 0) for d in alld] for k, _, _ in src},
             "ads": [m(d, "ads") for d in alld], "iap": [m(d, "iap") for d in alld], "n": [(MONEY.get(d) or {}).get("n") or 0 for d in alld],
             "posted": [(MONEY.get(d) or {}).get("iap") is not None for d in alld]}

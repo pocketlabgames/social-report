@@ -269,6 +269,25 @@ def _check_game(C, page, keys, today, G, on_sale):
     C.same("Day-1 retention", _num(r"(\d+)% <small><span class='nf'>day-1 retention", page), round(back / base * 100) if base else 0, 1)
 
 
+
+def _check_social_split(C, page):
+    """Guy, Nov 16: Search vs Social (est.) in the downloads + earnings chart. Recomputed here from the saved search history:
+    base = lower quartile of daily search downloads / search impressions since Oct 5; expected = min(search, round(impressions x base))."""
+    m = re.search(r"window\.SRCCHART = \(\) => \{ const X = (\{.*?\}), cv = ", page, re.S)
+    if not m:
+        C.fails.append("Social (est.) check: downloads chart data not found"); return
+    X = json.loads(m.group(1))
+    SS = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "search-split-cache.json")))
+    r = sorted(v["dl"] / v["imp"] for d, v in SS.items() if d >= "2026-10-05" and v.get("imp"))
+    q = (len(r) - 1) * 0.25; lo = int(q); base = r[lo] + (r[min(lo + 1, len(r) - 1)] - r[lo]) * (q - lo) if r else 0.0   # same as pandas quantile(0.25)
+    C.same("Social (est.) base rate x 100,000", round(X.get("base", 0) * 1e5), round(base * 1e5), 0)
+    bad = 0
+    for i, imp in enumerate(X.get("imp") or []):
+        tot = X["dl_search"][i] + X.get("dl_social", [0] * len(X["imp"]))[i]
+        want = min(tot, round(imp * base)) if imp and base else tot
+        bad += X["dl_search"][i] != want
+    C.same("Social (est.) days split wrong", bad, 0, 0)
+
 def _check_views(C, page, snap, prev, stale, errors, plats):
     C.true("Every source pulled", not errors, "; ".join(errors)[:300])
     C.true("No site showing old numbers", not stale, ", ".join(stale))
@@ -286,7 +305,7 @@ def run(html_path, keys, G, snap, prev, stale, errors, plats, today=None):
     page = open(html_path, encoding="utf-8").read()
     C = Checks()
     for name, step in (("Views", lambda: _check_views(C, page, snap, prev, stale, errors, plats)), ("App Store, downloads and money", lambda: C.__setattr__("on_sale", _check_store(C, page, keys, today))),
-                       ("Game stats", lambda: _check_game(C, page, keys, today, G, C.on_sale))):
+                       ("Game stats", lambda: _check_game(C, page, keys, today, G, C.on_sale)), ("Social (est.)", lambda: _check_social_split(C, page))):
         try:
             step()
         except Exception as e:

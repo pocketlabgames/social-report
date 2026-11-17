@@ -48,6 +48,7 @@ class _Client:
 def _frames(cl, today):
     since = (today - dt.timedelta(days=21)).isoformat()
     got = {v: [] for v in WANT.values()}
+    files = []   # Guy, Nov 16: (processing date, Discovery file); overlapping files repeat a day with slightly revised counts, so impressions take each day from its newest file
     for rq in cl.all(f"/v1/apps/{cl.c['app_id']}/analyticsReportRequests"):
         if rq["attributes"]["accessType"] != "ONGOING":
             continue
@@ -71,7 +72,11 @@ def _frames(cl, today):
                         f.write("\n".join(lines) + ("\n" if lines else ""))
                 if os.path.getsize(path):
                     got[folder].append(pd.read_csv(path, sep="\t", dtype=str))
-    return {k: (pd.concat(v, ignore_index=True).drop_duplicates() if v else pd.DataFrame()) for k, v in got.items()}
+                    if folder == "ASC_Discovery":
+                        files.append((inst["attributes"].get("processingDate") or "", got[folder][-1]))
+    out = {k: (pd.concat(v, ignore_index=True).drop_duplicates() if v else pd.DataFrame()) for k, v in got.items()}
+    out["ASC_Discovery_files"] = files
+    return out
 
 
 def summary(ses, ins):
@@ -106,7 +111,7 @@ def summary(ses, ins):
 SRC = {"App referrer": "ads", "App Store search": "search", "App Store browse": "browse"}   # everything else (Unavailable, Web referrer) = "other"
 
 
-def sources(disc, dls):
+def sources(disc, dls, disc_files=()):
     """Per day: App Store product page views (unique devices) and first-time downloads by source (Guy, Oct 29).
     App referrer = views from inside another app; ours come from Google Ads (social posts carry no App Store link)."""
     num = lambda s: pd.to_numeric(s, errors="coerce").fillna(0)
@@ -115,6 +120,13 @@ def sources(disc, dls):
         pv = disc[disc["Event"] == "Page view"]
         for (d, st), n in pv.assign(n=num(pv["Unique Counts"])).groupby(["Date", "Source Type"])["n"].sum().items():
             r = out.setdefault(d, {}); k = "pv_" + SRC.get(st, "other"); r[k] = r.get(k, 0) + int(n)
+    imp = {}   # Guy, Nov 16: App Store search impressions per day, each day from its newest file (for the Search vs Social (est.) split)
+    for _, f in sorted(disc_files, key=lambda x: x[0]):
+        si = f[(f["Event"] == "Impression") & (f["Source Type"] == "App Store search")]
+        for d, n in si.assign(n=num(si["Counts"])).groupby("Date")["n"].sum().items():
+            imp[d] = int(n)
+    for d, n in imp.items():
+        out.setdefault(d, {})["imp_search"] = n
     if not dls.empty:
         fd = dls[dls["Download Type"] == "First-time download"]
         for (d, st), n in fd.assign(n=num(fd["Counts"])).groupby(["Date", "Source Type"])["n"].sum().items():
@@ -125,4 +137,4 @@ def sources(disc, dls):
 def fetch(keys_dir, today):
     f = _frames(_Client(keys_dir), today)
     return {"ASC Retention Lite": (pd.DataFrame([summary(f["ASC_Sessions"], f["ASC_Installs"])]), None),
-            "ASC Sources Lite": (sources(f["ASC_Discovery"], f["ASC_Downloads"]), None)}
+            "ASC Sources Lite": (sources(f["ASC_Discovery"], f["ASC_Downloads"], f.get("ASC_Discovery_files", ())), None)}
