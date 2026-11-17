@@ -996,7 +996,7 @@ PIN_JS = """<script>(() => { const c = document.querySelector('.day'), M = match
 
 
 GSEL_JS = """<script>(() => { const S = [...document.querySelectorAll('.gsel')]; if (!S.length) return; const a = document.getElementById('gst-all'), v = document.getElementById('gst-vf');   // Guy, Nov 16: one All / 1.3.11+ filter; changing either dropdown updates both
- const go = val => { S.forEach(x => x.value = val); if (a && v) { a.hidden = val !== 'all'; v.hidden = val === 'all'; } if (window.LVDRAW) LVDRAW(val); try { localStorage.setItem('gsel', val); } catch (x) {} };
+ const go = val => { S.forEach(x => x.value = val); if (a && v) { a.hidden = val !== 'all'; v.hidden = val === 'all'; } if (window.LVDRAW) LVDRAW(val); if (window.FUNDRAW) FUNDRAW(val); document.querySelectorAll('.fsa').forEach(x => x.hidden = val !== 'all'); document.querySelectorAll('.fsv').forEach(x => x.hidden = val === 'all'); try { localStorage.setItem('gsel', val); } catch (x) {} };
  let k = 'all'; try { const q = localStorage.getItem('gsel'); if (q === 'vf' || q === 'all') k = q; } catch (x) {} S.forEach(x => x.addEventListener('change', () => go(x.value))); go(k); })();</script>"""
 
 
@@ -1172,6 +1172,13 @@ def game_section():
     reach = [reached(s) for s in steps]
     ac = G.get("active") or {}
     playing = [min(ac.get(str(s), 0), r) for s, r in zip(steps, reach)] if ac else []
+    vfun = None
+    fsv = f"<span class='fsv' hidden>{html.escape(VB['label'])} since {dt.date.fromisoformat(VB['since']).strftime('%b %-d')}</span>" if VB else ""
+    if VB and VB.get("freach"):   # Guy, Nov 16: 1.3.11+ funnel
+        FR, FA = VB["freach"], VB.get("factive") or {}
+        vsteps = [s for s in steps if s == 1 or FR.get(str(s), 0)] or [1]
+        vreach = [FR.get(str(s), 0) for s in vsteps]
+        vfun = {"steps": vsteps, "reach": vreach, "playing": [min(FA.get(str(s), 0), r) for s, r in zip(vsteps, vreach)], "mp": vreach[0] if vreach else 0}
     CM = G.get("compare") or {}
     cnew, cold = CM.get("new") or {}, CM.get("old") or {}
     CMIN = 1   # Guy, Nov 8: show the comparison right away, small samples noted (was 50)
@@ -1185,9 +1192,9 @@ def game_section():
     LVD = mklv(LV)
     LVD["vlv"] = mklv((VB or {}).get("lv") or {}) if VB else None   # Guy, Nov 16: 1.3.11+ win rate per level
     p1 = LVD["lvs"][0] if lvn else 0
-    winrate = ("<h3 class='sh3'>Win rate per level</h3><p class='sub'>From Firebase (Google Analytics)." + gsel("gsel2") + "</p><div class='chart' style='height:240px'><canvas id='glv' role='img' aria-label='Win rate per level, levels 1 to 25'></canvas></div>") if lvn else \
+    winrate = ("<h3 class='sh3'>Win rate per level</h3><div class='chart' style='height:240px'><canvas id='glv' role='img' aria-label='Win rate per level, levels 1 to 25'></canvas></div>") if lvn else \
               "<h3 class='sh3'>Win rate per level</h3><p class='sub gempty'>Starts once players on 1.3.4 or later play a level (Google Analytics needs up to a day).</p>"
-    data = {"steps": steps, "reach": reach, "playing": playing, "mp": mp, "cver": CM.get("version", ""), "cn": cn, "co": co, "cnew": [round(cnew.get(str(s), 0) / cn * 100) for s in steps] if show_cmp else [], "cold": [round(cold.get(str(s), 0) / co * 100) for s in steps] if show_cmp else [], "labels": [md(d) for d in days], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in days],
+    data = {"steps": steps, "reach": reach, "playing": playing, "mp": mp, "vfun": vfun, "cver": CM.get("version", ""), "cn": cn, "co": co, "cnew": [round(cnew.get(str(s), 0) / cn * 100) for s in steps] if show_cmp else [], "cold": [round(cold.get(str(s), 0) / co * 100) for s in steps] if show_cmp else [], "labels": [md(d) for d in days], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in days],
             "players": [A.get("daily", {}).get(d, 0) for d in days], "newer": [D[d].get("players", 0) for d in days], **{k: [D[d].get(k, 0) for d in days] for k in ("level_end", "level_up", "ad_shown", "super_stir", "super_solve")}, "purchase_ok": [(MONEY.get(d) or {}).get("n") or 0 for d in days], **LVD,
             # Guy, Nov 9: rewarded videos per day (AdMob, all players) replaces "Did 1.3.4 help?"; dashed = same weekday one week earlier
             "rwd": [(MONEY.get(d) or {}).get("rwd") for d in days], "rwp": [(MONEY.get(wk(d)) or {}).get("rwd") for d in days], "pfull": [dt.date.fromisoformat(wk(d)).strftime("%a %b %-d") for d in days]}
@@ -1196,13 +1203,13 @@ def game_section():
     legend = ("<div class='lgs' style='margin-top:6px'><span class='gk'><i style='background:#12A4A4'></i>Still playing</span> <span class='gk'><i style='background:var(--gleft)'></i>Quit (3+ days away)</span></div>" if playing and steps else "")
     cv = CM.get("version", "")
     if show_cmp:
-        compare = (f"<h3 class='sh3'>Did {e(cv)} help?</h3><p class='sub'>Share of new players reaching each level: {cn:,} who first opened the game on {e(cv)} or later vs {co:,} who first opened it before ({md(CM['since'])} is the dividing day). Earlier players have had more days to play, so the later levels favor them; levels 1-5 are the fairest read." + (f" Only {cn:,} new player{'' if cn == 1 else 's'} so far: an early sign, not a result." if cn < 20 else "") + "</p>"
+        compare = (f"<h3 class='sh3'>Did {e(cv)} help?</h3>"
                    "<div class='chart' style='height:240px'><canvas id='gcmp' role='img' aria-label='Share of new players reaching each level, new version vs earlier'></canvas></div>")
     elif cv:
         compare = (f"<h3 class='sh3'>Did {e(cv)} help?</h3><p class='sub gempty'>" + (f"This comparison appears at {CMIN} new players on {e(cv)}; {cn:,} so far." if CM.get("live") else f"This comparison starts when {e(cv)} is live on the App Store and appears at {CMIN} new players.") + "</p>")
     else:
         compare = ""
-    rewarded = ("<h3 class='sh3'>Rewarded videos per day</h3><p class='sub'>Rewarded videos watched each day (AdMob, all players; today so far on the right). Dashed = the same day one week earlier.</p>"
+    rewarded = ("<h3 class='sh3'>Rewarded videos per day</h3>"
                 "<div class='chart' style='height:240px'><canvas id='grw' role='img' aria-label='Rewarded videos watched per day, with the same day one week earlier'></canvas></div>") if any(v is not None for v in data["rwd"]) else ""
     js = """<script>window.GAMECHART = () => { const X = __DATA__; if (!window.Chart) return;
  const dark = matchMedia('(prefers-color-scheme: dark)').matches, grid = dark ? '#2c2c2a' : '#e1e0d9', muted = '#898781', n = v => (v || 0).toLocaleString(), pl = (v, w) => `${n(v)} ${w}${v === 1 ? '' : 's'}`;
@@ -1222,7 +1229,9 @@ def game_section():
  const pctOf = i => Math.round(X.reach[i] / X.mp * 100), lbl = s => s > 10 ? s + '+' : String(s), has = X.playing.length > 0, leftAt = i => X.reach[i] - (X.playing[i] || 0);
  const range = i => { const a = X.steps[i], b = X.steps[i + 1]; return b === undefined ? `level ${a}+` : b === a + 1 ? `level ${a}` : `levels ${a}–${b - 1}`; };
  const gf = document.getElementById('gfun');
- if (gf && !Chart.getChart(gf)) { const left = dark ? '#55544f' : '#c9c7bd';
+ const FUN1 = X => { const pctOf = i => Math.round(X.reach[i] / X.mp * 100), has = X.playing.length > 0, leftAt = i => X.reach[i] - (X.playing[i] || 0);
+  const range = i => { const a = X.steps[i], b = X.steps[i + 1]; return b === undefined ? `level ${a}+` : b === a + 1 ? `level ${a}` : `levels ${a}–${b - 1}`; };
+  if (!X.steps.length || !X.mp) return; const left = dark ? '#55544f' : '#c9c7bd';
   const ds = has ? [{label: 'Still playing', data: X.playing, backgroundColor: '#12A4A4', maxBarThickness: 34}, {label: 'Quit (3+ days away)', data: X.steps.map((s, i) => leftAt(i)), backgroundColor: left, maxBarThickness: 34}] : [{data: X.reach, backgroundColor: '#12A4A4', maxBarThickness: 34}];
   const pcts = {id: 'pcts', afterDatasetsDraw(ch) { const c = ch.ctx, m = ch.getDatasetMeta(ch.data.datasets.length - 1); c.save(); c.fillStyle = muted; c.font = '10px system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'bottom';
    X.steps.forEach((s, i) => { const b = m.data[i]; if (b) c.fillText(pctOf(i) + '%', b.x, ch.scales.y.getPixelForValue(X.reach[i]) - 3); });
@@ -1234,7 +1243,9 @@ def game_section():
    options: {responsive: true, maintainAspectRatio: false, layout: {padding: {top: 30}}, interaction: {mode: 'index', intersect: false}, plugins: {legend: {display: false}, tooltip: {enabled: false, external: tip(f)}},
     scales: {x: {stacked: true, grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: false, font: {size: innerWidth < 500 ? 9 : 11}}, title: {display: true, text: 'Level reached', color: muted}},
      y: {stacked: true, beginAtZero: true, grid: {color: grid}, ticks: {color: muted, precision: 0}, title: {display: true, text: 'Players', color: muted}}}}});
-  document.addEventListener('touchstart', e => { if (e.target !== gf) { const el = gf.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); } }, {passive: true}); }
+  document.addEventListener('touchstart', e => { if (e.target !== gf) { const el = gf.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); } }, {passive: true}); };
+ window.FUNDRAW = set => { if (!gf) return; const o = Chart.getChart(gf); if (o) o.destroy(); FUN1(set === 'vf' && X.vfun ? X.vfun : X); };   // Guy, Nov 16: All / 1.3.11+
+ if (gf && !Chart.getChart(gf)) FUNDRAW((document.getElementById('gsel') || {}).value || 'all');
  const gr = document.getElementById('grw');
  if (gr && !Chart.getChart(gr)) { const f = i => `<div class="ctt-h">${X.full[i]} · ${pl(X.rwd[i] || 0, 'video')}</div><div class="ctt-r">Week before (${X.pfull[i]}): ${pl(X.rwp[i] || 0, 'video')}</div>`;
   const line = (label, data, color, dash) => ({label, data, borderColor: color, backgroundColor: color, borderDash: dash, borderWidth: 2, pointRadius: 3, tension: 0.2, spanGaps: true});
@@ -1260,9 +1271,9 @@ def game_section():
     return (f"<style>.sh3{{font-size:18px;margin:22px 0 4px}} .gst{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:4px 0 18px}} "
             f".gt{{border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:1px}} .gt b{{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}} "
             f".gst[hidden]{{display:none}} .gsel{{margin-left:8px;font:inherit;font-size:14px;padding:4px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}} .gt span{{font-size:13px;color:var(--ink2)}} .gt small{{font-size:11px;color:var(--muted);line-height:1.3}} :root{{--gleft:#c9c7bd}} @media (prefers-color-scheme:dark){{:root{{--gleft:#55544f}}}} .gk{{font-size:12px;color:var(--muted);margin-right:12px;white-space:normal}} .gk i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}} @media (max-width:700px){{.gst{{grid-template-columns:1fr 1fr}} .gt b{{font-size:18px}}}}</style>"
-            f"<h2 class='sh' id='sec-game'>Game stats</h2>{stale_note}<p class='sub'>From Firebase (Google Analytics).{gsel_html}</p>{tiles_html}"
-            f"<h3 class='sh3'>How far players get</h3><p class='sub'>Players who reached each level (since Nov 1{few(mp).replace(' (', '; ').rstrip(')')}). Red = players lost before the next level.</p>{legend}{funnel}{rewarded}{winrate}"
-            f"<h3 class='sh3'>Players per day</h3><p class='sub'>Active players on all versions each day (from Nov 1, today so far on the right); hover or tap a day for levels, ads, Super Stir / Super Solve and purchases.</p>"
+            f"<h2 class='sh' id='sec-game'>Game Analytics</h2>{stale_note}<p class='sub'>From Firebase (Google Analytics).{gsel_html}</p><h3 class='sh3'>Game stats</h3>{tiles_html}"   # Guy, Nov 16: one header, one note, one filter for all game charts; no descriptions under chart titles
+            f"<h3 class='sh3'>How far players get</h3>{legend}{funnel}{rewarded}{winrate}"
+            f"<h3 class='sh3'>Players per day</h3>"
             f"<div class='chart' style='height:260px'><canvas id='gday' role='img' aria-label='Active players per day on all versions'></canvas></div>{RNG('rngg')}{js}{GSEL_JS if VB else ''}")
 
 

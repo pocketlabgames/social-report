@@ -185,6 +185,8 @@ def fetch(keys_dir, today):
             f = {"andGroup": {"expressions": [vfil, {"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in vl if x >= lv]}}}]}}
             r = _run(s, {"dateRanges": [dr], "metrics": [{"name": "activeUsers"}], "dimensionFilter": f})
             B["reach"][str(lv)] = int(r[0][1][0]) if r else 0
+        B["freach"] = reached(vfil, dr, STEPS)   # Guy, Nov 16: "How far players get" for the newest versions (players who reached each step)
+        B["factive"] = reached(vfil, {"startDate": max(today - dt.timedelta(days=2), since).isoformat(), "endDate": today.isoformat()}, STEPS)   # still playing = played in the last 3 days
         B["lv"] = {}   # Guy, Nov 16: win rate per level for the newest versions too
         lvf2 = {"andGroup": {"expressions": [vfil, {"filter": {"fieldName": "eventName", "stringFilter": {"matchType": "BEGINS_WITH", "value": "lv_"}}}]}}
         for (e,), (u, c) in _run(s, {"dateRanges": [dr], "dimensions": [{"name": "eventName"}], "metrics": [{"name": "totalUsers"}, {"name": "eventCount"}], "dimensionFilter": lvf2}):
