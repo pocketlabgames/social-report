@@ -1274,6 +1274,13 @@ def game_section():
    options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false}, plugins: {legend: {display: true, labels: {color: muted, boxWidth: 18, boxHeight: 2}}, tooltip: {enabled: false, external: tip(f)}},
     scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: innerWidth < 500 ? 9 : 11}, callback(v) { return window.TWO ? TWO(this.getLabelForValue(v)) : this.getLabelForValue(v); }}, title: {display: true, text: 'Day', color: muted}},
      y: {beginAtZero: true, grid: {color: grid}, ticks: {color: muted, precision: 0}, title: {display: true, text: 'Rewarded videos', color: muted}}}}}); }
+ const gc = document.getElementById('gcmp');   // Guy, Nov 16: "Did 1.3.11 help?" is back: new players on the new version vs before it
+ if (gc && !Chart.getChart(gc) && X.cnew.length) { const f = i => `<div class="ctt-h">Reached level ${lbl(X.steps[i])}</div><div class="ctt-r">${X.cver}+: ${X.cnew[i]}% of ${n(X.cn)}</div><div class="ctt-r">Before: ${X.cold[i]}% of ${n(X.co)}</div>`;
+  const line = (label, data, color, dash) => ({label, data, borderColor: color, backgroundColor: color, borderDash: dash, borderWidth: 2, pointRadius: 3, tension: 0.2});
+  new Chart(gc, {type: 'line', data: {labels: X.steps.map(lbl), datasets: [line(X.cver + ' and later', X.cnew, '#12A4A4', []), line('Before ' + X.cver, X.cold, muted, [5, 4])]},
+   options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false}, plugins: {legend: {display: true, labels: {color: muted, boxWidth: 18, boxHeight: 2}}, tooltip: {enabled: false, external: tip(f)}},
+    scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: false, font: {size: innerWidth < 500 ? 9 : 11}}, title: {display: true, text: 'Level reached', color: muted}},
+     y: {beginAtZero: true, max: 100, grid: {color: grid}, ticks: {color: muted, callback: v => v + '%'}, title: {display: true, text: 'New players', color: muted}}}}}); }
  const gl = document.getElementById('glv');
  window.LVDRAW = set => { const Y = set === 'vf' && X.vlv ? X.vlv : X; if (!gl) return; const old = Chart.getChart(gl); if (old) old.destroy(); if (!Y.lvn.length) return; LV1(Y); };   // Guy, Nov 16: All / 1.3.11+
  const LV1 = X => { const r = X.lvn.map((k, i) => X.lvs[i] ? Math.round(X.lvw[i] / X.lvs[i] * 100) : 0), g1 = k => k === 1, rr = r.filter((v, i) => !g1(X.lvn[i])), hard = [...rr].sort((a, b) => a - b)[Math.min(2, rr.length - 1)];   // Guy, Nov 12: level 1 is guided, not hard; players who don't finish it left the game
@@ -1293,7 +1300,7 @@ def game_section():
             f".gt{{border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:1px}} .gt b{{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}} "
             f".gst[hidden]{{display:none}} .gsel{{margin-left:8px;font:inherit;font-size:14px;padding:4px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}} .gt span{{font-size:13px;color:var(--ink2)}} .gt small{{font-size:11px;color:var(--muted);line-height:1.3}} :root{{--gleft:#c9c7bd}} @media (prefers-color-scheme:dark){{:root{{--gleft:#55544f}}}} .gk{{font-size:12px;color:var(--muted);margin-right:12px;white-space:normal}} .gk i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}} @media (max-width:700px){{.gst{{grid-template-columns:1fr 1fr}} .gt b{{font-size:18px}}}}</style>"
             f"<h2 class='sh' id='sec-game'>Game Analytics</h2>{stale_note}<p class='sub'>From Firebase (Google Analytics).{gsel_html}</p><h3 class='sh3'>Game stats</h3>{tiles_html}"   # Guy, Nov 16: one header, one note, one filter for all game charts; no descriptions under chart titles
-            f"<h3 class='sh3'>How far players get</h3>{legend}{funnel}{rewarded}{winrate}"
+            f"<h3 class='sh3'>How far players get</h3>{legend}{funnel}{compare}{rewarded}{winrate}"
             f"<h3 class='sh3'>Players per day</h3>"
             f"<div class='chart' style='height:260px'><canvas id='gday' role='img' aria-label='Active players per day on all versions'></canvas></div>{RNG('rngg')}{js}{GSEL_JS if VB else ''}")
 
