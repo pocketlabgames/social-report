@@ -1374,8 +1374,11 @@ CMAP_JS = """
   // Guy, Nov 16: new countries (first download in the last 7 days): flag on the left, downloads on the right
   const flag = c => /^[A-Z]{2}$/.test(c) ? String.fromCodePoint(...[...c].map(ch => 127397 + ch.charCodeAt(0))) : '🏳️';
   const md = d => { const [, m, dd] = d.split('-').map(Number); return m + '/' + dd; };
-  document.getElementById('cmnew').innerHTML = `<div class="cmreg"><span class="cmrh">New countries <small>first download in the last 7 days · ${CM_NEW.length}</small></span>`
-   + (CM_NEW.length ? `<table class="cmnt">${CM_NEW.map(([c, n, d]) => `<tr><td class="cmnf">${flag(c)}</td><td class="cmnm">${nm(c)} <small>${md(d)}</small></td><td class="cmnn">${fmt(n)}</td></tr>`).join('')}</table>` : '<p class="cmne">None in the last 7 days.</p>') + '</div>';
+  const newDraw = w => { const L = w === 'y' ? CM_NEW.filter(x => x[2] === CM_YDAY) : CM_NEW;   // Guy, Nov 16: Yesterday (default) / Last 7 days
+   document.getElementById('cmnewb').innerHTML = (L.length ? `<table class="cmnt">${L.map(([c, n, d]) => `<tr><td class="cmnf">${flag(c)}</td><td class="cmnm">${nm(c)} <small>${md(d)}</small></td><td class="cmnn">${fmt(n)}</td></tr>`).join('')}</table>` : `<p class="cmne">None ${w === 'y' ? 'yesterday' : 'in the last 7 days'}.</p>`);
+   document.getElementById('cmnewn').textContent = L.length; };
+  document.getElementById('cmnew').innerHTML = `<div class="cmreg"><span class="cmrh">New countries <small>first download · <span id="cmnewn"></span></small> <select id="cmnews" class="gsel" aria-label="Period"><option value="y">Yesterday</option><option value="w">Last 7 days</option></select></span><div id="cmnewb"></div></div>`;
+  document.getElementById('cmnews').addEventListener('change', e => newDraw(e.target.value)); newDraw('y');
   // list by region (most downloads first), countries most to least
   const by = {}; Object.entries(CM).forEach(([c, n]) => { const r = (G[c] || {}).r || '?'; (by[r] = by[r] || []).push([c, n]); });
   const regs = Object.entries(by).map(([r, l]) => [r, l.sort((a, b) => b[1] - a[1] || nm(a[0]).localeCompare(nm(b[0]))), l.reduce((a, x) => a + x[1], 0)]).sort((a, b) => b[2] - a[2]);
@@ -1432,7 +1435,7 @@ def cmap_html():
             f"<svg id='cmsvg' viewBox='0 0 960 470' role='img' aria-label='World map of downloads'></svg>"
             f"<div class='cmleg'>1<i style='background:linear-gradient(90deg,{lo},{hi})'></i>{max(COUNTRIES.values()):,} downloads</div>"
             f"<div id='cmnew'></div><div id='cmlist'></div></div></div><div class='cmtt' id='cmtt' hidden></div>"
-            f"<script>const CM = {json.dumps(COUNTRIES, sort_keys=True)}; const CM_NEW = {json.dumps(new)}; const CM_GEO = {json.dumps(GEO)};{CMAP_JS}</script>")
+            f"<script>const CM = {json.dumps(COUNTRIES, sort_keys=True)}; const CM_NEW = {json.dumps(new)}; const CM_YDAY = {json.dumps((dt.date.today() - dt.timedelta(days=1)).isoformat())}; const CM_GEO = {json.dumps(GEO)};{CMAP_JS}</script>")
 
 
 EARN_CSS = """
