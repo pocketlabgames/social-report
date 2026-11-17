@@ -35,6 +35,7 @@ CARRY = {}   # post id -> last known views, for posts a site stopped returning (
 YSAME = None   # Guy, Oct 29: views gained yesterday by this time of day (gray line left of today's bar)
 INSTALLS = {}   # {date: first downloads} from App Store Connect (filled by fetch(); empty if the key is missing)
 REVIEWS = {}    # {app_id, n, avg, top, reviews} App Store star ratings + written reviews (asc_reviews_lite; Guy, Oct 30)
+SRCC = os.path.join(HERE, "sources-cache.json")   # last good App Store sources (Guy, Nov 17: chart vanished on Apple 500s)
 SSPLIT = os.path.join(HERE, "search-split-cache.json")   # Guy, Nov 16: {day: {imp, dl}} App Store search impressions + search downloads (Search vs Social (est.))
 CFIRST = {}     # {country code: day of its first App Store download} (Guy, Nov 16: "New countries" list)
 COUNTRIES = {}  # {country code: first downloads since launch} from App Store Connect (asc_lite; Guy, Oct 29)
@@ -170,6 +171,27 @@ def fetch():
             out.update(got)
             if err:
                 errors.append(err)
+    # Guy, Nov 17: Apple's API sometimes fails (500s / timeouts) and the downloads chart vanished. Keep the last good
+    # Apple data and use it when a pull fails, so the page never loses its App Store charts.
+    try:
+        if ASCSRC:
+            json.dump(ASCSRC, open(SRCC, "w"), indent=0, sort_keys=True)
+        elif os.path.exists(SRCC):
+            ASCSRC.update(json.load(open(SRCC)))
+        if not INSTALLS and asc_lite and os.path.exists(asc_lite.CACHE):
+            INSTALLS.update({k: v for k, v in json.load(open(asc_lite.CACHE)).items() if v is not None})
+            if not COUNTRIES and os.path.exists(asc_lite.CCACHE):
+                for d, cs in sorted(json.load(open(asc_lite.CCACHE)).items()):
+                    for c, n in cs.items():
+                        COUNTRIES[c] = COUNTRIES.get(c, 0) + int(n)
+                        if int(n) > 0 and c not in CFIRST:
+                            CFIRST[c] = d
+        if not MONEY and money_lite and os.path.exists(money_lite.CACHE):
+            m = json.load(open(money_lite.CACHE))
+            for d in set(m.get("ads", {})) | set(m.get("iap", {})):
+                MONEY[d] = {"ads": m.get("ads", {}).get(d), "iap": m.get("iap", {}).get(d), "n": m.get("iapn", {}).get(d), "rwd": m.get("rwd", {}).get(d)}
+    except Exception as e:
+        errors.append(f"Apple cache fallback: {type(e).__name__}: {e}"[:200])
     if GAME:
         try: json.dump({"at": dt.datetime.now().strftime("%b %-d, %-I:%M %p"), "game": GAME, "ret": RET}, open(GAMEC, "w"), default=str)
         except Exception: pass
