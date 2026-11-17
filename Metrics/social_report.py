@@ -966,6 +966,7 @@ SLOTS = [("Morning", 5, 11), ("Midday", 11, 14), ("Afternoon", 14, 17), ("Evenin
 
 
 HELPERS_JS = """<script>   // Guy, Nov 16: shared chart helpers
+document.addEventListener('selectstart', e => { const t = e.target && (e.target.closest ? e.target : e.target.parentElement); if (t && t.closest && t.closest('.rng, .rng-l')) e.preventDefault(); });   // Guy, Nov 16: no text selection while dragging a day bar
 window.TWO = s => { if (typeof s !== 'string' || !/^\\d+\\/\\d+$/.test(s)) return s; const [m, d] = s.split('/').map(Number), t = new Date(), y = t.getFullYear() - (m > t.getMonth() + 1 ? 1 : 0);
  return [s, '(' + new Date(y, m - 1, d).toLocaleDateString('en-US', {weekday: 'short'}) + ')']; };   // 11/16 with (Mon) below
 window.RANGE = (ch, labels, tot, box, lab, onSet) => {   // drag bar like the views chart: 14 days on a computer, 8 on a phone
@@ -981,12 +982,17 @@ window.RANGE = (ch, labels, tot, box, lab, onSet) => {   // drag bar like the vi
   ch.data.labels = labels.slice(s, s + win); ch.data.datasets.forEach((d, i) => d.data = FULL[i].slice(s, s + win)); ch.stop(); ch.update('none'); if (onSet) onSet(s, s + win); };
  set(s); draw(); addEventListener('resize', draw);
  let x0 = null, s0 = 0;
- box.addEventListener('pointerdown', e => { box.setPointerCapture(e.pointerId); const bw = box.clientWidth / N;
+ box.addEventListener('pointerdown', e => { e.preventDefault(); box.setPointerCapture(e.pointerId); const bw = box.clientWidth / N;
   if (e.target.closest('.rng-w')) { x0 = e.clientX; s0 = s; box.classList.add('drag'); } else set((e.clientX - box.getBoundingClientRect().left) / bw - win / 2); });
  box.addEventListener('pointermove', e => { if (x0 == null) return; const ns = Math.round(s0 + (e.clientX - x0) / (box.clientWidth / N)); if (ns !== s) set(ns); });
  const up = () => { x0 = null; box.classList.remove('drag'); }; box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up); };
 </script>"""
 RNG = lambda i: f"<div class='rng' id='{i}' hidden><canvas class='rng-c'></canvas><div class='rng-w'><i></i><i></i></div></div><div class='rng-l' id='{i}l' hidden><span></span><span></span></div>"
+
+
+PIN_JS = """<script>(() => { const c = document.querySelector('.day'), M = matchMedia('(max-width:700px)'); if (!c) return; let T = null;   // Guy, Nov 16 (phone only): totals row hides while the card is pinned, back at the top of the page
+ const f = () => { if (T == null) T = c.getBoundingClientRect().top + scrollY - 8; c.classList.toggle('pinned', M.matches && scrollY > T + 4); };
+ addEventListener('scroll', f, {passive: true}); addEventListener('load', () => { T = null; f(); }); addEventListener('resize', () => { T = null; f(); }); f(); })();</script>"""
 
 
 def sources_section():
@@ -1069,7 +1075,7 @@ def sources_section():
    plugins: {legend: {display: false}, tooltip: {enabled: false, external: tt}},
    scales: {x: {stacked: true, grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: 12}, callback(v) { return window.TWO ? TWO(this.getLabelForValue(v)) : this.getLabelForValue(v); }}},
     y: {stacked: true, beginAtZero: true, grid: {color: grid}, ticks: {color: muted, precision: 0, callback: v => v.toLocaleString()}, title: {display: true, text: 'Downloads', color: muted}},
-    y2: {stacked: true, beginAtZero: true, position: 'right', grid: {display: false}, ticks: {color: '#1E9E55', callback: v => '$' + v.toFixed(v < 10 ? 2 : 0)}, title: {display: true, text: 'Earned (USD)', color: '#1E9E55'}}}}});
+    y2: {stacked: true, beginAtZero: true, position: 'right', grid: {display: false}, ticks: {color: '#1E9E55', precision: 0, callback: v => '$' + Math.round(v)}, title: {display: true, text: 'Earned (USD)', color: '#1E9E55'}}}}});
  const sum = (a, i0, i1) => a.slice(i0, i1).reduce((p, v) => p + (v || 0), 0);
  const box = document.getElementById('rngs'), lab = document.getElementById('rngsl'), N = X.labels.length, win = matchMedia('(max-width:700px)').matches ? 8 : 14;
  if (box && N > win) {   // Guy, Nov 16: same drag bar as the views chart (14 days on a computer, 8 on a phone)
@@ -1085,7 +1091,7 @@ def sources_section():
    document.querySelectorAll('#lgs-src .lgn').forEach(b => { const v = sum(X[b.dataset.k], s, s + win); b.textContent = b.dataset.usd ? usd(v) : n(v); }); };
   set(s); draw(); addEventListener('resize', draw);
   let x0 = null, s0 = 0;
-  box.addEventListener('pointerdown', e => { box.setPointerCapture(e.pointerId); const bw = box.clientWidth / N;
+  box.addEventListener('pointerdown', e => { e.preventDefault(); box.setPointerCapture(e.pointerId); const bw = box.clientWidth / N;
    if (e.target.closest('.rng-w')) { x0 = e.clientX; s0 = s; box.classList.add('drag'); } else set((e.clientX - box.getBoundingClientRect().left) / bw - win / 2); });
   box.addEventListener('pointermove', e => { if (x0 == null) return; const ns = Math.round(s0 + (e.clientX - x0) / (box.clientWidth / N)); if (ns !== s) set(ns); });
   const up = () => { x0 = null; box.classList.remove('drag'); }; box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up); }
@@ -1581,7 +1587,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         inst = v3line + inst
         updated = re.sub(r",? \d{4} · ", ", ", stamp)   # Guy, Nov 7: moved here from the page title line
         day_html = (f"<div class='day'><div class='dayl'>{head}</div><div class='dayv'>{big} <small>views</small> <small class='sub2'>(last updated: {e(updated)})</small>{sub}</div>"
-                    f"<div class='dayr'>{right}</div><div class='dayp dayps'>{parts}</div>{inst}</div>")
+                    f"<div class='dayr'>{right}</div><div class='dayp dayps'>{parts}</div>{inst}</div>" + PIN_JS)
     stale_html = "".join(f"<p class='warn'>{NAME[p]} couldn’t be pulled after 3 tries, so its numbers are from the last good check ({e(t)}).</p>" for p, t in stale.items())
     stale_html += "".join(f"<p class='warn'>⚠️ {e(x)}</p>" for x in CHECKS)
     if len(snap) == len(PLAT) and not stale:   # keep the last complete run (Mac report cache)
@@ -1612,7 +1618,7 @@ th{{font-weight:500;color:var(--ink2)}} th.rl{{text-align:left}} thead th{{borde
  table.vt .aw{{display:none}} .vch{{flex-wrap:wrap}} .hs{{display:none}} .hist th,.hist td{{padding:8px 6px}} .chart{{height:260px}} .note{{font-size:12px}} .lgs{{gap:10px 16px}} h2.ph{{margin-top:32px}}}}
 .day{{display:grid;grid-template-columns:1fr auto;grid-template-areas:"l r" "v r" "p r" "t r" "i r" "m r";align-items:start;column-gap:16px;row-gap:4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:0 0 14px}}
 .dayv .sub2{{display:block;font-size:13px}} .dayt{{font-size:26px;font-weight:600;color:#5f5e5a;font-variant-numeric:tabular-nums;margin-top:6px;text-align:right}} .dayt small{{font-size:14px;color:var(--muted);font-weight:400}}
-@media (prefers-color-scheme: dark){{.dayt{{color:#a9a89f}}}} .day{{position:sticky;top:8px;z-index:5;box-shadow:0 4px 14px rgba(0,0,0,.14)}} .dayl{{color:var(--ink2);font-weight:500}} .dayl small{{color:var(--muted);font-weight:400;font-size:12px}} .dayl{{grid-area:l}} .dayv{{grid-area:v;font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;text-align:left;margin-top:2px;line-height:1.15}}
+@media (prefers-color-scheme: dark){{.dayt{{color:#a9a89f}}}} .day{{position:sticky;top:8px;z-index:5;box-shadow:0 4px 14px rgba(0,0,0,.14)}} @media (max-width:700px){{.day .dayps,.day .day3{{display:none}} .day .dayr{{max-height:240px;transition:max-height .25s ease,opacity .2s ease,margin .25s ease,padding .25s ease}} .day.pinned .dayr{{max-height:0;opacity:0;overflow:hidden;margin-top:0;padding-top:0;border-top-color:transparent}}}} .dayl{{color:var(--ink2);font-weight:500}} .dayl small{{color:var(--muted);font-weight:400;font-size:12px}} .dayl{{grid-area:l}} .dayv{{grid-area:v;font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;text-align:left;margin-top:2px;line-height:1.15}}
 .dayr{{grid-area:r;text-align:right;margin-top:2px;align-self:start}} .day .dayp.dayps{{grid-area:p}} .day .dayp.dayi{{grid-area:i}} .day .dayp.day3{{grid-area:t}} .day .dayp.daym{{grid-area:m}} .dayr .dayt{{margin-top:0;line-height:1.15}} .dayr .dayt small{{display:block;font-size:13px}} .dayr .dayt+.dayt{{margin-top:8px}} .day .dayp{{grid-column:auto}} .dayv small{{font-size:14px;color:var(--muted);font-weight:400}}
 .dayp{{grid-column:1/-1;font-size:13px;color:var(--ink2)}} a.tp{{color:inherit;text-decoration:underline;text-decoration-color:#2A78D6;text-underline-offset:3px}}
 h2.sh{{font-size:18px;font-weight:500;margin:36px 0 10px}} .dot{{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}}
@@ -1634,7 +1640,7 @@ tr.pick td{{text-align:left}} .warn{{margin:0 0 10px;padding:8px 12px;border-rad
 .rng{{position:relative;height:34px;margin:10px 0 0 52px;margin-right:52px;border-radius:9px;background:var(--line);touch-action:none;user-select:none;cursor:pointer}} .rng-c{{position:absolute;inset:0;width:100%;height:100%;border-radius:9px}}
 .rng-w{{position:absolute;top:0;bottom:0;border-radius:9px;background:rgba(59,139,223,.16);border:2px solid #3B8BDF;cursor:grab;transition:left .18s cubic-bezier(.2,.8,.2,1);box-sizing:border-box}} .rng.drag .rng-w{{transition:none;cursor:grabbing}}
 .rng-w i{{position:absolute;top:50%;width:3px;height:14px;margin-top:-7px;border-radius:2px;background:#3B8BDF}} .rng-w i:first-child{{left:6px}} .rng-w i:last-child{{right:6px}}
-.rng-l{{display:flex;justify-content:space-between;margin:5px 52px 0;font-size:12px;color:var(--muted)}}
+.rng-l{{display:flex;justify-content:space-between;margin:5px 52px 0;font-size:12px;color:var(--muted);user-select:none;-webkit-user-select:none}} .rng{{-webkit-user-select:none;-webkit-touch-callout:none}} body.rngdrag{{user-select:none;-webkit-user-select:none}}
 @media (max-width:700px){{.rng,.rng-l{{margin-left:8px;margin-right:8px}}}}
 .bar{{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 14px}} #tools{{display:inline-flex;flex-wrap:wrap;gap:8px}} #tools[hidden]{{display:none}}
 .b{{border:0;border-radius:8px;padding:8px 14px;font:inherit;font-weight:600;color:#fff;cursor:pointer}} .b:disabled{{opacity:.6;cursor:default}}
@@ -1994,7 +2000,7 @@ function rangeSlider(chart, D, O) {{   // Guy, Oct 27: drag the blue window to l
  Object.entries(chart.scales).forEach(([id, sc]) => {{ if (id !== 'x') chart.options.scales[id].max = sc.max; }});   // Guy, Oct 27: lock every axis to the full 30 days so sliding never rescales
  set(s, true); draw(); addEventListener('resize', draw);
  let x0 = null, s0 = 0;
- box.addEventListener('pointerdown', e => {{ box.setPointerCapture(e.pointerId); const bw = box.clientWidth / n;
+ box.addEventListener('pointerdown', e => {{ e.preventDefault(); box.setPointerCapture(e.pointerId); const bw = box.clientWidth / n;
    if (e.target.closest('.rng-w')) {{ x0 = e.clientX; s0 = s; box.classList.add('drag'); }}
    else set((e.clientX - box.getBoundingClientRect().left) / bw - win / 2, true); }});
  box.addEventListener('pointermove', e => {{ if (x0 == null) return; const ns = Math.round(s0 + (e.clientX - x0) / (box.clientWidth / n)); if (ns !== s) set(ns, true); }});
