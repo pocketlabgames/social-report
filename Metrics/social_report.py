@@ -995,6 +995,11 @@ PIN_JS = """<script>(() => { const c = document.querySelector('.day'), M = match
  addEventListener('scroll', f, {passive: true}); addEventListener('load', () => { T = null; f(); }); addEventListener('resize', () => { T = null; f(); }); f(); })();</script>"""
 
 
+GSEL_JS = """<script>(() => { const s = document.getElementById('gsel'); if (!s) return; const a = document.getElementById('gst-all'), v = document.getElementById('gst-vf');   // Guy, Nov 16: All / newest versions filter on Game stats
+ const go = () => { a.hidden = s.value !== 'all'; v.hidden = s.value === 'all'; try { localStorage.setItem('gsel', s.value); } catch (x) {} };
+ try { const k = localStorage.getItem('gsel'); if (k === 'vf' || k === 'all') s.value = k; } catch (x) {} s.addEventListener('change', go); go(); })();</script>"""
+
+
 def sources_section():
     """Guy, Nov 6: App Store downloads by where people came from, as a stacked bar chart; hover/tap a day for each source's
     downloads and Google Ads spend. App referrer = inside another app: Google Ads in games plus Meta ads in the Facebook app (Apple detailed report, Nov 10; was mislabeled "Google Ads"); social posts have no App Store
@@ -1130,17 +1135,37 @@ def game_section():
     MV = G.get("moves") or {}
     mo, mw, mwp = (MV.get("rewarded_offer_shown") or [0, 0])[0], (MV.get("rewarded_watched") or [0, 0])[0], (MV.get("rewarded_watched") or [0, 0])[1]
     SH, SHN = G.get("shares") or {}, {"invite": "invites", "team": "team invites", "result": "win results", "challenge": "challenges", "clip": "solve clips", "other": "other"}
-    ads, sup, buy = W.get("ad_shown", 0), W.get("super_stir", 0) + W.get("super_solve", 0), sum((MONEY.get((dt.date.today() - dt.timedelta(days=i)).isoformat()) or {}).get("n") or 0 for i in range(7))   # Guy, Nov 7: real sales from Apple only, not Firebase (App Review test buys showed as purchases)
-    tiles = [(f"{A.get('week', 0):,}", "Active players", f"last 7 days, all versions · {A.get('today', 0):,} today · {A.get('ever', 0):,} since launch"),
-             (f"{half}" if mp else "—", "Typical furthest level", f"half of {mp:,} player{'' if mp == 1 else 's'} reached level {half}+ · top player: {lv[-1]:,}, since Nov 1" if mp else "no level data yet"),   # Guy, Nov 8: middle player, not the average (one player at 531 pulled it to 16.7)
-             (f"{oc.get('win', 0) / on * 100:.0f}%" if on else "—", "Win rate", f"{oc.get('win', 0):,} wins of {on:,} level attempts" if on else "no win/loss data yet"),
-             (per(ads), "Ad views per player", (" · ".join(f"{v:,} {'between levels' if k == 'interstitial' else k}" for k, v in sorted(kd.items())) or f"{ads:,} ads") + " in 7 days" + few(P)),
-             (f"{mw:,}", "+Moves videos watched", f"{mw:,} of {mo:,} offers{f' ({mw / mo * 100:.0f}%)' if mo else ''} · {mwp:,} player{'' if mwp == 1 else 's'} · out of moves popup, 7 days"),   # Guy, Nov 9: +5 moves per video from Nov 9 (was 10)
-             (f"{sup:,}", "Super Stir / Solve uses", f"{W.get('super_stir', 0):,} Super Stir · {W.get('super_solve', 0):,} Super Solve, by {P:,} player{'' if P == 1 else 's'} on 1.3.1+"),   # Guy, Nov 2: plain counts, not per 100
-             (f"{SH.get('n', 0):,}" if SH.get('n') else "—", "Shares", (f"{SH.get('players', 0):,} player{'' if SH.get('players', 0) == 1 else 's'} · " + " · ".join(f"{v:,} {SHN.get(k, k)}" for k, v in sorted((SH.get('by') or {}).items(), key=lambda x: -x[1])) + " · 7 days") if SH.get('n') else "finished shares, 7 days · counted from the next app update (save 205)"),   # Guy, Nov 12: shares weren't counted before save 205
-             (f"{buy:,}", "Purchases", "App Store sales, last 7 days")]
+    buy = sum((MONEY.get((dt.date.today() - dt.timedelta(days=i)).isoformat()) or {}).get("n") or 0 for i in range(7))   # Guy, Nov 7: real sales from Apple only, not Firebase (App Review test buys showed as purchases)
     e = html.escape
-    tiles_html = "<div class='gst'>" + "".join(f"<div class='gt'><b>{e(v)}</b><span>{e(l)}</span><small>{e(n)}</small></div>" for v, l, n in tiles) + "</div>"
+
+    def mk_tiles(B, newest=False):   # Guy, Nov 16: one tile set per filter (all versions / newest versions)
+        W2, P2 = B.get("week", {}), B.get("week", {}).get("players", 0)
+        per2 = lambda n: f"{n / P2:.1f}" if P2 else "—"
+        rc2 = {int(k): v for k, v in (B.get("reach") or {}).items()}
+        lv2 = sorted(rc2); mp2 = rc2[lv2[0]] if lv2 else 0
+        half2 = max((k for k in lv2 if rc2[k] * 2 >= mp2), default=0)
+        oc2 = B.get("outcome") or {}; on2 = sum(oc2.values()); kd2 = B.get("kind") or {}
+        MV2 = B.get("moves") or {}
+        mo2, mw2, mwp2 = (MV2.get("rewarded_offer_shown") or [0, 0])[0], (MV2.get("rewarded_watched") or [0, 0])[0], (MV2.get("rewarded_watched") or [0, 0])[1]
+        SH2 = B.get("shares") or {}
+        ads2, sup2 = W2.get("ad_shown", 0), W2.get("super_stir", 0) + W2.get("super_solve", 0)
+        when = f"since {dt.date.fromisoformat(B['since']).strftime('%b %-d')}" if newest else "7 days"
+        pl = lambda n: f"{n:,} player{'' if n == 1 else 's'}"
+        return [(f"{P2:,}" if newest else f"{A.get('week', 0):,}", "Active players",
+                 f"{B['label']} {when} · {B.get('today', 0):,} today" if newest else f"last 7 days, all versions · {A.get('today', 0):,} today · {A.get('ever', 0):,} since launch"),
+                (f"{half2}" if mp2 else "—", "Typical furthest level", f"half of {pl(mp2)} reached level {half2}+ · top player: {lv2[-1]:,}, " + (when if newest else "since Nov 1") if mp2 else "no level data yet"),   # Guy, Nov 8: middle player, not the average
+                (f"{oc2.get('win', 0) / on2 * 100:.0f}%" if on2 else "—", "Win rate", f"{oc2.get('win', 0):,} wins of {on2:,} level attempts" + (f", {when}" if newest else "") if on2 else "no win/loss data yet"),
+                (per2(ads2), "Ad views per player", (" · ".join(f"{v:,} {'between levels' if k == 'interstitial' else k}" for k, v in sorted(kd2.items())) or f"{ads2:,} ads") + f" {'' if newest else 'in '}{when}" + few(P2)),
+                (f"{mw2:,}", "+Moves videos watched", f"{mw2:,} of {mo2:,} offers{f' ({mw2 / mo2 * 100:.0f}%)' if mo2 else ''} · {pl(mwp2)} · out of moves popup, {when}"),   # Guy, Nov 9: +5 moves per video
+                (f"{sup2:,}", "Super Stir / Solve uses", f"{W2.get('super_stir', 0):,} Super Stir · {W2.get('super_solve', 0):,} Super Solve, by {pl(P2)} on {B['label'] if newest else '1.3.1+'}"),
+                (f"{SH2.get('n', 0):,}" if SH2.get('n') else "—", "Shares", (f"{pl(SH2.get('players', 0))} · " + " · ".join(f"{v:,} {SHN.get(k, k)}" for k, v in sorted((SH2.get('by') or {}).items(), key=lambda x: -x[1])) + f" · {when}") if SH2.get('n') else (f"finished shares, {when}" if newest else "finished shares, 7 days · counted from the next app update (save 205)")),
+                ((f"{W2.get('purchase_ok', 0):,}", "Purchases", f"in the game, {when} (Firebase; Apple sales can't be split by version)") if newest else (f"{buy:,}", "Purchases", "App Store sales, last 7 days"))]
+    grid = lambda T: "".join(f"<div class='gt'><b>{e(v)}</b><span>{e(l)}</span><small>{e(n)}</small></div>" for v, l, n in T)
+    VB = G.get("vf")
+    tiles_html = f"<div class='gst' id='gst-all'>{grid(mk_tiles(G))}</div>"
+    if VB:
+        tiles_html += f"<div class='gst' id='gst-vf' hidden>{grid(mk_tiles(VB, True))}</div>"
+    gsel_html = (f" <select id='gsel' class='gsel' aria-label='App versions'><option value='all'>All versions</option><option value='vf'>{e(VB['label'])}</option></select>") if VB else ""   # Guy, Nov 16
     top = lv[-1] if lv else 0
     steps = [s for s in list(range(1, 11)) + [11, 16, 21, 26, 31] if s <= top]   # Guy, Nov 6: early levels one by one, then steps of 5, then 31+
     reach = [reached(s) for s in steps]
@@ -1230,8 +1255,8 @@ def game_section():
     stale_note = f"<p class='sub' style='color:#C0392B'>Google Analytics didn't answer this run; showing the last numbers from {e(GAME['_stale'])}.</p>" if GAME.get("_stale") else ""
     return (f"<style>.sh3{{font-size:18px;margin:22px 0 4px}} .gst{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:4px 0 18px}} "
             f".gt{{border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:1px}} .gt b{{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}} "
-            f".gt span{{font-size:13px;color:var(--ink2)}} .gt small{{font-size:11px;color:var(--muted);line-height:1.3}} :root{{--gleft:#c9c7bd}} @media (prefers-color-scheme:dark){{:root{{--gleft:#55544f}}}} .gk{{font-size:12px;color:var(--muted);margin-right:12px;white-space:normal}} .gk i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}} @media (max-width:700px){{.gst{{grid-template-columns:1fr 1fr}} .gt b{{font-size:18px}}}}</style>"
-            f"<h2 class='sh' id='sec-game'>Game stats</h2>{stale_note}<p class='sub'>From Firebase (Google Analytics).</p>{tiles_html}"   # Guy, Nov 16: rest of the note removed
+            f".gst[hidden]{{display:none}} .gsel{{margin-left:8px;font:inherit;font-size:14px;padding:4px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}} .gt span{{font-size:13px;color:var(--ink2)}} .gt small{{font-size:11px;color:var(--muted);line-height:1.3}} :root{{--gleft:#c9c7bd}} @media (prefers-color-scheme:dark){{:root{{--gleft:#55544f}}}} .gk{{font-size:12px;color:var(--muted);margin-right:12px;white-space:normal}} .gk i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}} @media (max-width:700px){{.gst{{grid-template-columns:1fr 1fr}} .gt b{{font-size:18px}}}}</style>"
+            f"<h2 class='sh' id='sec-game'>Game stats</h2>{stale_note}<p class='sub'>From Firebase (Google Analytics).{gsel_html}</p>{tiles_html}{GSEL_JS if VB else ''}"
             f"<h3 class='sh3'>How far players get</h3><p class='sub'>Players who reached each level (since Nov 1{few(mp).replace(' (', '; ').rstrip(')')}). Red = players lost before the next level.</p>{legend}{funnel}{rewarded}{winrate}"
             f"<h3 class='sh3'>Players per day</h3><p class='sub'>Active players on all versions each day (from Nov 1, today so far on the right); hover or tap a day for levels, ads, Super Stir / Super Solve and purchases.</p>"
             f"<div class='chart' style='height:260px'><canvas id='gday' role='img' aria-label='Active players per day on all versions'></canvas></div>{RNG('rngg')}{js}")

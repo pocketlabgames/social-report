@@ -170,9 +170,20 @@ def _check_game(C, page, keys, today, G, on_sale):
     players = one(d7, flt=wk)
     outcome = {r[0][0]: int(r[1][0]) for r in run(d7, ["customEvent:outcome"], ["eventCount"], AND(wk, has("eventName", "level_end"))) if r[0][0] != "(not set)"}
     kind = {r[0][0]: int(r[1][0]) for r in run(d7, ["customEvent:kind"], ["eventCount"], AND(wk, has("eventName", "ad_shown"))) if r[0][0] != "(not set)"}
-    tiles = {html.unescape(l): (html.unescape(v), html.unescape(n)) for v, l, n in re.findall(r"<div class='gt'><b>(.*?)</b><span>(.*?)</span><small>(.*?)</small></div>", page)}
+    parse = lambda blk: {html.unescape(l): (html.unescape(v), html.unescape(n)) for v, l, n in re.findall(r"<div class='gt'><b>(.*?)</b><span>(.*?)</span><small>(.*?)</small></div>", blk)}
+    a0, v0 = page.find("id='gst-all'"), page.find("id='gst-vf'")   # Guy, Nov 16: two tile sets (All versions / 1.3.11+)
+    tiles = parse(page[a0:v0] if a0 >= 0 and v0 > a0 else page)
     tile = lambda l: tiles.get(l, ("", ""))
     n1 = lambda text, pat: _num(pat, text, int)
+    VB = G.get("vf")
+    if VB and v0 >= 0:   # the newest-versions tiles must match their own numbers
+        vt = parse(page[v0:v0 + 6000]); vtile = lambda l: vt.get(l, ("", ""))
+        vo = VB.get("outcome") or {}; vw = VB.get("week") or {}
+        C.same("1.3.11+ active players", n1(vtile("Active players")[0], r"([\d,]+)"), vw.get("players", 0), 0)
+        C.same("1.3.11+ win rate: wins", n1(vtile("Win rate")[1], r"([\d,]+) wins"), vo.get("win", 0), 0)
+        C.same("1.3.11+ win rate: attempts", n1(vtile("Win rate")[1], r"of ([\d,]+) level"), sum(vo.values()), 0)
+        C.same("1.3.11+ Super Stir uses", n1(vtile("Super Stir / Solve uses")[1], r"([\d,]+) Super Stir"), vw.get("super_stir", 0), 0)
+        C.same("1.3.11+ Super Solve uses", n1(vtile("Super Stir / Solve uses")[1], r"([\d,]+) Super Solve"), vw.get("super_solve", 0), 0)
     wins, tries = outcome.get("win", 0), sum(outcome.values())
     C.same("Win rate: wins", n1(tile("Win rate")[1], r"([\d,]+) wins"), wins, wobble(wins))
     C.same("Win rate: attempts", n1(tile("Win rate")[1], r"of ([\d,]+) level"), tries, wobble(tries))
