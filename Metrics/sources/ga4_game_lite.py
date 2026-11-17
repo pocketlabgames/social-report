@@ -185,6 +185,13 @@ def fetch(keys_dir, today):
             f = {"andGroup": {"expressions": [vfil, {"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in vl if x >= lv]}}}]}}
             r = _run(s, {"dateRanges": [dr], "metrics": [{"name": "activeUsers"}], "dimensionFilter": f})
             B["reach"][str(lv)] = int(r[0][1][0]) if r else 0
+        B["lv"] = {}   # Guy, Nov 16: win rate per level for the newest versions too
+        lvf2 = {"andGroup": {"expressions": [vfil, {"filter": {"fieldName": "eventName", "stringFilter": {"matchType": "BEGINS_WITH", "value": "lv_"}}}]}}
+        for (e,), (u, c) in _run(s, {"dateRanges": [dr], "dimensions": [{"name": "eventName"}], "metrics": [{"name": "totalUsers"}, {"name": "eventCount"}], "dimensionFilter": lvf2}):
+            kind, _, n = e.rpartition("_")
+            if kind in ("lv_start", "lv_win") and n.isdigit():
+                row = B["lv"].setdefault(n, {})
+                row[kind[3:]], row[kind[3:] + "s"] = int(u), int(c)
         out["vf"] = B
     # active players on every app version (the game events above only come from 1.3.1+)
     span = lambda a: {"startDate": a, "endDate": today.isoformat()}
