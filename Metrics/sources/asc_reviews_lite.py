@@ -21,9 +21,12 @@ def _stars(app_id, today):
     cache = json.load(open(RCACHE)) if os.path.exists(RCACHE) else {}
     by = cache.get("by", {})
     if cache.get("date") == today.isoformat():
-        return by
-    cc = json.load(open(CCACHE)) if os.path.exists(CCACHE) else {}
-    for c in sorted({k for day in cc.values() for k in day} | {"US"}):
+        # Guy, Nov 18: a new rating waited ~a day for the next daily pass; recheck the US + countries that already have ratings every run (few lookups)
+        todo = sorted({"US"} | {c for c, v in by.items() if v and v[0]})
+    else:
+        cc = json.load(open(CCACHE)) if os.path.exists(CCACHE) else {}
+        todo = sorted({k for day in cc.values() for k in day} | {"US"})
+    for c in todo:
         try:
             r = requests.get("https://itunes.apple.com/lookup", params={"id": app_id, "country": c.lower()}, timeout=20)
             if r.status_code in (403, 429):   # rate limited: keep what we have, try again next run
