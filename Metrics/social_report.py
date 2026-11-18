@@ -1578,20 +1578,24 @@ EARN_JS = """
       else if (by === 'week') { const s = new Date(d); s.setDate(d.getDate() - (d.getDay() + 6) % 7); key = iso(s); lab = 'Week of ' + M[s.getMonth()] + ' ' + s.getDate(); }
       else if (by === 'month') { key = k.slice(0, 7); lab = M[d.getMonth()] + ' ' + d.getFullYear(); }
       else { key = k.slice(0, 4); lab = key; }
-      const o = g.get(key) || {lab, v: 0}; o.v += EM[k]; g.set(key, o); });
+      const o = g.get(key) || {lab, a: 0, p: 0}; o.a += EM[k][0]; o.p += EM[k][1]; g.set(key, o); });
     return [...g.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1).map(x => x[1]); };
   let ch = null;
   const draw = by => {
     btns.forEach(b => b.classList.toggle('on', b.dataset.by === by));
     const g = group(by), dark = matchMedia('(prefers-color-scheme: dark)').matches, grid = dark ? '#2c2c2a' : '#e1e0d9', ink = dark ? '#c3c2b7' : '#52514e';
-    document.getElementById('etot').textContent = '$' + g.reduce((a, x) => a + x.v, 0).toFixed(2) + ' earned since launch (ads + App Store)';
+    const ta = g.reduce((s, x) => s + x.a, 0), tp = g.reduce((s, x) => s + x.p, 0);
+    document.getElementById('etot').textContent = '$' + (ta + tp).toFixed(2) + ' earned since launch (ads $' + ta.toFixed(2) + ' + App Store $' + tp.toFixed(2) + ')';
     if (ch) ch.destroy();
     ch = new Chart(document.getElementById('ecv'), {type: 'bar',
-      data: {labels: g.map(x => x.lab), datasets: [{label: 'Earned', data: g.map(x => Math.round(x.v * 100) / 100), backgroundColor: '#1E9E55', borderRadius: 4, maxBarThickness: 60}]},
-      options: {responsive: true, maintainAspectRatio: false, animation: false, plugins: {legend: {display: false},
-        tooltip: {callbacks: {label: c => 'Earned: $' + c.parsed.y.toFixed(2)}}},
-        scales: {x: {grid: {display: false}, ticks: {color: ink, autoSkip: true, maxRotation: 0}},
-                 y: {beginAtZero: true, grid: {color: grid}, ticks: {color: ink, callback: v => '$' + v}}}}});
+      data: {labels: g.map(x => x.lab), datasets: [
+        {label: 'Ads', data: g.map(x => Math.round(x.a * 100) / 100), backgroundColor: '#1E9E55', borderColor: dark ? '#1a1a19' : '#fff', borderWidth: {top: 2}, borderSkipped: 'bottom', maxBarThickness: 60, stack: 'e'},
+        {label: 'Purchases (App Store)', data: g.map(x => Math.round(x.p * 100) / 100), backgroundColor: '#2a78d6', borderRadius: 4, maxBarThickness: 60, stack: 'e'}]},
+      options: {responsive: true, maintainAspectRatio: false, animation: false, interaction: {mode: 'index', intersect: false},
+        plugins: {legend: {display: true, position: 'top', align: 'start', labels: {color: ink, boxWidth: 10, boxHeight: 10, generateLabels: c => c.data.datasets.map((d, i) => ({text: d.label + ' $' + (i ? tp : ta).toFixed(2), fillStyle: d.backgroundColor, strokeStyle: d.backgroundColor, fontColor: ink, datasetIndex: i}))}},
+        tooltip: {callbacks: {label: c => c.dataset.label + ': $' + c.parsed.y.toFixed(2), footer: it => 'Total: $' + it.reduce((s, c) => s + c.parsed.y, 0).toFixed(2)}}},
+        scales: {x: {stacked: true, grid: {display: false}, ticks: {color: ink, autoSkip: true, maxRotation: 0}},
+                 y: {stacked: true, beginAtZero: true, grid: {color: grid}, ticks: {color: ink, callback: v => '$' + v}}}}});
   };
   const close = () => { ov.hidden = true; document.body.style.overflow = ''; };
   document.querySelectorAll('.eclick').forEach(el => el.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); ov.hidden = false; document.body.style.overflow = 'hidden'; draw('month'); }));
@@ -1607,7 +1611,7 @@ def earn_html(money_daily):
     """Pop-up chart of money earned (ads + App Store) by day, week, month (default) or year; opened from the header tile (Guy, Nov 2)."""
     if not money_daily:
         return ""
-    em = {d: round(sum(v for k, v in (m or {}).items() if k in ("ads", "iap") and v is not None), 4) for d, m in money_daily.items()}   # dollars only: "n" (sales) and "rwd" (videos) are counts (Guy, Nov 9: popup showed $390.99)
+    em = {d: [round((m or {}).get("ads") or 0, 4), round((m or {}).get("iap") or 0, 4)] for d, m in money_daily.items()}   # [ads $, App Store $]; dollars only: "n" (sales) and "rwd" (videos) are counts (Guy, Nov 9: popup showed $390.99; Nov 18: stacked ads green / purchases blue)
     return (f"<style>{CMAP_CSS if not COUNTRIES else ''}{EARN_CSS}</style>"
             f"<div class='cmo' id='earn' hidden><div class='cmc'><button class='cmx' id='ecx' aria-label='Close'>×</button>"
             f"<div class='cmh'><h2>Earned</h2><small id='etot'></small></div>"
