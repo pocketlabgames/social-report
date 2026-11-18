@@ -1,14 +1,5 @@
 {
-"2026-10-24": {
-"imp_search": 395,
-"pv_browse": 2,
-"pv_other": 5,
-"pv_search": 6
-},
 "2026-10-25": {
-"dl_ads": 2,
-"dl_browse": 1,
-"dl_search": 5,
 "imp_search": 304,
 "pv_ads": 13,
 "pv_browse": 3,
@@ -19,9 +10,9 @@
 "dl_ads": 2,
 "dl_search": 3,
 "imp_search": 219,
-"pv_ads": 471,
-"pv_browse": 28,
-"pv_other": 300,
+"pv_ads": 435,
+"pv_browse": 27,
+"pv_other": 259,
 "pv_search": 8
 },
 "2026-10-27": {
