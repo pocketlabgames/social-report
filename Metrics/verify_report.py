@@ -219,9 +219,18 @@ def _check_game(C, page, keys, today, G, on_sale):
         PB = G.get("pre"); p0 = page.find("id='gst-pre'")
         C.true("Before 1.3.11 option in the version filter", bool(PB) == ("<option value='pre'>" in page), "drop-down option and data disagree")
         _o = re.findall(r"<select id='gsel'.*?</select>", page)
-        C.true("Version filter order: All, Before 1.3.11, 1.3.11+", bool(_o) and re.findall(r"value='(\w+)'", _o[0]) == (["all", "pre", "vf"] if PB else ["all", "vf"]), f"order is {re.findall(r'value=.(\w+).', _o[0]) if _o else 'missing'}")
+        C.true("Version filter order: All, Before 1.3.11, 1.3.11+, then 1.3.18+ / 1.3.19+ once live", bool(_o) and re.findall(r"value='(\w+)'", _o[0]) == (["all", "pre", "vf"] if PB else ["all", "vf"]) + list((G.get("vx") or {}).keys()), f"order is {re.findall(r'value=.(\w+).', _o[0]) if _o else 'missing'}")
+        C.true("Version filter opens on All versions", "go('all')" in page and "getItem('gsel')" not in page, "filter remembers the last choice")   # Guy, Nov 19
+        for k, BX in (G.get("vx") or {}).items():   # Guy, Nov 19: 1.3.18+ / 1.3.19+ once live
+            X = tuple(int(x) for x in BX["label"].rstrip("+").split("."))
+            xo = page.find(f"id='gst-{k}'"); C.true(f"{BX['label']} tile set", xo >= 0, "missing")
+            if xo >= 0:
+                _xe = page.find("<div class='gst'", xo + 10); xt = parse(page[xo:_xe if _xe > xo else xo + 6000])
+                xa = dt.date.fromisoformat(BX["since"])
+                C.same(f"{BX['label']} active players", n1(xt.get("Active players", ("", ""))[0], r"([\d,]+)"), one((xa, today), flt=released_only(xa, today, [v for v in want if _ver(v) >= X])), 0)
+                C.true(f"{BX['label']} is on the App Store", X <= _ver(G.get("live", "0")), f"live is {G.get('live')}")
         if PB and p0 >= 0:
-            pt = parse(page[p0:p0 + 6000]); ptile = lambda l: pt.get(l, ("", ""))
+            _pe2 = page.find("<div class='gst'", p0 + 10); pt = parse(page[p0:_pe2 if _pe2 > p0 else p0 + 6000]); ptile = lambda l: pt.get(l, ("", ""))
             pvs = [v for v in want if _ver(v) < (1, 3, 11)]
             pa, pb = dt.date.fromisoformat(PB["since"]), dt.date.fromisoformat(PB["until"])
             C.same("Before 1.3.11 active players", n1(ptile("Active players")[0], r"([\d,]+)"), one((pa, pb), flt=released_only(pa, pb, pvs)), 0)

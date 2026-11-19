@@ -1025,9 +1025,9 @@ PIN_JS = """<script>(() => { const c = document.querySelector('.day'), M = match
  addEventListener('scroll', f, {passive: true}); addEventListener('load', () => { T = null; f(); }); addEventListener('resize', () => { T = null; f(); }); f(); })();</script>"""
 
 
-GSEL_JS = """<script>(() => { const S = [...document.querySelectorAll('.gsel')]; if (!S.length) return; const a = document.getElementById('gst-all'), v = document.getElementById('gst-vf'), p = document.getElementById('gst-pre');   // Guy, Nov 16: one All / 1.3.11+ filter; changing either dropdown updates both
- const go = val => { S.forEach(x => x.value = val); if (a && v) { a.hidden = val !== 'all'; v.hidden = val !== 'vf'; if (p) p.hidden = val !== 'pre'; } if (window.LVDRAW) LVDRAW(val); if (window.FUNDRAW) FUNDRAW(val); document.querySelectorAll('.fsa').forEach(x => x.hidden = val !== 'all'); document.querySelectorAll('.fsv').forEach(x => x.hidden = val !== 'vf'); document.querySelectorAll('.fsp').forEach(x => x.hidden = val !== 'pre'); try { localStorage.setItem('gsel', val); } catch (x) {} };
- let k = 'all'; try { const q = localStorage.getItem('gsel'); if (q === 'vf' || q === 'all' || (q === 'pre' && p)) k = q; } catch (x) {} S.forEach(x => x.addEventListener('change', () => go(x.value))); go(k); })();</script>"""
+GSEL_JS = """<script>(() => { const S = [...document.querySelectorAll('.gsel')]; if (!S.length) return;   // Guy, Nov 16: one version filter; changing either dropdown updates both
+ const go = val => { S.forEach(x => x.value = val); document.querySelectorAll('.gst').forEach(x => x.hidden = x.id !== 'gst-' + val); if (window.LVDRAW) LVDRAW(val); if (window.FUNDRAW) FUNDRAW(val); };
+ S.forEach(x => x.addEventListener('change', () => go(x.value))); go('all'); })();</script>"""   # Guy, Nov 19: always opens on All versions (no remembered choice)
 
 
 def sources_section():
@@ -1312,7 +1312,10 @@ def game_section():
         tiles_html += f"<div class='gst' id='gst-vf' hidden>{grid(VT)}</div>"
     if PB:
         tiles_html += f"<div class='gst' id='gst-pre' hidden>{grid(mk_tiles(PB, True))}</div>"
-    gsel = lambda i: (f" <select id='{i}' class='gsel' aria-label='App versions'><option value='all'>All versions</option>" + (f"<option value='pre'>{e(PB['label'])}</option>" if PB else "") + f"<option value='vf'>{e(VB['label'])}</option></select>") if VB else ""   # Guy, Nov 16: one filter, shown on the tiles and the win rate chart
+    XB = G.get("vx") or {}   # Guy, Nov 19: 1.3.18+ / 1.3.19+, once each is on the App Store
+    for k, BX in XB.items():
+        tiles_html += f"<div class='gst' id='gst-{k}' hidden>{grid(mk_tiles(BX, True))}</div>"
+    gsel = lambda i: (f" <select id='{i}' class='gsel' aria-label='App versions'><option value='all'>All versions</option>" + (f"<option value='pre'>{e(PB['label'])}</option>" if PB else "") + f"<option value='vf'>{e(VB['label'])}</option>" + "".join(f"<option value='{k}'>{e(BX['label'])}</option>" for k, BX in XB.items()) + "</select>") if VB else ""   # Guy, Nov 16: one filter, shown on the tiles and the win rate chart
     gsel_html = gsel("gsel")
     top = lv[-1] if lv else 0
     steps = [s for s in list(range(1, 11)) + [11, 16, 21, 26, 31] if s <= top]   # Guy, Nov 6: early levels one by one, then steps of 5, then 31+
@@ -1329,6 +1332,7 @@ def game_section():
     if VB and VB.get("freach"):
         vfun = fun_of(VB)
     pfun = fun_of(PB) if PB and PB.get("freach") else None
+    xfun = {k: fun_of(BX) for k, BX in XB.items() if BX.get("freach")}
     if PB:
         _pa, _pb = dt.date.fromisoformat(PB['since']), dt.date.fromisoformat(PB['until'])
         fsv += f"<span class='fsp' hidden>{html.escape(PB['label'])}, {_pa.strftime('%b %-d')}–{_pb.strftime('%-d' if _pa.month == _pb.month else '%b %-d')}</span>"
@@ -1345,10 +1349,11 @@ def game_section():
     LVD = mklv(LV)
     LVD["vlv"] = mklv((VB or {}).get("lv") or {}) if VB else None   # Guy, Nov 16: 1.3.11+ win rate per level
     LVD["plv"] = mklv((PB or {}).get("lv") or {}) if PB else None   # Guy, Nov 19: Before 1.3.11
+    LVD["xlv"] = {k: mklv(BX.get("lv") or {}) for k, BX in XB.items()}
     p1 = LVD["lvs"][0] if lvn else 0
     winrate = ("<h3 class='sh3'>Win rate per level</h3><div class='chart' style='height:240px'><canvas id='glv' role='img' aria-label='Win rate per level, levels 1 to 25'></canvas></div>") if lvn else \
               "<h3 class='sh3'>Win rate per level</h3><p class='sub gempty'>Starts once players on 1.3.4 or later play a level (Google Analytics needs up to a day).</p>"
-    data = {"steps": steps, "reach": reach, "playing": playing, "mp": mp, "vfun": vfun, "pfun": pfun, "cver": CM.get("version", ""), "cn": cn, "co": co, "cnew": [round(cnew.get(str(s), 0) / cn * 100) for s in steps] if show_cmp else [], "cold": [round(cold.get(str(s), 0) / co * 100) for s in steps] if show_cmp else [], "labels": [md(d) for d in days], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in days],
+    data = {"steps": steps, "reach": reach, "playing": playing, "mp": mp, "vfun": vfun, "pfun": pfun, "xfun": xfun, "cver": CM.get("version", ""), "cn": cn, "co": co, "cnew": [round(cnew.get(str(s), 0) / cn * 100) for s in steps] if show_cmp else [], "cold": [round(cold.get(str(s), 0) / co * 100) for s in steps] if show_cmp else [], "labels": [md(d) for d in days], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in days],
             "players": [A.get("daily", {}).get(d, 0) for d in days], "newer": [D[d].get("players", 0) for d in days], **{k: [D[d].get(k, 0) for d in days] for k in ("level_end", "level_up", "ad_shown", "super_stir", "super_solve")}, "purchase_ok": [(MONEY.get(d) or {}).get("n") or 0 for d in days], **LVD,
             # Guy, Nov 9: rewarded videos per day (AdMob, all players) replaces "Did 1.3.4 help?"; dashed = same weekday one week earlier
             "rwd": [(MONEY.get(d) or {}).get("rwd") for d in days], "rwp": [(MONEY.get(wk(d)) or {}).get("rwd") for d in days], "pfull": [dt.date.fromisoformat(wk(d)).strftime("%a %b %-d") for d in days]}
@@ -1398,7 +1403,7 @@ def game_section():
     scales: {x: {stacked: true, grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: false, font: {size: innerWidth < 500 ? 9 : 11}}, title: {display: true, text: 'Level reached', color: muted}},
      y: {stacked: true, beginAtZero: true, grid: {color: grid}, ticks: {color: muted, precision: 0}, title: {display: true, text: 'Players', color: muted}}}}});
   document.addEventListener('touchstart', e => { if (e.target !== gf) { const el = gf.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); } }, {passive: true}); };
- window.FUNDRAW = set => { if (!gf) return; const o = Chart.getChart(gf); if (o) o.destroy(); FUN1(set === 'vf' && X.vfun ? X.vfun : set === 'pre' && X.pfun ? X.pfun : X); };   // Guy, Nov 16: All / 1.3.11+
+ window.FUNDRAW = set => { if (!gf) return; const o = Chart.getChart(gf); if (o) o.destroy(); FUN1(set === 'vf' && X.vfun ? X.vfun : set === 'pre' && X.pfun ? X.pfun : (X.xfun || {})[set] || X); };   // Guy, Nov 16: All / 1.3.11+
  if (gf && !Chart.getChart(gf)) FUNDRAW((document.getElementById('gsel') || {}).value || 'all');
  const gr = document.getElementById('grw');
  if (gr && !Chart.getChart(gr)) { const f = i => `<div class="ctt-h">${X.full[i]} · ${pl(X.rwd[i] || 0, 'video')}</div><div class="ctt-r">Week before (${X.pfull[i]}): ${pl(X.rwp[i] || 0, 'video')}</div>`;
@@ -1415,7 +1420,7 @@ def game_section():
     scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: false, font: {size: innerWidth < 500 ? 9 : 11}}, title: {display: true, text: 'Level reached', color: muted}},
      y: {beginAtZero: true, max: 100, grid: {color: grid}, ticks: {color: muted, callback: v => v + '%'}, title: {display: true, text: 'New players', color: muted}}}}}); }
  const gl = document.getElementById('glv');
- window.LVDRAW = set => { const Y = set === 'vf' && X.vlv ? X.vlv : set === 'pre' && X.plv ? X.plv : X; if (!gl) return; const old = Chart.getChart(gl); if (old) old.destroy(); if (!Y.lvn.length) return; LV1(Y); };   // Guy, Nov 16: All / 1.3.11+
+ window.LVDRAW = set => { const Y = set === 'vf' && X.vlv ? X.vlv : set === 'pre' && X.plv ? X.plv : (X.xlv || {})[set] || X; if (!gl) return; const old = Chart.getChart(gl); if (old) old.destroy(); if (!Y.lvn.length) return; LV1(Y); };   // Guy, Nov 16: All / 1.3.11+
  const LV1 = X => { const r = X.lvn.map((k, i) => X.lvs[i] ? Math.round(X.lvw[i] / X.lvs[i] * 100) : 0), g1 = k => k === 1, rr = r.filter((v, i) => !g1(X.lvn[i])), hard = [...rr].sort((a, b) => a - b)[Math.min(2, rr.length - 1)];   // Guy, Nov 12: level 1 is guided, not hard; players who don't finish it left the game
   const f = i => `<div class="ctt-h">Level ${X.lvn[i]} · ${r[i]}% win rate</div><div class="ctt-r">${n(X.lvw[i])} of ${pl(X.lvs[i], 'player')} beat it</div><div class="ctt-r">${pl(X.lvt[i], 'try', )}`.replace('trys', 'tries') + (X.lvs[i] ? ` · ${(X.lvt[i] / X.lvs[i]).toFixed(1)} per player` : '') + '</div>' + (g1(X.lvn[i]) ? `<div class="ctt-r">Guided level: the ${n(X.lvs[i] - X.lvw[i])} who didn't beat it left the game</div>` : '');
   const ch = new Chart(gl, {type: 'bar', data: {labels: X.lvn.map(String), datasets: [{data: r, backgroundColor: r.map((v, i) => g1(X.lvn[i]) ? muted : v <= hard && v < 100 ? '#E24B4A' : '#12A4A4'), borderRadius: 4, borderSkipped: 'start', maxBarThickness: 26}]},
