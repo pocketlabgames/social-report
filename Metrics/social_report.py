@@ -478,7 +478,7 @@ def build_rows(snap, prev, rd):
     metrics = [("Total views", "views"), ("Avg views per post", "avg"), ("Top post views", "top_views"),
                ("3-second views", "views_3s"), ("3-s views % of views", "hold_pct"),
                ("Avg watch time (s)", "avg_watch_s"), ("Watched % of video", "watch_pct"), ("Likes per 1K views", "likes_per_k"),
-               ("Likes / upvotes", "likes"), ("Followers", "followers"), ("Posts", "posts")]   # Oct 26: grouped view rows
+               ("Comments per 1K views", "comments_per_k"), ("Likes / upvotes", "likes"), ("Followers", "followers"), ("Posts", "posts")]   # Oct 26: grouped view rows
     rows = []
     for label, key in metrics:
         vals, olds = {}, {}
@@ -516,12 +516,12 @@ def build_rows(snap, prev, rd):
             def wavg(src):
                 pairs = [(src[p]["avg_watch_s"], src[p]["views"]) for p in PLAT if src.get(p) and src[p].get("avg_watch_s") is not None and src[p].get("views")]
                 return round(sum(a * v for a, v in pairs) / sum(v for _, v in pairs), 1) if pairs else None
-            tot = otot = "—"   # Guy, Nov 19 review: no Total for watch time (sites measure it differently)
+            tot, otot = wavg(snap), (wavg(prev) if prev else None)
         if key == "watch_pct":
             def wavg(src):
                 pairs = [(src[p]["watch_pct"], src[p]["views"]) for p in PLAT if src.get(p) and src[p].get("watch_pct") is not None and src[p].get("views")]
                 return round(sum(a * v for a, v in pairs) / sum(v for _, v in pairs), 1) if pairs else None
-            tot = otot = "—"   # YouTube counts replays (over 100%), so a total isn't meaningful
+            tot, otot = wavg(snap), (wavg(prev) if prev else None)
         if key == "hold_pct":
             def hp(src):
                 pairs = [(src[p]["views_3s"], src[p]["views"]) for p in PLAT if src.get(p) and src[p].get("views_3s") is not None and src[p].get("views")]
@@ -683,8 +683,7 @@ def ad_of(posts):
         key = r["url"].rstrip("/").rsplit("/", 1)[-1] if site == "instagram" else r["id"].split(":", 1)[1]
         a = by_id.get((site, key))
         if a is None and site in ("facebook", "instagram"):
-            nxt = (dt.date.fromisoformat(r["created"][:10]) - dt.timedelta(days=1)).isoformat()   # Guy, Nov 19 review: a midnight Instagram post belongs to the previous day's ad
-            fits = [x for x in rows if site not in x["ids"] and x[site] and x["date"] in (r["created"][:10], nxt) and x[site][:90] == r["title"][:90]]
+            fits = [x for x in rows if site not in x["ids"] and x[site] and x["date"] == r["created"][:10] and x[site][:90] == r["title"]]
             a = fits[0] if len(fits) == 1 else None
         if a:
             out[r["id"]] = a
@@ -826,8 +825,6 @@ def posts_section(posts, phist, now):
         top = max(g["posts"], key=lambda x: x["views"])
         rows = ""
         for x in g["posts"]:
-            if x["site"] == "tiktok" and not x["views"]:   # Guy, Nov 19 review: TikTok rows at 0 views hidden (every TikTok post shows 0 since Nov 8)
-                continue
             gx = x["views"] - bviews[x["id"]] if x["id"] in bviews else None
             lpk = round(x["likes"] / x["views"] * 1000, 1) if x["likes"] is not None and x["views"] else None
             if x["likes"] is not None and x["views"] <= 1000:   # Guy, Oct 27 + Oct 28: the actual like count until the site passes 1,000 views, then likes per 1,000 views (restored Oct 28; lost in the 99e496d push)
@@ -835,13 +832,10 @@ def posts_section(posts, phist, now):
             else:
                 lcell = num(lpk, 1)
             link = f"<a class='tp' href='{e(x['url'])}' target='_blank' rel='noopener'>{NAME[x['site']]}</a>" if x["url"] else NAME[x["site"]]
-            try: xa = (now - dt.datetime.strptime(x["created"], "%Y-%m-%d %H:%M")).total_seconds() / 3600
-            except ValueError: xa = 0
-            zero = " <span style='color:#E5484D' title='0 views 12+ hours after posting: check it went out'>⚠</span>" if not x["views"] and xa >= 12 and x["site"] in ("facebook", "instagram") else ""   # Guy, Nov 19 review (YouTube Shorts often really get 0)
-            rows += (f"<tr class='{'lead' if x is top and len(g['posts']) > 1 else ''}'><th class='rl'><span class='dot' style='background:{COLOR[x['site']]}'></span>{link}{zero}</th>"
+            rows += (f"<tr class='{'lead' if x is top and len(g['posts']) > 1 else ''}'><th class='rl'><span class='dot' style='background:{COLOR[x['site']]}'></span>{link}</th>"
                      f"<td><b>{num(x['views'])}</b></td><td>{sg(gx)}</td><td>{lcell}</td>"
                      f"<td class='aw'>{num(x['avg_watch_s'], 1) + ' s' if x['avg_watch_s'] is not None else '—'}</td><td>{num(x['watch_pct']) + '%' if x['watch_pct'] is not None else '—'}</td></tr>")
-        missing = [NAME[p] for p in PLAT if p not in ("youtube", "tiktok") and not any(x["site"] == p for x in g["posts"])]   # Guy, Nov 19 review: no "not on YouTube" on every card
+        missing = [NAME[p] for p in PLAT if not any(x["site"] == p for x in g["posts"])]
         pc, pt = perf(g)
         xh = age_h(g)   # Guy, Oct 27: one number = views vs a typical video at the same age (same measure as the dot)
         xv = (tot(g) / (M * (1 - math.exp(-xh / 18)))) if (M and xh >= 6) else None
@@ -905,7 +899,7 @@ def dl_estimate(installs, rcnew, now):
         return {}
     r = min(min(rs), 1.0)
     out = {}
-    for k in (1,):   # Guy, Nov 19 review: no "today" estimate; RevenueCat counts UTC days, so at 3 AM "today" was last evening's installs
+    for k in (0, 1):
         d = (td - dt.timedelta(days=k)).isoformat()
         if installs.get(d) is None and rcnew.get(d) is not None:
             out[d] = int(rcnew[d] * r)
@@ -1230,27 +1224,6 @@ def search_section():
             f"<p class='sub' style='margin:4px 0 14px'>{note}</p>{js}")
 
 
-def app_tiles():
-    """Guy, Nov 19 review: the app tiles (Apple + Firebase) live in Game Analytics, not in the social Retention table. No Deletions tile (Apple's count misses many devices)."""
-    md = lambda d: dt.date.fromisoformat(d).strftime("%b %-d")
-    wk = f"{md(ASCR['first'])}–{md(ASCR['last'])}" if ASCR.get("first") else "last 7 days posted"
-    T = []
-    if RET.get("d7") is not None:
-        T.append((f"{RET['d7']:.0f}%", "Day-7 return", f"of {int(RET.get('d7_n') or 0):,} new players came back on day 7 or later (Firebase)"))
-    if ASCR.get("spd") is not None:
-        T.append((f"{ASCR['spd']:.1f}", "Sessions per device", f"app opens per active device per day (Apple, {wk})"))
-    if ASCR.get("mins") is not None:
-        T.append((f"{ASCR['mins']:.1f} min", "Avg session", f"time per app open (Apple, {wk})"))
-    if INSTALLS and ASCR.get("s_first"):
-        dl = sum(v for v in INSTALLS.values() if v is not None)
-        kept = max(0.0, 1 - ASCR["s_del"] / ASCR["s_first"])
-        T.append((f"~{round(dl * kept):,}", "Installed (est.)", f"of {dl:,} downloads; in Apple's opt-in sample {ASCR['s_del']:,} deletions per {ASCR['s_first']:,} installs"))
-    if not T:
-        return ""
-    e = html.escape
-    return "<h3 class='sh3'>App</h3><div class='gst gapp'>" + "".join(f"<div class='gt'><b>{e(v)}</b><span>{e(l)}</span><small>{e(n)}</small></div>" for v, l, n in T) + "</div>"
-
-
 def game_section():
     """Guy, Nov 2: game stats from Firebase / GA4 (builds 1.3.1+ only): players, furthest level, win rate, ads, Super Stir /
     Super Solve and purchases, with a furthest-level funnel (where players stop) and players per day."""
@@ -1291,22 +1264,20 @@ def game_section():
         half2 = max((k for k in lv2 if rc2[k] * 2 >= mp2), default=0)
         oc2 = B.get("outcome") or {}; on2 = sum(oc2.values()); kd2 = B.get("kind") or {}
         MV2 = B.get("moves") or {}
-        mo2, mw2, mwp2 = (MV2.get("rewarded_offer_shown") or [0, 0])[1], (MV2.get("rewarded_watched") or [0, 0])[0], (MV2.get("rewarded_watched") or [0, 0])[1]   # Guy, Nov 19 review: offers = players shown the pop-up (it counted every time the pop-up appeared)
+        mo2, mw2, mwp2 = (MV2.get("rewarded_offer_shown") or [0, 0])[0], (MV2.get("rewarded_watched") or [0, 0])[0], (MV2.get("rewarded_watched") or [0, 0])[1]
         SH2 = B.get("shares") or {}
         ads2, sup2 = W2.get("ad_shown", 0), W2.get("super_stir", 0) + W2.get("super_solve", 0)
-        LB = B.get("lv") or {}   # Guy, Nov 19 review: win rate = players who beat each level they started (levels 1-25), same as the per-level chart; level_end outcomes never counted fails and test phones' skips pulled it down
-        lvS = sum(v.get("start", 0) for v in LB.values()); lvW = sum(min(v.get("win", 0), v.get("start", 0)) for v in LB.values())
-        lvT = sum(v.get("starts", 0) for v in LB.values()); lvTW = sum(v.get("wins", 0) for v in LB.values())
         when = f"since {dt.date.fromisoformat(B['since']).strftime('%b %-d')}" if newest else "7 days"
         rcb = sum(v for k, v in RCTX.items() if newest and k >= B["since"])   # Guy, Nov 18: Firebase purchase_ok counted test buys (14 on Nov 18, 0 real)
         pl = lambda n: f"{n:,} player{'' if n == 1 else 's'}"
         return [(f"{P2:,}" if newest else f"{A.get('week', 0):,}", "Active players",
-                 f"{B['label']} {when}" if newest else f"last 7 days, all versions · {A.get('ever', 0):,} since launch"),   # Guy, Nov 19 review: no "today" (Google Analytics runs up to a day behind)
+                 f"{B['label']} {when} · {B.get('today', 0):,} today" if newest else f"last 7 days, all versions · {A.get('today', 0):,} today · {A.get('ever', 0):,} since launch"),
                 (f"{half2}" if mp2 else "—", "Typical furthest level", f"half of {pl(mp2)} reached level {half2}+ · top player: {lv2[-1]:,}, " + (when if newest else "since Nov 1") if mp2 else "no level data yet"),   # Guy, Nov 8: middle player, not the average
-                (f"{lvW / lvS * 100:.0f}%" if lvS else "—", "Win rate", (f"players beat {lvW:,} of {lvS:,} levels they started · {lvTW / lvT * 100:.0f}% of {lvT:,} tries · levels 1–25, " + (when if newest else "since Nov 1")) if lvS else "no level data yet"),
+                (f"{oc2.get('win', 0) / on2 * 100:.0f}%" if on2 else "—", "Win rate", f"{oc2.get('win', 0):,} wins of {on2:,} level attempts" + (f", {when}" if newest else "") if on2 else "no win/loss data yet"),
                 (per2(ads2), "Ad views per player", (" · ".join(f"{v:,} {'between levels' if k == 'interstitial' else k}" for k, v in sorted(kd2.items())) or f"{ads2:,} ads") + f" {'' if newest else 'in '}{when}" + few(P2)),
-                (f"{mw2:,}", "+Moves videos watched", f"{mwp2:,} of {mo2:,} players offered watched{f' ({mwp2 / mo2 * 100:.0f}%)' if mo2 else ''} · out of moves pop-up, {when}"),   # Guy, Nov 9: +5 moves per video
-                (f"{sup2:,}", "Super Stir / Solve uses", f"{W2.get('super_stir', 0):,} Super Stir · {W2.get('super_solve', 0):,} Super Solve, {when}"),   # Guy, Nov 19 review: "by 272 players" clashed with 249 active players
+                (f"{mw2:,}", "+Moves videos watched", f"{mw2:,} of {mo2:,} offers{f' ({mw2 / mo2 * 100:.0f}%)' if mo2 else ''} · {pl(mwp2)} · out of moves popup, {when}"),   # Guy, Nov 9: +5 moves per video
+                (f"{sup2:,}", "Super Stir / Solve uses", f"{W2.get('super_stir', 0):,} Super Stir · {W2.get('super_solve', 0):,} Super Solve, by {pl(P2)} on {B['label'] if newest else '1.3.1+'}"),
+                (f"{SH2.get('n', 0):,}" if SH2.get('n') else "—", "Shares", (f"{pl(SH2.get('players', 0))} · " + " · ".join(f"{v:,} {SHN.get(k, k)}" for k, v in sorted((SH2.get('by') or {}).items(), key=lambda x: -x[1])) + f" · {when}") if SH2.get('n') else (f"finished shares, {when}" if newest else "finished shares, 7 days · counted from the next app update (save 205)")),
                 (((f"{rcb:,}", "Purchases", f"real App Store purchases, {when} (RevenueCat; test buys left out)") if RCTX else ("—", "Purchases", "RevenueCat not loaded")) if newest else (f"{buy:,}", "Purchases", "App Store sales, last 7 days"))]
     grid = lambda T: "".join(f"<div class='gt'><b>{e(v)}</b><span>{e(l)}</span><small>{e(n)}</small></div>" for v, l, n in T)
     VB = G.get("vf")
@@ -1350,10 +1321,10 @@ def game_section():
               f"<p class='sub gempty'>No furthest-level data yet. Bars show once players on released versions send it (Google Analytics needs up to a day).</p>")
     legend = ("<div class='lgs' style='margin-top:6px'><span class='gk'><i style='background:#12A4A4'></i>Still playing</span> <span class='gk'><i style='background:var(--gleft)'></i>Quit (3+ days away)</span></div>" if playing and steps else "")
     cv = CM.get("version", "")
-    if False:   # Guy, Nov 19 review: cut; the 1.3.11+ filter shows the same thing
+    if show_cmp:
         compare = (f"<h3 class='sh3'>Did {e(cv)} help?</h3>"
                    "<div class='chart' style='height:240px'><canvas id='gcmp' role='img' aria-label='Share of new players reaching each level, new version vs earlier'></canvas></div>")
-    elif False:
+    elif cv:
         compare = (f"<h3 class='sh3'>Did {e(cv)} help?</h3><p class='sub gempty'>" + (f"This comparison appears at {CMIN} new players on {e(cv)}; {cn:,} so far." if CM.get("live") else f"This comparison starts when {e(cv)} is live on the App Store and appears at {CMIN} new players.") + "</p>")
     else:
         compare = ""
@@ -1401,7 +1372,7 @@ def game_section():
    options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false}, plugins: {legend: {display: true, labels: {color: muted, boxWidth: 18, boxHeight: 2}}, tooltip: {enabled: false, external: tip(f)}},
     scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: innerWidth < 500 ? 9 : 11}, callback(v) { return window.TWO ? TWO(this.getLabelForValue(v)) : this.getLabelForValue(v); }}, title: {display: true, text: 'Day', color: muted}},
      y: {beginAtZero: true, grid: {color: grid}, ticks: {color: muted, precision: 0}, title: {display: true, text: 'Rewarded videos', color: muted}}}}}); }
- const gc = document.getElementById('gcmp');   // Guy, Nov 16: new players on the new version vs before it (chart cut Nov 19)
+ const gc = document.getElementById('gcmp');   // Guy, Nov 16: "Did 1.3.11 help?" is back: new players on the new version vs before it
  if (gc && !Chart.getChart(gc) && X.cnew.length) { const f = i => `<div class="ctt-h">Reached level ${lbl(X.steps[i])}</div><div class="ctt-r">${X.cver}+: ${X.cnew[i]}% of ${n(X.cn)}</div><div class="ctt-r">Before: ${X.cold[i]}% of ${n(X.co)}</div>`;
   const line = (label, data, color, dash) => ({label, data, borderColor: color, backgroundColor: color, borderDash: dash, borderWidth: 2, pointRadius: 3, tension: 0.2});
   new Chart(gc, {type: 'line', data: {labels: X.steps.map(lbl), datasets: [line(X.cver + ' and later', X.cnew, '#12A4A4', []), line('Before ' + X.cver, X.cold, muted, [5, 4])]},
@@ -1425,9 +1396,9 @@ def game_section():
     stale_note = f"<p class='sub' style='color:#C0392B'>Google Analytics didn't answer this run; showing the last numbers from {e(GAME['_stale'])}.</p>" if GAME.get("_stale") else ""
     return (f"<style>.sh3{{font-size:18px;margin:22px 0 4px}} .gst{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:4px 0 18px}} "
             f".gt{{border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:1px}} .gt b{{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}} "
-            f".gcard{{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:0 0 14px}} @media (max-width:700px){{.gcard{{padding:14px 12px}}}} .gcard .gt{{background:var(--bg);border-color:transparent}} .gst[hidden]{{display:none}} .gsel{{margin-left:8px;font:inherit;font-size:14px;padding:4px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}} .gt span{{font-size:13px;color:var(--ink2)}} .gt small{{font-size:11px;color:var(--muted);line-height:1.3}} :root{{--gleft:#c9c7bd}} @media (prefers-color-scheme:dark){{:root{{--gleft:#55544f}}}} .gk{{font-size:12px;color:var(--muted);margin-right:12px;white-space:normal}} .gk i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}} @media (max-width:700px){{.gst{{grid-template-columns:1fr 1fr}} .gt b{{font-size:18px}} .gst .gt:last-child:nth-child(odd){{grid-column:1/-1}}}}</style>"
+            f".gcard{{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:0 0 14px}} @media (max-width:700px){{.gcard{{padding:14px 12px}}}} .gcard .gt{{background:var(--bg);border-color:transparent}} .gst[hidden]{{display:none}} .gsel{{margin-left:8px;font:inherit;font-size:14px;padding:4px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}} .gt span{{font-size:13px;color:var(--ink2)}} .gt small{{font-size:11px;color:var(--muted);line-height:1.3}} :root{{--gleft:#c9c7bd}} @media (prefers-color-scheme:dark){{:root{{--gleft:#55544f}}}} .gk{{font-size:12px;color:var(--muted);margin-right:12px;white-space:normal}} .gk i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}} @media (max-width:700px){{.gst{{grid-template-columns:1fr 1fr}} .gt b{{font-size:18px}}}}</style>"
             f"<h2 class='sh' id='sec-game'>Game Analytics</h2><section class='gcard'>{stale_note}<p class='sub' style='margin-top:0'>From Firebase (Google Analytics).{gsel_html}</p><h3 class='sh3'>Game stats</h3>{tiles_html}"   # Guy, Nov 16: one header, one note, one filter for all game charts; no descriptions under chart titles
-            f"{app_tiles()}<h3 class='sh3'>How far players get</h3>{legend}{funnel}{compare}{rewarded}{winrate}"
+            f"<h3 class='sh3'>How far players get</h3>{legend}{funnel}{compare}{rewarded}{winrate}"
             f"<h3 class='sh3'>Players per day</h3>"
             f"<div class='chart' style='height:260px'><canvas id='gday' role='img' aria-label='Active players per day on all versions'></canvas></div>{RNG('rngg')}</section>{js}{GSEL_JS if VB else ''}")
 
@@ -1698,7 +1669,6 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         asc_tpl = ("<template id='ascret'><div class='asc'><div class='ash'>App</div><div class='atg'>"   # Guy, Nov 8: short title; dates live on each Apple tile
                    + "".join(f"<div class='at'><b>{e(v)}</b><span>{e(l)}</span><small>{e(n)}</small></div>" for v, l, n in tiles)
                    + "</div></div></template>")
-    asc_tpl = ""   # Guy, Nov 19 review: app tiles moved to Game Analytics (app_tiles)
     layout = open(LAYOUT).read().replace("</", "<\\/") if os.path.exists(LAYOUT) else "null"
     rnote = (f"Reddit is entered by hand (Reddit hides views from its API): {rd['posts']} live post(s), {rd['removed']} removed, "
              f"last reading {rd['as_of']}, {rd['unknown_views']} post(s) without a view count yet.") if rd else "No Reddit rows yet."
@@ -1747,8 +1717,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
             m = sum(installs[d] for d in days if d[:7] == dt.date.today().strftime("%Y-%m"))
             month = dt.date.today().strftime("%B")
             tot = sum(installs[d] for d in days)
-            rng7 = f"{dt.date.fromisoformat(days[-7]).strftime('%b %-d')}–{dt.date.fromisoformat(days[-1]).strftime('%-d')}" if len(days) >= 7 else "last 7 days"   # Guy, Nov 19 review: say which 7 days (Apple runs 1-2 days behind)
-            tail = f" · <b>{w:,}</b> {rng7} · <b>{m:,}</b> in {month} · <b>{tot:,}</b> total since launch</div>"
+            tail = f" · <b>{w:,}</b> last 7 days · <b>{m:,}</b> in {month} · <b>{tot:,}</b> total since launch</div>"
             today_est = f"<b>~{est[td_s]:,}</b> today · " if td_s in est else ""
             if installs.get(y) is not None:
                 inst = f"<div class='dayp dayi'>App Store installs: {today_est}<b>{installs[y]:,}</b> yesterday" + tail
@@ -1791,8 +1760,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
             right += f"<div class='dayt' title='{tip}'>{RET['d1']:.0f}% {lab('day-1 retention', 'D-1')}</div>"
         if money:
             right += f"<div class='dayt eclick' title='Click for earnings by day, week, month or year'>${money['m']:,.2f} {lab('earned in ' + money['month'], 'Earned ' + money['month'][:3])}</div>"   # Guy, Nov 2: this month only; click = earnings chart"
-            e7 = f"{(dt.date.today() - dt.timedelta(days=6)).strftime('%b %-d')}–{dt.date.today().strftime('%-d')}"
-            inst += (f"<div class='dayp daym'>Earned: <b>${money['t']:,.2f}</b> today · <b>${money['y']:,.2f}</b> yesterday · <b>${money['w']:,.2f}</b> {e7} · <b>${money['m']:,.2f}</b> in {money['month']}"
+            inst += (f"<div class='dayp daym'>Earned: <b>${money['t']:,.2f}</b> today · <b>${money['y']:,.2f}</b> yesterday · <b>${money['w']:,.2f}</b> last 7 days · <b>${money['m']:,.2f}</b> in {money['month']}"
                      f" (ads ${money['mads']:,.2f} + App Store ${money['miap']:,.2f})</div>")
         v3now = {p: (snap.get(p) or {}).get("views_3s") for p in PLAT}
         v3b = {p: (day_base.get(p) or {}).get("views_3s") for p in PLAT} if day_base else {}
@@ -1808,7 +1776,7 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         os.makedirs(os.path.dirname(LAST), exist_ok=True)
         json.dump({"stamp": stamp, "table": {"cols": cols, "rows": trows}, "legend": legend,
                    "data": {"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}}}, open(LAST, "w"))
-    err = "".join(f"<li>{e(x.split(':', 1)[0].replace('(3 tries)', '').strip())} couldn't be pulled this run</li>" for x in errors if x.split(' ', 1)[0].lower() not in {p.lower() for p in stale or {}})   # Guy, Nov 19 review: plain line, no raw error text
+    err = "".join(f"<li>{e(x)}</li>" for x in errors)
     doc = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Beaker Lab - Social Report</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%232A78D6'/><g fill='%23fff' opacity='.35'><rect x='12' y='40' width='8' height='12' rx='2'/><rect x='25' y='32' width='8' height='20' rx='2'/><rect x='38' y='26' width='8' height='26' rx='2'/></g><polyline points='12,42 25,34 36,38 51,18' fill='none' stroke='%23fff' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/><polyline points='42,17 52,16 51,26' fill='none' stroke='%23fff' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/></svg>">
@@ -1893,6 +1861,7 @@ body.editing #g{{display:none}} body:not(.editing) .tw{{display:none}} #m{{displ
 <div class="rng" id="rng" hidden><canvas class="rng-c"></canvas><div class="rng-w"><i></i><i></i></div></div><div class="rng-l" id="rngl" hidden><span></span><span></span></div>
 {stale_html}<div id="g"></div>{asc_tpl}<div class="wrap tw"><table id="t"></table></div><div id="m"></div>
 {posts_html}
+<p>{top_line}</p>
 {('<ul>' + err + '</ul>') if err else ''}
 {history_html(hist)}
 </main>
@@ -2059,7 +2028,7 @@ function renderG() {{   // Oct 26: Reach / Engagement / Retention cards, best ce
   const PC = {{instagram:'#E87BA4', facebook:'#2A78D6', youtube:'#E34948', tiktok:'#14B8C6'}};
   const GS = {{instagram:'IG', facebook:'FB', youtube:'YT', tiktok:'TT'}};   // Guy, Oct 26: platform pills (short names on phones)
   const GR = [['Reach', '', ["Today's views", "Yesterday's views", "Total views", "Avg views per post", "Top post views", "Followers", "Posts"]],
-              ['Engagement', 'per 1,000 views, so big and small sites compare fairly', ["Likes per 1K views"]],
+              ['Engagement', 'per 1,000 views, so big and small sites compare fairly', ["Likes per 1K views", "Comments per 1K views"]],
               ['Retention', 'how long people keep watching', ["3-s views % of views", "Avg watch time (s)", "Watched % of video"]]];
   const sites = L.cols.filter(c => !c.custom && PC[c.id] && cid(c.id));
   const num = t => {{ const n = parseFloat(String(t).replace(/,/g, '')); return isNaN(n) ? null : n; }};

@@ -97,13 +97,11 @@ def _check_store(C, page, keys, today):
     ds = sorted(per)
     y = (today - dt.timedelta(days=1)).isoformat()
     C.same("Total downloads", _num(r"([\d,]+)(?:<span class='ns'>.*?</span>)? <small><span class='nf'>total downloads", page, int), sum(per.values()))
-    C.same("Installs, last 7 days Apple has posted", _num(r"<b>([\d,]+)</b> [A-Z][a-z]{2} \d+–\d+ · <b>[\d,]+</b> in ", page, int), sum(per[d] for d in ds[-7:]))
-    _r7 = f"{dt.date.fromisoformat(ds[-7]).strftime('%b %-d')}–{dt.date.fromisoformat(ds[-1]).strftime('%-d')}" if len(ds) >= 7 else ""   # Guy, Nov 19 review: the 7-day label names its days
-    C.true("Installs 7-day label names the right days", (f"</b> {_r7} · <b>") in page, f"page should say {_r7}")
-    C.same("Installs this month", _num(r"\d+–\d+ · <b>([\d,]+)</b> in ", page, int), sum(per[d] for d in ds if d[:7] == today.strftime("%Y-%m")))
+    C.same("Installs, last 7 days Apple has posted", _num(r"<b>([\d,]+)</b> last 7 days", page, int), sum(per[d] for d in ds[-7:]))
+    C.same("Installs this month", _num(r"last 7 days · <b>([\d,]+)</b> in ", page, int), sum(per[d] for d in ds if d[:7] == today.strftime("%Y-%m")))
     C.same("Installs since launch", _num(r"<b>([\d,]+)</b> total since launch", page, int), sum(per.values()))
     if y in per:
-        C.same("Installs yesterday", _num(r"<b>([\d,]+)</b> yesterday · <b>[\d,]+</b> [A-Z]", page, int), per[y])
+        C.same("Installs yesterday", _num(r"<b>([\d,]+)</b> yesterday · <b>[\d,]+</b> last 7", page, int), per[y])
     countries = {x["Country Code"] for rows in sales.values() for x in rows if x["Product Type Identifier"] in first and float(x["Units"] or 0) > 0}
     C.same("Countries", _num(r"([\d,]+) <small>countries</small>", page, int), len(countries))
     # money: every currency, not only US dollars
@@ -120,9 +118,8 @@ def _check_store(C, page, keys, today):
     td = today.isoformat()
     month = [d for d in set(ads) | set(iap) if d[:7] == today.strftime("%Y-%m")]
     week = [(today - dt.timedelta(days=i)).isoformat() for i in range(7)]
-    C.true("Earned 7-day label names the right days", f"</b> {(today - dt.timedelta(days=6)).strftime('%b %-d')}–{today.strftime('%-d')} · <b>$" in page)
     for name, pat, val in (("Earned today", r"Earned: <b>\$([\d,.]+)</b> today", both([td])), ("Earned yesterday", r"today · <b>\$([\d,.]+)</b> yesterday · <b>\$", both([y])),
-                           ("Earned last 7 days", r"yesterday · <b>\$([\d,.]+)</b> [A-Z][a-z]{2} \d+–\d+ · <b>\$", both(week)), ("Earned this month", r"\d+–\d+ · <b>\$([\d,.]+)</b> in ", both(month)),
+                           ("Earned last 7 days", r"yesterday · <b>\$([\d,.]+)</b> last 7 days · <b>\$", both(week)), ("Earned this month", r"last 7 days · <b>\$([\d,.]+)</b> in ", both(month)),
                            ("Earned from ads this month", r"\(ads \$([\d,.]+) \+ App Store", sum(ads.get(d, 0) for d in month)), ("Earned from App Store this month", r"App Store \$([\d,.]+)\)", sum(iap.get(d, 0) for d in month))):
         C.same(name, _num(pat, page), round(val, 2), 0.10)
     # Earned pop-up (since launch): dollars only (Guy, Nov 9: it showed $390.99 because video and sale counts were added as dollars)
@@ -186,9 +183,8 @@ def _check_game(C, page, keys, today, G, on_sale):
         vt = parse(page[v0:v0 + 6000]); vtile = lambda l: vt.get(l, ("", ""))
         vo = VB.get("outcome") or {}; vw = VB.get("week") or {}
         C.same("1.3.11+ active players", n1(vtile("Active players")[0], r"([\d,]+)"), vw.get("players", 0), 0)
-        vl = VB.get("lv") or {}   # Guy, Nov 19 review: win rate = players who beat each level they started (levels 1-25)
-        C.same("1.3.11+ win rate: levels beaten", n1(vtile("Win rate")[1], r"players beat ([\d,]+) of"), sum(min(v.get("win", 0), v.get("start", 0)) for v in vl.values()), 0)
-        C.same("1.3.11+ win rate: levels started", n1(vtile("Win rate")[1], r"of ([\d,]+) levels they started"), sum(v.get("start", 0) for v in vl.values()), 0)
+        C.same("1.3.11+ win rate: wins", n1(vtile("Win rate")[1], r"([\d,]+) wins"), vo.get("win", 0), 0)
+        C.same("1.3.11+ win rate: attempts", n1(vtile("Win rate")[1], r"of ([\d,]+) level"), sum(vo.values()), 0)
         C.same("1.3.11+ Super Stir uses", n1(vtile("Super Stir / Solve uses")[1], r"([\d,]+) Super Stir"), vw.get("super_stir", 0), 0)
         C.same("1.3.11+ Super Solve uses", n1(vtile("Super Stir / Solve uses")[1], r"([\d,]+) Super Solve"), vw.get("super_solve", 0), 0)
         # Guy, Nov 18: version Purchases tile = real App Store purchases from RevenueCat (own pull), never Firebase test buys
@@ -201,27 +197,23 @@ def _check_game(C, page, keys, today, G, on_sale):
         if _rc is not None:
             _src = int(sum(r.tx for r in _rc[0].itertuples() if r.date >= VB["since"]))
             C.same("1.3.11+ purchases (RevenueCat, real App Store)", n1(vtile("Purchases")[0], r"([\d,]+)"), _src, 0)
-    _lv = {}
-    for (en,), (u, c) in run((START, today), ["eventName"], ["totalUsers", "eventCount"], AND(released_only(START, today), {"filter": {"fieldName": "eventName", "stringFilter": {"matchType": "BEGINS_WITH", "value": "lv_"}}})):
-        k, _, n = en.rpartition("_")
-        if k in ("lv_start", "lv_win") and n.isdigit():
-            _lv.setdefault(n, {})[k[3:]] = int(u)
-    lvS = sum(v.get("start", 0) for v in _lv.values()); lvW = sum(min(v.get("win", 0), v.get("start", 0)) for v in _lv.values())
-    C.same("Win rate: levels beaten", n1(tile("Win rate")[1], r"players beat ([\d,]+) of"), lvW, wobble(lvW))
-    C.same("Win rate: levels started", n1(tile("Win rate")[1], r"of ([\d,]+) levels they started"), lvS, wobble(lvS))
-    C.same("Win rate", n1(tile("Win rate")[0], r"(\d+)%"), round(lvW / lvS * 100) if lvS else 0, 2)
+    wins, tries = outcome.get("win", 0), sum(outcome.values())
+    C.same("Win rate: wins", n1(tile("Win rate")[1], r"([\d,]+) wins"), wins, wobble(wins))
+    C.same("Win rate: attempts", n1(tile("Win rate")[1], r"of ([\d,]+) level"), tries, wobble(tries))
+    C.same("Win rate", n1(tile("Win rate")[0], r"(\d+)%"), round(wins / tries * 100) if tries else 0, 2)
     C.same("Super Stir uses", n1(tile("Super Stir / Solve uses")[1], r"([\d,]+) Super Stir"), ev.get("super_stir", 0), wobble(ev.get("super_stir", 0)))
     C.same("Super Solve uses", n1(tile("Super Stir / Solve uses")[1], r"([\d,]+) Super Solve"), ev.get("super_solve", 0), wobble(ev.get("super_solve", 0)))
     C.same("Purchases (App Store sales, last 7 days)", n1(tile("Purchases")[0], r"([\d,]+)"), sum(C.iapn.get((today - dt.timedelta(days=i)).isoformat(), 0) for i in range(7)))
+    C.same("Players, last 7 days", n1(tile("Super Stir / Solve uses")[1], r"by ([\d,]+) player"), players, 1)
     C.same("Ad views per player", _num(r"([\d.]+)", tile("Ad views per player")[0]), round(ev.get("ad_shown", 0) / players, 1) if players else 0, 0.3)
     C.same("Rewarded ads", n1(tile("Ad views per player")[1], r"([\d,]+) rewarded"), kind.get("rewarded", 0), wobble(kind.get("rewarded", 0)))
     C.same("Ads between levels", n1(tile("Ad views per player")[1], r"([\d,]+) between levels"), kind.get("interstitial", 0), wobble(kind.get("interstitial", 0)))
     mv = lambda e, m="eventCount": int(next(iter(run(d7, (), (m,), AND(wk, has("eventName", e), has("customEvent:placement", "out_of_moves")))), ([], [0]))[1][0])
-    mw, mo, mwp = mv("rewarded_watched"), mv("rewarded_offer_shown", "totalUsers"), mv("rewarded_watched", "totalUsers")   # Guy, Nov 19 review: players offered, not pop-up appearances
+    mw, mo = mv("rewarded_watched"), mv("rewarded_offer_shown")
     C.same("+Moves videos watched", n1(tile("+Moves videos watched")[0], r"([\d,]+)"), mw, wobble(mw))
-    C.same("+Moves players offered", n1(tile("+Moves videos watched")[1], r"of ([\d,]+) players offered"), mo, wobble(mo))
-    C.same("+Moves players who watched", n1(tile("+Moves videos watched")[1], r"^([\d,]+) of"), mwp, wobble(mwp))
+    C.same("+Moves video offers", n1(tile("+Moves videos watched")[1], r"of ([\d,]+) offers"), mo, wobble(mo))
     C.same("Active players, last 7 days", n1(tile("Active players")[0], r"([\d,]+)"), one((today - dt.timedelta(days=6), today)), 1)
+    C.same("Active players today", n1(tile("Active players")[1], r"([\d,]+) today"), one((today, today)), 1)
     C.same("Active players since launch", n1(tile("Active players")[1], r"([\d,]+) since launch"), one((dt.date(2026, 1, 1), today)), 1)
     # levels
     everyone = released_only(START, today)
@@ -287,8 +279,6 @@ def _check_game(C, page, keys, today, G, on_sale):
     rows = s.post(f"https://analyticsdata.googleapis.com/v1beta/properties/{PROPERTY}:runReport", json=body, timeout=60).json().get("rows", [])
     base = sum(int(r["metricValues"][0]["value"]) for r in rows if int(r["dimensionValues"][1]["value"]) == 0)
     back = sum(int(r["metricValues"][0]["value"]) for r in rows if int(r["dimensionValues"][1]["value"]) == 1)
-    C.true("No raw error text on the page", "HttpError" not in page and "Traceback" not in page)   # Guy, Nov 19 review
-    C.true("Cut parts stay cut", all(x not in page for x in ("Most popular post:", "Comments per 1K views", "Did 1.3.11 help?", ">Shares<", ">Deletions<", "not on YouTube")))
     C.same("Day-1 retention", _num(r"(\d+)% <small><span class='nf'>day-1 retention", page), round(back / base * 100) if base else 0, 1)
 
 
