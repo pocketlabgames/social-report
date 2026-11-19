@@ -379,5 +379,20 @@ def run(html_path, keys, G, snap, prev, stale, errors, plats, today=None):
         except Exception as e:
             msg = re.sub(r"(token|key|secret)=[^&\s'\"]+", r"\1=***", f"{type(e).__name__}: {e}", flags=re.I)
             C.fails.append(f"{name} check could not run: {msg}"[:240])
+    try:   # Guy, Nov 19: US rating count must match the most common of 5 fresh Apple lookups (Apple's servers disagreed 3 vs 2)
+        import collections, time as _t, requests as _rq
+        got = []
+        for k in range(5):
+            r = _rq.get("https://itunes.apple.com/lookup", params={"id": "6816478290", "country": "us", "t": f"{_t.time():.0f}v{k}"}, timeout=20)
+            if r.ok:
+                got.append(int((r.json().get("results") or [{}])[0].get("userRatingCount") or 0))
+            _t.sleep(2)
+        if got:
+            cnt = collections.Counter(got); top = max(cnt.values()); want_n = min(n for n, c in cnt.items() if c == top)
+            m = re.search(r"Star ratings by country: ([^.']*)", page)
+            us = int((re.search(r"US (\d+)", m.group(1)) or [0, 0])[1]) if m else None
+            C.same("US ratings (most common of 5 Apple lookups)", us, want_n, 0)
+    except Exception as e:
+        C.fails.append(f"Ratings check could not run: {type(e).__name__}"[:240])
     # Guy, Nov 7: the data check is a build step, not part of the report; results go to the build log only, nothing on the page
     return C

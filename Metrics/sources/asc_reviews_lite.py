@@ -26,17 +26,25 @@ def _stars(app_id, today):
     else:
         cc = json.load(open(CCACHE)) if os.path.exists(CCACHE) else {}
         todo = sorted({k for day in cc.values() for k in day} | {"US"})
+    # Guy, Nov 19: Apple's lookup servers disagreed (3 vs 2 US ratings, flipping every run from Nov 18). Countries with ratings
+    # (and the US) are asked 5 times; the most common answer wins, a tie goes to the lower count (what the App Store showed)
+    multi = {"US"} | {c for c, v in by.items() if v and v[0]}
     for c in todo:
-        try:
-            r = requests.get("https://itunes.apple.com/lookup", params={"id": app_id, "country": c.lower()}, timeout=20)
-            if r.status_code in (403, 429):   # rate limited: keep what we have, try again next run
-                time.sleep(30)
-                continue
-            res = r.json().get("results") or [{}]
-            by[c] = [int(res[0].get("userRatingCount") or 0), float(res[0].get("averageUserRating") or 0)]
-        except (requests.RequestException, ValueError):
-            pass
-        time.sleep(2)   # Apple allows about 20 lookups a minute
+        got = []
+        for k in range(5 if c in multi else 1):
+            try:
+                r = requests.get("https://itunes.apple.com/lookup", params={"id": app_id, "country": c.lower(), "t": f"{time.time():.0f}{k}"}, timeout=20)
+                if r.status_code in (403, 429):   # rate limited: keep what we have, try again next run
+                    time.sleep(30)
+                    break
+                res = r.json().get("results") or [{}]
+                got.append((int(res[0].get("userRatingCount") or 0), float(res[0].get("averageUserRating") or 0)))
+            except (requests.RequestException, ValueError):
+                pass
+            time.sleep(2)   # Apple allows about 20 lookups a minute
+        if got:
+            n = min(got, key=lambda x: (-sum(1 for g in got if g[0] == x[0]), x[0]))[0]
+            by[c] = [n, next(a for m, a in got if m == n)]
     json.dump({"date": today.isoformat(), "by": by}, open(RCACHE, "w"), indent=0, sort_keys=True)
     return by
 
