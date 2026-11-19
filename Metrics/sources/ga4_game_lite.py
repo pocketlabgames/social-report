@@ -21,7 +21,7 @@ APP_ID = "6816478290"
 STEPS = list(range(1, 11)) + [11, 16, 21, 26, 31]   # Guy, Nov 6: "Where players stop" bars: levels 1-10 one by one, then steps of 5, then 31+
 RELEASED = {"1.3.1": START, "1.3.2": dt.date(2026, 11, 4), "1.3.3": dt.date(2026, 11, 6), "1.3.11": dt.date(2026, 11, 15)}   # App Store release days; later versions use Apple's date while live
 VF = (1, 3, 11)   # Guy, Nov 16: Game stats filter "1.3.11+"
-VX = [(1, 3, 18), (1, 3, 19)]   # Guy, Nov 19: more filter options; each shows once that version is on the App Store (vers stops at the live version)
+VX = [(1, 3, 18)]   # Guy, Nov 19: one more filter option "1.3.18+" (1.3.19 dropped, Guy); each shows once that version is on the App Store (vers stops at the live version)
 COMPARE = (1, 3, 11)   # Guy, Nov 16: "Did 1.3.11 help?" (was 1.3.4); first version with the new-player changes; new players on it vs new players before it
 EVENTS = ["level_end", "level_up", "ad_shown", "purchase_ok", "super_stir", "super_solve"]
 

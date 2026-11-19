@@ -1312,7 +1312,7 @@ def game_section():
         tiles_html += f"<div class='gst' id='gst-vf' hidden>{grid(VT)}</div>"
     if PB:
         tiles_html += f"<div class='gst' id='gst-pre' hidden>{grid(mk_tiles(PB, True))}</div>"
-    XB = G.get("vx") or {}   # Guy, Nov 19: 1.3.18+ / 1.3.19+, once each is on the App Store
+    XB = G.get("vx") or {}   # Guy, Nov 19: 1.3.18+, once it is on the App Store
     for k, BX in XB.items():
         tiles_html += f"<div class='gst' id='gst-{k}' hidden>{grid(mk_tiles(BX, True))}</div>"
     gsel = lambda i: (f" <select id='{i}' class='gsel' aria-label='App versions'><option value='all'>All versions</option>" + (f"<option value='pre'>{e(PB['label'])}</option>" if PB else "") + f"<option value='vf'>{e(VB['label'])}</option>" + "".join(f"<option value='{k}'>{e(BX['label'])}</option>" for k, BX in XB.items()) + "</select>") if VB else ""   # Guy, Nov 16: one filter, shown on the tiles and the win rate chart
