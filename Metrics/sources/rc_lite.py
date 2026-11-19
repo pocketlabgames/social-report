@@ -11,10 +11,8 @@ PROJECT = "projba36f536"
 API = "https://api.revenuecat.com"
 
 
-def fetch(keys_dir, today):
-    key = open(os.path.join(keys_dir, "revenuecat-key.txt")).read().strip()
-    start = (today - dt.timedelta(days=21)).isoformat()
-    url = f"{API}/v2/projects/{PROJECT}/charts/customers_new"
+def _chart(key, name, start, today):
+    url = f"{API}/v2/projects/{PROJECT}/charts/{name}"
     for attempt in range(4):
         r = requests.get(url, headers={"Authorization": "Bearer " + key}, timeout=60,
                          params={"start_date": start, "end_date": today.isoformat(), "resolution": "day"})
@@ -22,13 +20,28 @@ def fetch(keys_dir, today):
             time.sleep(int(r.headers.get("Retry-After", 5)))
             continue
         if not r.ok:
-            raise RuntimeError(f"RevenueCat customers_new {r.status_code}: {r.text[:200]}")
-        break
-    else:
-        raise RuntimeError("RevenueCat rate limit")
-    j = r.json()
+            raise RuntimeError(f"RevenueCat {name} {r.status_code}: {r.text[:200]}")
+        return r.json()
+    raise RuntimeError("RevenueCat rate limit")
+
+
+def fetch(keys_dir, today):
+    key = open(os.path.join(keys_dir, "revenuecat-key.txt")).read().strip()
+    start = (today - dt.timedelta(days=21)).isoformat()
+    j = _chart(key, "customers_new", start, today)
     names = [m["display_name"] for m in j.get("measures") or []]
     idx = names.index("New Customers") if "New Customers" in names else 0
     rows = [{"date": pd.Timestamp(v["cohort"], unit="s").strftime("%Y-%m-%d"), "new": v["value"]}
             for v in j.get("values") or [] if v.get("measure", 0) == idx]
-    return {"RC New Lite": (pd.DataFrame(rows), ["date"])}
+    out = {"RC New Lite": (pd.DataFrame(rows), ["date"])}
+    # Guy, Nov 18: real App Store purchases per day (RevenueCat leaves out sandbox/TestFlight/App Review test buys)
+    try:
+        j = _chart(key, "revenue", start, today)
+        names = [m["display_name"] for m in j.get("measures") or []]
+        it = names.index("Transactions") if "Transactions" in names else 1
+        tx = [{"date": pd.Timestamp(v["cohort"], unit="s").strftime("%Y-%m-%d"), "tx": v["value"]}
+              for v in j.get("values") or [] if v.get("measure") == it and v.get("segment", 0) == 0]
+        out["RC Purchases Lite"] = (pd.DataFrame(tx), ["date"])
+    except Exception:
+        pass
+    return out

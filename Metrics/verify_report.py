@@ -187,6 +187,16 @@ def _check_game(C, page, keys, today, G, on_sale):
         C.same("1.3.11+ win rate: attempts", n1(vtile("Win rate")[1], r"of ([\d,]+) level"), sum(vo.values()), 0)
         C.same("1.3.11+ Super Stir uses", n1(vtile("Super Stir / Solve uses")[1], r"([\d,]+) Super Stir"), vw.get("super_stir", 0), 0)
         C.same("1.3.11+ Super Solve uses", n1(vtile("Super Stir / Solve uses")[1], r"([\d,]+) Super Solve"), vw.get("super_solve", 0), 0)
+        # Guy, Nov 18: version Purchases tile = real App Store purchases from RevenueCat (own pull), never Firebase test buys
+        try:
+            from sources import rc_lite
+            import pandas as _pd
+            _rc = rc_lite.fetch(keys, today).get("RC Purchases Lite")
+        except Exception:
+            _rc = None
+        if _rc is not None:
+            _src = int(sum(r.tx for r in _rc[0].itertuples() if r.date >= VB["since"]))
+            C.same("1.3.11+ purchases (RevenueCat, real App Store)", n1(vtile("Purchases")[0], r"([\d,]+)"), _src, 0)
     wins, tries = outcome.get("win", 0), sum(outcome.values())
     C.same("Win rate: wins", n1(tile("Win rate")[1], r"([\d,]+) wins"), wins, wobble(wins))
     C.same("Win rate: attempts", n1(tile("Win rate")[1], r"of ([\d,]+) level"), tries, wobble(tries))

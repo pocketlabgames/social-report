@@ -48,6 +48,7 @@ GADS = {}       # {date: Google Ads spend in USD} (gads_lite; empty if keys are 
 METAADS = {}    # {date: {spend, clicks, installs}} Meta ads, FB + IG (metaads_lite; empty until the token has ads_read; Guy, Nov 1)
 ASCSRC = {}     # {date: {pv_ads, pv_search, pv_browse, pv_other, dl_...}} App Store page views + first downloads by source (asc_ret_lite; Guy, Oct 29)
 RCNEW = {}      # {date: RevenueCat new customers (first opens)} for the same-day download estimate
+RCTX = {}       # {date: real App Store purchases, RevenueCat (no test buys)} (Guy, Nov 18)
 GAMEC = os.path.join(HERE, "game-cache.json")   # last good Game stats + Firebase retention: shown when Google Analytics fails (502s dropped the section Nov 13; Guy: "Wasn't there another section?")
 LAST = os.path.join(HERE, "cache", "report-last.json")   # the previous run's table + chart, shown at the bottom (one run only, not a history)
 SITE = os.environ.get("REPORT_SITE") == "1"   # GitHub Actions build for the website (no local helper, no xlsx)
@@ -110,7 +111,7 @@ def fetch():
                     return {}, f"{m.__name__.split('.')[-1]} (3 tries): {msg}"[:200]
                 time.sleep(10 * attempt)
 
-    INSTALLS.clear(); COUNTRIES.clear(); CFIRST.clear(); REVIEWS.clear(); MONEY.clear(); RCNEW.clear(); GADS.clear(); METAADS.clear(); RET.clear(); ASCR.clear(); GAME.clear()
+    INSTALLS.clear(); COUNTRIES.clear(); CFIRST.clear(); REVIEWS.clear(); MONEY.clear(); RCNEW.clear(); RCTX.clear(); GADS.clear(); METAADS.clear(); RET.clear(); ASCR.clear(); GAME.clear()
     srcs = [youtube, meta, tiktok] + ([asc_lite] if asc_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")) else [])
     if money_lite and os.path.exists(os.path.join(KEYS, "asc-metrics.json")) and os.path.exists(os.path.join(KEYS, "admob-token.json")):
         srcs.append(money_lite)
@@ -165,6 +166,9 @@ def fetch():
             if "RC New Lite" in got:
                 d = got.pop("RC New Lite")
                 RCNEW.update({r.date: int(r.new) for r in d.itertuples() if pd.notna(r.new)})
+            if "RC Purchases Lite" in got:
+                d = got.pop("RC Purchases Lite")
+                RCTX.update({r.date: int(r.tx) for r in d.itertuples() if pd.notna(r.tx)})
             if "Money Lite" in got:
                 d = got.pop("Money Lite")
                 MONEY.update({r.date: {"ads": None if pd.isna(r.ads) else float(r.ads), "iap": None if pd.isna(r.iap) else float(r.iap), "n": None if pd.isna(r.iapn) else int(r.iapn), "rwd": None if pd.isna(r.rwd) else int(r.rwd)} for r in d.itertuples()})
@@ -1264,6 +1268,7 @@ def game_section():
         SH2 = B.get("shares") or {}
         ads2, sup2 = W2.get("ad_shown", 0), W2.get("super_stir", 0) + W2.get("super_solve", 0)
         when = f"since {dt.date.fromisoformat(B['since']).strftime('%b %-d')}" if newest else "7 days"
+        rcb = sum(v for k, v in RCTX.items() if newest and k >= B["since"])   # Guy, Nov 18: Firebase purchase_ok counted test buys (14 on Nov 18, 0 real)
         pl = lambda n: f"{n:,} player{'' if n == 1 else 's'}"
         return [(f"{P2:,}" if newest else f"{A.get('week', 0):,}", "Active players",
                  f"{B['label']} {when} · {B.get('today', 0):,} today" if newest else f"last 7 days, all versions · {A.get('today', 0):,} today · {A.get('ever', 0):,} since launch"),
@@ -1273,7 +1278,7 @@ def game_section():
                 (f"{mw2:,}", "+Moves videos watched", f"{mw2:,} of {mo2:,} offers{f' ({mw2 / mo2 * 100:.0f}%)' if mo2 else ''} · {pl(mwp2)} · out of moves popup, {when}"),   # Guy, Nov 9: +5 moves per video
                 (f"{sup2:,}", "Super Stir / Solve uses", f"{W2.get('super_stir', 0):,} Super Stir · {W2.get('super_solve', 0):,} Super Solve, by {pl(P2)} on {B['label'] if newest else '1.3.1+'}"),
                 (f"{SH2.get('n', 0):,}" if SH2.get('n') else "—", "Shares", (f"{pl(SH2.get('players', 0))} · " + " · ".join(f"{v:,} {SHN.get(k, k)}" for k, v in sorted((SH2.get('by') or {}).items(), key=lambda x: -x[1])) + f" · {when}") if SH2.get('n') else (f"finished shares, {when}" if newest else "finished shares, 7 days · counted from the next app update (save 205)")),
-                ((f"{W2.get('purchase_ok', 0):,}", "Purchases", f"in the game, {when} (Firebase; Apple sales can't be split by version)") if newest else (f"{buy:,}", "Purchases", "App Store sales, last 7 days"))]
+                (((f"{rcb:,}", "Purchases", f"real App Store purchases, {when} (RevenueCat; test buys left out)") if RCTX else ("—", "Purchases", "RevenueCat not loaded")) if newest else (f"{buy:,}", "Purchases", "App Store sales, last 7 days"))]
     grid = lambda T: "".join(f"<div class='gt'><b>{e(v)}</b><span>{e(l)}</span><small>{e(n)}</small></div>" for v, l, n in T)
     VB = G.get("vf")
     tiles_html = f"<div class='gst' id='gst-all'>{grid(mk_tiles(G))}</div>"
