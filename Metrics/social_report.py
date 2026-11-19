@@ -1272,7 +1272,8 @@ def game_section():
         rc2 = {int(k): v for k, v in (B.get("reach") or {}).items()}
         lv2 = sorted(rc2); mp2 = rc2[lv2[0]] if lv2 else 0
         half2 = max((k for k in lv2 if rc2[k] * 2 >= mp2), default=0)
-        oc2 = B.get("outcome") or {}; on2 = sum(oc2.values()); kd2 = B.get("kind") or {}
+        oc2 = B.get("outcome") or {}; on2 = sum(v for k, v in oc2.items() if k != "skip"); sk2 = oc2.get("skip", 0);   # Guy, Nov 19: skips left out of win rate (test phones skipped 113 levels on 1.3.15)
+        kd2 = B.get("kind") or {}
         MV2 = B.get("moves") or {}
         mo2, mw2, mwp2 = (MV2.get("rewarded_offer_shown") or [0, 0])[0], (MV2.get("rewarded_watched") or [0, 0])[0], (MV2.get("rewarded_watched") or [0, 0])[1]
         SH2 = B.get("shares") or {}
@@ -1286,7 +1287,7 @@ def game_section():
                  (f"{B['label']}, {when}" if pre else f"{B['label']} {when} · {B.get('today', 0):,} today") if newest else f"last 7 days, all versions · {A.get('today', 0):,} today · {A.get('ever', 0):,} since launch"),
                 d1tile(B, newest),
                 (f"{half2}" if mp2 else "—", "Typical furthest level", f"half of {pl(mp2)} reached level {half2}+ · top player: {lv2[-1]:,}, " + (when if newest else "since Nov 1") if mp2 else "no level data yet"),   # Guy, Nov 8: middle player, not the average
-                (f"{oc2.get('win', 0) / on2 * 100:.0f}%" if on2 else "—", "Win rate", f"{oc2.get('win', 0):,} wins of {on2:,} level attempts" + (f", {when}" if newest else "") if on2 else "no win/loss data yet"),
+                (f"{oc2.get('win', 0) / on2 * 100:.0f}%" if on2 else "—", "Win rate", f"{oc2.get('win', 0):,} wins of {on2:,} level attempts" + (f", {when}" if newest else "") + (f" · {sk2:,} skips left out" if sk2 else "") if on2 else "no win/loss data yet"),
                 (per2(ads2), "Ad views per player", (" · ".join(f"{v:,} {'between levels' if k == 'interstitial' else k}" for k, v in sorted(kd2.items())) or f"{ads2:,} ads") + f" {'' if newest else 'in '}{when}" + few(P2)),
                 (f"{mw2:,}", "+Moves videos watched", f"{mw2:,} of {mo2:,} offers{f' ({mw2 / mo2 * 100:.0f}%)' if mo2 else ''} · {pl(mwp2)} · out of moves popup, {when}"),   # Guy, Nov 9: +5 moves per video
                 (f"{sup2:,}", "Super Stir / Solve uses", f"{W2.get('super_stir', 0):,} Super Stir · {W2.get('super_solve', 0):,} Super Solve, by {pl(P2)} on {('versions before ' + B['label'][7:]) if B.get('label', '').startswith('Before ') else B['label'] if newest else '1.3.1+'}"),

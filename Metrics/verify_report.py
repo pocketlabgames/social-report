@@ -184,7 +184,8 @@ def _check_game(C, page, keys, today, G, on_sale):
         vo = VB.get("outcome") or {}; vw = VB.get("week") or {}
         C.same("1.3.11+ active players", n1(vtile("Active players")[0], r"([\d,]+)"), vw.get("players", 0), 0)
         C.same("1.3.11+ win rate: wins", n1(vtile("Win rate")[1], r"([\d,]+) wins"), vo.get("win", 0), 0)
-        C.same("1.3.11+ win rate: attempts", n1(vtile("Win rate")[1], r"of ([\d,]+) level"), sum(vo.values()), 0)
+        C.same("1.3.11+ win rate: attempts", n1(vtile("Win rate")[1], r"of ([\d,]+) level"), sum(v for k, v in vo.items() if k != "skip"), 0)
+        C.same("1.3.11+ win rate: skips left out", n1(vtile("Win rate")[1], r"([\d,]+) skips left out") or 0, vo.get("skip", 0), 0)
         C.same("1.3.11+ Super Stir uses", n1(vtile("Super Stir / Solve uses")[1], r"([\d,]+) Super Stir"), vw.get("super_stir", 0), 0)
         C.same("1.3.11+ Super Solve uses", n1(vtile("Super Stir / Solve uses")[1], r"([\d,]+) Super Solve"), vw.get("super_solve", 0), 0)
         # Guy, Nov 18: version Purchases tile = real App Store purchases from RevenueCat (own pull), never Firebase test buys
@@ -225,12 +226,14 @@ def _check_game(C, page, keys, today, G, on_sale):
             pa, pb = dt.date.fromisoformat(PB["since"]), dt.date.fromisoformat(PB["until"])
             C.same("Before 1.3.11 active players", n1(ptile("Active players")[0], r"([\d,]+)"), one((pa, pb), flt=released_only(pa, pb, pvs)), 0)
             d1_check("Before 1.3.11", PB, ptile)
+            po = PB.get("outcome") or {}
+            C.same("Before 1.3.11 win rate: attempts (no skips)", n1(ptile("Win rate")[1], r"of ([\d,]+) level"), sum(v for k, v in po.items() if k != "skip"), 0)
             vblk = page[v0:p0]
             for l, (v, n) in pt.items():   # every comparison line shows the Before 1.3.11 tile's own value
                 m = re.search(r"<span>" + re.escape(html.escape(l)) + r"</span><small>[^<]*</small><em class='gcmp[^']*'>[^<]*before 1\.3\.11: (.*?)</em>", vblk)
                 if m:
                     C.true(f"1.3.11+ '{l}' compares to Before 1.3.11", html.unescape(m.group(1)) == v, f"line says {html.unescape(m.group(1))}, Before 1.3.11 tile says {v}")
-    wins, tries = outcome.get("win", 0), sum(outcome.values())
+    wins, tries = outcome.get("win", 0), sum(v for k, v in outcome.items() if k != "skip")   # Guy, Nov 19: skips left out of win rate
     C.same("Win rate: wins", n1(tile("Win rate")[1], r"([\d,]+) wins"), wins, wobble(wins))
     C.same("Win rate: attempts", n1(tile("Win rate")[1], r"of ([\d,]+) level"), tries, wobble(tries))
     C.same("Win rate", n1(tile("Win rate")[0], r"(\d+)%"), round(wins / tries * 100) if tries else 0, 2)
