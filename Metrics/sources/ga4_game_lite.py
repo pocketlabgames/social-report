@@ -153,13 +153,12 @@ def fetch(keys_dir, today):
             row = out["lv"].setdefault(n, {})
             row[kind[3:]], row[kind[3:] + "s"] = int(u), int(c)
     # Guy, Nov 16: the same tiles for the newest versions only (1.3.11+), from the first one's release day to today
-    vf = [v for v in vers if _ver(v) >= VF]
-    if vf:
+    # Guy, Nov 19: and for the versions before 1.3.11, over the same number of days just before 1.3.11 came out (each 1.3.11+ tile compares to it)
+    def block(vf, since, until, label):
         vfil = {"andGroup": {"expressions": [newer, {"filter": {"fieldName": "appVersion", "inListFilter": {"values": vf}}}]}}   # newer already drops pre-release test days
-        since = min(rel(v) for v in vf)
-        dr = {"startDate": since.isoformat(), "endDate": today.isoformat()}
+        dr = {"startDate": since.isoformat(), "endDate": until.isoformat()}
         one2 = lambda name: {"andGroup": {"expressions": [ev(name), vfil]}}
-        B = {"label": ".".join(map(str, VF)) + "+", "since": since.isoformat(), "week": {}, "outcome": {}, "kind": {}, "shares": {"by": {}}, "moves": {}, "reach": {}}
+        B = {"label": label, "since": since.isoformat(), "until": until.isoformat(), "week": {}, "outcome": {}, "kind": {}, "shares": {"by": {}}, "moves": {}, "reach": {}}
         r = _run(s, {"dateRanges": [dr], "metrics": [{"name": "activeUsers"}], "dimensionFilter": vfil})
         B["week"]["players"] = int(r[0][1][0]) if r else 0
         r = _run(s, {"dateRanges": [{"startDate": today.isoformat(), "endDate": today.isoformat()}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": vfil})
@@ -186,7 +185,7 @@ def fetch(keys_dir, today):
             r = _run(s, {"dateRanges": [dr], "metrics": [{"name": "activeUsers"}], "dimensionFilter": f})
             B["reach"][str(lv)] = int(r[0][1][0]) if r else 0
         B["freach"] = reached(vfil, dr, STEPS)   # Guy, Nov 16: "How far players get" for the newest versions (players who reached each step)
-        B["factive"] = reached(vfil, {"startDate": max(today - dt.timedelta(days=2), since).isoformat(), "endDate": today.isoformat()}, STEPS)   # still playing = played in the last 3 days
+        B["factive"] = reached(vfil, {"startDate": max(until - dt.timedelta(days=2), since).isoformat(), "endDate": until.isoformat()}, STEPS)   # still playing = played in the last 3 days
         B["lv"] = {}   # Guy, Nov 16: win rate per level for the newest versions too
         lvf2 = {"andGroup": {"expressions": [vfil, {"filter": {"fieldName": "eventName", "stringFilter": {"matchType": "BEGINS_WITH", "value": "lv_"}}}]}}
         for (e,), (u, c) in _run(s, {"dateRanges": [dr], "dimensions": [{"name": "eventName"}], "metrics": [{"name": "totalUsers"}, {"name": "eventCount"}], "dimensionFilter": lvf2}):
@@ -194,7 +193,27 @@ def fetch(keys_dir, today):
             if kind in ("lv_start", "lv_win") and n.isdigit():
                 row = B["lv"].setdefault(n, {})
                 row[kind[3:]], row[kind[3:] + "s"] = int(u), int(c)
-        out["vf"] = B
+        # Guy, Nov 19: Day-1 return = new players (first day on these versions) who played again the very next day; complete days only
+        c_end = min(until, today - dt.timedelta(days=2))
+        if c_end >= since:
+            cd = lambda a, b: [(a + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((b - a).days + 1)]
+            later = [v for v in vers if _ver(v) >= min(map(_ver, vf))]   # the return day may be on an update
+            base = {d: int(n) for (d, d2), (n,) in _run(s, {"dateRanges": [{"startDate": since.isoformat(), "endDate": c_end.isoformat()}], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}], "metrics": [{"name": "activeUsers"}],
+                    "dimensionFilter": {"andGroup": {"expressions": [vfil, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": cd(since, c_end)}}}]}}, "limit": 10000}) if d == d2}
+            nxt = lambda d: (dt.date(int(d[:4]), int(d[4:6]), int(d[6:])) + dt.timedelta(days=1)).strftime("%Y%m%d")
+            back = {d: int(n) for (d, d2), (n,) in _run(s, {"dateRanges": [{"startDate": (since + dt.timedelta(days=1)).isoformat(), "endDate": (c_end + dt.timedelta(days=1)).isoformat()}], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}], "metrics": [{"name": "activeUsers"}],
+                    "dimensionFilter": {"andGroup": {"expressions": [{"filter": {"fieldName": "appVersion", "inListFilter": {"values": later}}}, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": cd(since, c_end)}}}]}}, "limit": 10000}) if d2 == nxt(d)}
+            B["d1"] = [sum(back.get(d, 0) for d in base), sum(base.values()), since.isoformat(), c_end.isoformat()]
+        return B
+    vf = [v for v in vers if _ver(v) >= VF]
+    if vf:
+        since = min(rel(v) for v in vf)
+        out["vf"] = block(vf, since, today, ".".join(map(str, VF)) + "+")
+        pv = [v for v in vers if _ver(v) < VF]
+        n = (today - since).days + 1
+        p0, p1 = max(since - dt.timedelta(days=n), START), since - dt.timedelta(days=1)
+        if pv and p1 >= p0:
+            out["pre"] = block(pv, p0, p1, "Before " + ".".join(map(str, VF)))
     # active players on every app version (the game events above only come from 1.3.1+)
     span = lambda a: {"startDate": a, "endDate": today.isoformat()}
     total = lambda a: int(next(iter(_run(s, {"dateRanges": [span(a)], "metrics": [{"name": "activeUsers"}]})), ([], [0]))[1][0])

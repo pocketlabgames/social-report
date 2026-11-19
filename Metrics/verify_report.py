@@ -173,14 +173,14 @@ def _check_game(C, page, keys, today, G, on_sale):
     players = one(d7, flt=wk)
     outcome = {r[0][0]: int(r[1][0]) for r in run(d7, ["customEvent:outcome"], ["eventCount"], AND(wk, has("eventName", "level_end"))) if r[0][0] != "(not set)"}
     kind = {r[0][0]: int(r[1][0]) for r in run(d7, ["customEvent:kind"], ["eventCount"], AND(wk, has("eventName", "ad_shown"))) if r[0][0] != "(not set)"}
-    parse = lambda blk: {html.unescape(l): (html.unescape(v), html.unescape(n)) for v, l, n in re.findall(r"<div class='gt'><b>(.*?)</b><span>(.*?)</span><small>(.*?)</small></div>", blk)}
+    parse = lambda blk: {html.unescape(l): (html.unescape(v), html.unescape(n)) for v, l, n in re.findall(r"<div class='gt'><b>(.*?)</b><span>(.*?)</span><small>(.*?)</small>(?:<em class='gcmp[^']*'>.*?</em>)?</div>", blk)}
     a0, v0 = page.find("id='gst-all'"), page.find("id='gst-vf'")   # Guy, Nov 16: two tile sets (All versions / 1.3.11+)
     tiles = parse(page[a0:v0] if a0 >= 0 and v0 > a0 else page)
     tile = lambda l: tiles.get(l, ("", ""))
     n1 = lambda text, pat: _num(pat, text, int)
     VB = G.get("vf")
     if VB and v0 >= 0:   # the newest-versions tiles must match their own numbers
-        vt = parse(page[v0:v0 + 6000]); vtile = lambda l: vt.get(l, ("", ""))
+        _pe = page.find("id='gst-pre'"); vt = parse(page[v0:_pe if _pe > v0 else v0 + 6000]); vtile = lambda l: vt.get(l, ("", ""))
         vo = VB.get("outcome") or {}; vw = VB.get("week") or {}
         C.same("1.3.11+ active players", n1(vtile("Active players")[0], r"([\d,]+)"), vw.get("players", 0), 0)
         C.same("1.3.11+ win rate: wins", n1(vtile("Win rate")[1], r"([\d,]+) wins"), vo.get("win", 0), 0)
@@ -197,6 +197,37 @@ def _check_game(C, page, keys, today, G, on_sale):
         if _rc is not None:
             _src = int(sum(r.tx for r in _rc[0].itertuples() if r.date >= VB["since"]))
             C.same("1.3.11+ purchases (RevenueCat, real App Store)", n1(vtile("Purchases")[0], r"([\d,]+)"), _src, 0)
+        # Guy, Nov 19: Day-1 return tiles and the Before 1.3.11 set (own pulls, not the report's numbers)
+        def d1_check(name, B, tl):
+            d = B.get("d1")
+            if not d:
+                return
+            vs = [v for v in want if (_ver(v) >= (1, 3, 11)) == (not B["label"].startswith("Before"))]
+            later = [v for v in want if _ver(v) >= min(map(_ver, vs))]
+            a, b = dt.date.fromisoformat(d[2]), dt.date.fromisoformat(d[3])
+            base = back = 0
+            for i in range((b - a).days + 1):
+                day = a + dt.timedelta(days=i); key = day.strftime("%Y%m%d")
+                n0 = one((day, day), flt=AND(released_only(day, day, vs), has("firstSessionDate", key)))
+                base += n0
+                if n0:
+                    back += one((day + dt.timedelta(days=1),) * 2, flt=AND(among("appVersion", later), has("firstSessionDate", key)))
+            C.same(f"{name} Day-1: new players", n1(tl("Day-1 return")[1], r"of ([\d,]+) new"), base, 0)
+            C.same(f"{name} Day-1: came back", n1(tl("Day-1 return")[1], r"^([\d,]+) of"), back, 0)
+        d1_check("1.3.11+", VB, vtile)
+        PB = G.get("pre"); p0 = page.find("id='gst-pre'")
+        C.true("Before 1.3.11 option in the version filter", bool(PB) == ("<option value='pre'>" in page), "drop-down option and data disagree")
+        if PB and p0 >= 0:
+            pt = parse(page[p0:p0 + 6000]); ptile = lambda l: pt.get(l, ("", ""))
+            pvs = [v for v in want if _ver(v) < (1, 3, 11)]
+            pa, pb = dt.date.fromisoformat(PB["since"]), dt.date.fromisoformat(PB["until"])
+            C.same("Before 1.3.11 active players", n1(ptile("Active players")[0], r"([\d,]+)"), one((pa, pb), flt=released_only(pa, pb, pvs)), 0)
+            d1_check("Before 1.3.11", PB, ptile)
+            vblk = page[v0:p0]
+            for l, (v, n) in pt.items():   # every comparison line shows the Before 1.3.11 tile's own value
+                m = re.search(r"<span>" + re.escape(html.escape(l)) + r"</span><small>[^<]*</small><em class='gcmp[^']*'>[^<]*before 1\.3\.11: (.*?)</em>", vblk)
+                if m:
+                    C.true(f"1.3.11+ '{l}' compares to Before 1.3.11", html.unescape(m.group(1)) == v, f"line says {html.unescape(m.group(1))}, Before 1.3.11 tile says {v}")
     wins, tries = outcome.get("win", 0), sum(outcome.values())
     C.same("Win rate: wins", n1(tile("Win rate")[1], r"([\d,]+) wins"), wins, wobble(wins))
     C.same("Win rate: attempts", n1(tile("Win rate")[1], r"of ([\d,]+) level"), tries, wobble(tries))
