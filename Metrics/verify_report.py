@@ -217,6 +217,8 @@ def _check_game(C, page, keys, today, G, on_sale):
         d1_check("1.3.11+", VB, vtile)
         PB = G.get("pre"); p0 = page.find("id='gst-pre'")
         C.true("Before 1.3.11 option in the version filter", bool(PB) == ("<option value='pre'>" in page), "drop-down option and data disagree")
+        _o = re.findall(r"<select id='gsel'.*?</select>", page)
+        C.true("Version filter order: All, Before 1.3.11, 1.3.11+", bool(_o) and re.findall(r"value='(\w+)'", _o[0]) == (["all", "pre", "vf"] if PB else ["all", "vf"]), f"order is {re.findall(r'value=.(\w+).', _o[0]) if _o else 'missing'}")
         if PB and p0 >= 0:
             pt = parse(page[p0:p0 + 6000]); ptile = lambda l: pt.get(l, ("", ""))
             pvs = [v for v in want if _ver(v) < (1, 3, 11)]

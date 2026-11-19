@@ -1311,7 +1311,7 @@ def game_section():
         tiles_html += f"<div class='gst' id='gst-vf' hidden>{grid(VT)}</div>"
     if PB:
         tiles_html += f"<div class='gst' id='gst-pre' hidden>{grid(mk_tiles(PB, True))}</div>"
-    gsel = lambda i: (f" <select id='{i}' class='gsel' aria-label='App versions'><option value='all'>All versions</option><option value='vf'>{e(VB['label'])}</option>" + (f"<option value='pre'>{e(PB['label'])}</option>" if PB else "") + "</select>") if VB else ""   # Guy, Nov 16: one filter, shown on the tiles and the win rate chart
+    gsel = lambda i: (f" <select id='{i}' class='gsel' aria-label='App versions'><option value='all'>All versions</option>" + (f"<option value='pre'>{e(PB['label'])}</option>" if PB else "") + f"<option value='vf'>{e(VB['label'])}</option></select>") if VB else ""   # Guy, Nov 16: one filter, shown on the tiles and the win rate chart
     gsel_html = gsel("gsel")
     top = lv[-1] if lv else 0
     steps = [s for s in list(range(1, 11)) + [11, 16, 21, 26, 31] if s <= top]   # Guy, Nov 6: early levels one by one, then steps of 5, then 31+
