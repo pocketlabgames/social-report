@@ -997,6 +997,7 @@ SLOTS = [("Morning", 5, 11), ("Midday", 11, 14), ("Afternoon", 14, 17), ("Evenin
 
 HELPERS_JS = """<script>   // Guy, Nov 16: shared chart helpers
 document.addEventListener('selectstart', e => { const t = e.target && (e.target.closest ? e.target : e.target.parentElement); if (t && t.closest && t.closest('.rng, .rng-l')) e.preventDefault(); });   // Guy, Nov 16: no text selection while dragging a day bar
+window.DDD = s => { const m = /^(\\d+)\\/(\\d+)/.exec(s || ''); if (!m) return s; const t = new Date(), y = t.getFullYear() - (+m[1] > t.getMonth() + 1 ? 1 : 0); return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(y, m[1] - 1, m[2]).getDay()] + '. ' + s; };   // Guy, Nov 19: every pop-up header starts with the day, "Sun. 11/15"
 window.TWO = s => { if (typeof s !== 'string' || !/^\\d+\\/\\d+$/.test(s)) return s; const [m, d] = s.split('/').map(Number), t = new Date(), y = t.getFullYear() - (m > t.getMonth() + 1 ? 1 : 0);
  return [s, '(' + new Date(y, m - 1, d).toLocaleDateString('en-US', {weekday: 'short'}) + ')']; };   // 11/16 with (Mon) below
 window.RANGE = (ch, labels, tot, box, lab, onSet) => {   // drag bar like the views chart: 14 days on a computer, 8 on a phone
@@ -1091,7 +1092,7 @@ def sources_section():
     today = dt.date.today()
     alld = sorted(set(days) | {d for d in MONEY if (today - dt.timedelta(days=29)).isoformat() <= d <= today.isoformat()})[-30:]
     m = lambda d, k: round(((MONEY.get(d) or {}).get(k) or 0), 2)
-    data = {"labels": [sd(d) for d in alld], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in alld],
+    data = {"labels": [sd(d) for d in alld], "full": [dt.date.fromisoformat(d).strftime("%a. %-m/%-d") for d in alld],
             "spend": [GADS.get(d) for d in alld], "meta": [METAADS.get(d) for d in alld], "src": [{"k": k, "l": l, "c": c} for k, l, c in src],
             "hasdl": [d in dlx for d in alld], "base": base, "imp": [(SS.get(d) or {}).get("imp") for d in alld],
             **{"dl_" + k: [(dlx.get(d) or {}).get(k, 0) for d in alld] for k, _, _ in src},
@@ -1186,7 +1187,7 @@ def search_section():
     n0 = len(days) - len(proj)
     sd = lambda d: D(d).strftime("%-m/%-d")
     pad = lambda: [None] * (n0 - 1)
-    data = {"labels": [sd(d) for d in days], "full": [D(d).strftime("%a %b %-d") for d in days],
+    data = {"labels": [sd(d) for d in days], "full": [D(d).strftime("%a. %-m/%-d") for d in days],
             "imp": [imp.get(d) for d in days[:n0]] + [None] * len(proj),
             "dl": [dl.get(d) for d in days],
             "lo": pad() + [imp[last]] + [p[1] for p in proj], "mid": pad() + [imp[last]] + [p[2] for p in proj], "hi": pad() + [imp[last]] + [p[3] for p in proj],
@@ -1353,10 +1354,10 @@ def game_section():
     p1 = LVD["lvs"][0] if lvn else 0
     winrate = ("<h3 class='sh3'>Win rate per level</h3><div class='chart' style='height:240px'><canvas id='glv' role='img' aria-label='Win rate per level, levels 1 to 25'></canvas></div>") if lvn else \
               "<h3 class='sh3'>Win rate per level</h3><p class='sub gempty'>Starts once players on 1.3.4 or later play a level (Google Analytics needs up to a day).</p>"
-    data = {"steps": steps, "reach": reach, "playing": playing, "mp": mp, "vfun": vfun, "pfun": pfun, "xfun": xfun, "cver": CM.get("version", ""), "cn": cn, "co": co, "cnew": [round(cnew.get(str(s), 0) / cn * 100) for s in steps] if show_cmp else [], "cold": [round(cold.get(str(s), 0) / co * 100) for s in steps] if show_cmp else [], "labels": [md(d) for d in days], "full": [dt.date.fromisoformat(d).strftime("%a %b %-d") for d in days],
+    data = {"steps": steps, "reach": reach, "playing": playing, "mp": mp, "vfun": vfun, "pfun": pfun, "xfun": xfun, "cver": CM.get("version", ""), "cn": cn, "co": co, "cnew": [round(cnew.get(str(s), 0) / cn * 100) for s in steps] if show_cmp else [], "cold": [round(cold.get(str(s), 0) / co * 100) for s in steps] if show_cmp else [], "labels": [md(d) for d in days], "full": [dt.date.fromisoformat(d).strftime("%a. %-m/%-d") for d in days],
             "players": [A.get("daily", {}).get(d, 0) for d in days], "newer": [D[d].get("players", 0) for d in days], **{k: [D[d].get(k, 0) for d in days] for k in ("level_end", "level_up", "ad_shown", "super_stir", "super_solve")}, "purchase_ok": [(MONEY.get(d) or {}).get("n") or 0 for d in days], **LVD,
             # Guy, Nov 9: rewarded videos per day (AdMob, all players) replaces "Did 1.3.4 help?"; dashed = same weekday one week earlier
-            "rwd": [(MONEY.get(d) or {}).get("rwd") for d in days], "rwp": [(MONEY.get(wk(d)) or {}).get("rwd") for d in days], "pfull": [dt.date.fromisoformat(wk(d)).strftime("%a %b %-d") for d in days]}
+            "rwd": [(MONEY.get(d) or {}).get("rwd") for d in days], "rwp": [(MONEY.get(wk(d)) or {}).get("rwd") for d in days], "pfull": [dt.date.fromisoformat(wk(d)).strftime("%a. %-m/%-d") for d in days]}
     funnel = ("<div class='chart' style='height:260px'><canvas id='gfun' role='img' aria-label='How far players get: players who reached each level, split into still playing and quit, with players lost between levels in red'></canvas></div>" if steps else
               f"<p class='sub gempty'>No furthest-level data yet. Bars show once players on released versions send it (Google Analytics needs up to a day).</p>")
     legend = ("<div class='lgs' style='margin-top:6px'><span class='gk'><i style='background:#12A4A4'></i>Still playing</span> <span class='gk'><i style='background:var(--gleft)'></i>Quit (3+ days away)</span></div>" if playing and steps else "")
@@ -1623,7 +1624,7 @@ EARN_JS = """
       else if (by === 'week') { const s = new Date(d); s.setDate(d.getDate() - (d.getDay() + 6) % 7); key = iso(s); lab = 'Week of ' + M[s.getMonth()] + ' ' + s.getDate(); }
       else if (by === 'month') { key = k.slice(0, 7); lab = M[d.getMonth()] + ' ' + d.getFullYear(); }
       else { key = k.slice(0, 4); lab = key; }
-      const o = g.get(key) || {lab, a: 0, p: 0}; o.a += EM[k][0]; o.p += EM[k][1]; g.set(key, o); });
+      const o = g.get(key) || {lab, k, a: 0, p: 0}; o.a += EM[k][0]; o.p += EM[k][1]; g.set(key, o); });
     return [...g.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1).map(x => x[1]); };
   let ch = null;
   const draw = by => {
@@ -1638,7 +1639,7 @@ EARN_JS = """
         {label: 'Purchases (App Store)', data: g.map(x => Math.round(x.p * 100) / 100), backgroundColor: '#2a78d6', borderRadius: 4, maxBarThickness: 60, stack: 'e'}]},
       options: {responsive: true, maintainAspectRatio: false, animation: false, interaction: {mode: 'index', intersect: false},
         plugins: {legend: {display: true, position: 'top', align: 'start', labels: {color: ink, boxWidth: 10, boxHeight: 10, generateLabels: c => c.data.datasets.map((d, i) => ({text: d.label + ' $' + (i ? tp : ta).toFixed(2), fillStyle: d.backgroundColor, strokeStyle: d.backgroundColor, fontColor: ink, datasetIndex: i}))}},
-        tooltip: {callbacks: {label: c => c.dataset.label + ': $' + c.parsed.y.toFixed(2), footer: it => 'Total: $' + it.reduce((s, c) => s + c.parsed.y, 0).toFixed(2)}}},
+        tooltip: {callbacks: {title: it => it.length && by === 'day' && window.DDD ? DDD((d => (d.getMonth() + 1) + '/' + d.getDate())(day(g[it[0].dataIndex].k))) : it.length ? it[0].label : '', label: c => c.dataset.label + ': $' + c.parsed.y.toFixed(2), footer: it => 'Total: $' + it.reduce((s, c) => s + c.parsed.y, 0).toFixed(2)}}},
         scales: {x: {stacked: true, grid: {display: false}, ticks: {color: ink, autoSkip: true, maxRotation: 0}},
                  y: {stacked: true, beginAtZero: true, grid: {color: grid}, ticks: {color: ink, callback: v => '$' + v}}}}});
   };
@@ -2197,7 +2198,7 @@ const YDL = {{id:'ysame', afterDatasetsDraw(ch) {{   // Guy, Oct 29: medium pale
  options:{{responsive:true, maintainAspectRatio:false, interaction:{{mode:'index', intersect:false}},
   plugins:{{legend:{{display:false}}, tooltip:{{enabled:false, external:TT, itemSort:(a, b) => TTR(a) - TTR(b), callbacks:{{
    labelColor: c => ({{borderColor:'rgba(0,0,0,0)', backgroundColor: c.dataset.type === 'line' ? c.dataset.borderColor : c.dataset.backgroundColor, borderWidth:1, borderRadius:2}}),
-   title: it => {{ const t = it.filter(c => c.dataset.type !== 'line' && c.dataset.stack !== 's').reduce((s, c) => s + (c.parsed.y || 0), 0); return it[0].label + ' · ' + sg(t) + ' views'; }},
+   title: it => {{ const t = it.filter(c => c.dataset.type !== 'line' && c.dataset.stack !== 's').reduce((s, c) => s + (c.parsed.y || 0), 0); return (window.DDD ? DDD(it[0].label) : it[0].label) + ' · ' + sg(t) + ' views'; }},
    label: c => c.dataset.stack === 's' ? 'Google Ads spend: $' + (c.parsed.y || 0).toFixed(2) : c.dataset.label === 'Earned' ? 'Earned: $' + c.parsed.y.toFixed(2) + (EP.has(c.dataIndex + O.v) ? ' (Ads only)' : '') + VSP(D.earned, c.dataIndex + O.v) : c.dataset.type === 'line' ? 'Installs: ' + (EST.has(c.dataIndex + O.v) ? '~' : '') + fmt(c.parsed.y) + (EST.has(c.dataIndex + O.v) ? ' (estimate)' : '') + VSP(D.installs, c.dataIndex + O.v) : c.dataset.label + ': ' + sg(c.parsed.y) }}}}}},
   scales:{{x:{{stacked:true, grid:{{display:false}}, ticks:{{color:muted, maxRotation:0, autoSkip:false, font:{{size:12}}, callback(v) {{ return TWO(this.getLabelForValue(v).split(' ')[0]); }}}}}}, y:{{stacked:true, beginAtZero:true, min:0, grid:{{color:grid}}, ticks:{{color:muted, callback:v => v.toLocaleString()}}, title:{{display:true, text:'Views gained', color:muted}}}},
    ...(D.installs ? {{y2:{{position:'right', beginAtZero:true, grid:{{display:false}}, ticks:{{color:'#7B4FD6', precision:0}}, title:{{display:true, text:'Installs', color:'#7B4FD6'}}}}}} : {{}}),

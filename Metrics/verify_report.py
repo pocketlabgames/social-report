@@ -403,5 +403,9 @@ def run(html_path, keys, G, snap, prev, stale, errors, plats, today=None):
             C.same("US ratings (most common of 5 Apple lookups)", us, want_n, 0)
     except Exception as e:
         C.fails.append(f"Ratings check could not run: {type(e).__name__}"[:240])
+    # Guy, Nov 19: every date pop-up header starts with the day ("Sun. 11/15")
+    fulls = [x for arr in re.findall(r'"p?full": \[([^\]]*)\]', page) for x in re.findall(r'"([^"]*)"', arr)]
+    C.true("Pop-up dates read 'Sun. 11/15'", bool(fulls) and all(re.fullmatch(r"(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\. \d{1,2}/\d{1,2}", x) for x in fulls), f"{len(fulls)} dates, e.g. {[x for x in fulls if not re.fullmatch(r'(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\. \d{1,2}/\d{1,2}', x)][:2]}")
+    C.true("Views and earnings pop-ups add the day", "window.DDD = " in page and page.count("DDD(") >= 2, "DDD helper missing")
     # Guy, Nov 7: the data check is a build step, not part of the report; results go to the build log only, nothing on the page
     return C
