@@ -1207,6 +1207,16 @@ def search_section():
         x += dt.timedelta(days=1)
     days = sorted(imp)[-60:] + [p[0] for p in proj]
     n0 = len(days) - len(proj)
+
+    def expect(d):   # Guy, Nov 20: what the projection said the day before (same method, data up to d-1)
+        p = day(d, -1); w1 = [day(p, -i) for i in range(7)]; w0 = [day(p, -i - 7) for i in range(7)]
+        if not all(x in imp for x in w0 + w1):
+            return None, None
+        a, b = g(w1, False), g(w0, False); c, e = g(w1, True), g(w0, True)
+        f = max(1.0, min((c / e) if e else 1.0, 3.0)) if D(d).weekday() == 6 else max(1.0, min((a / b) if b else 1.0, 3.0))
+        m = imp.get(day(d, -7), 0) * (1 + f) / 2
+        return round(m), round(m * sum(dl.get(x, 0) for x in w1) / max(1, sum(imp.get(x, 0) for x in w1)))
+    ex = [expect(d) for d in days[:n0]]
     sd = lambda d: D(d).strftime("%-m/%-d")
     pad = lambda: [None] * (n0 - 1)
     data = {"labels": [sd(d) for d in days], "full": [D(d).strftime("%a. %-m/%-d") for d in days],
@@ -1214,7 +1224,8 @@ def search_section():
             "dl": [dl.get(d) for d in days],
             "lo": pad() + [imp[last]] + [p[1] for p in proj], "mid": pad() + [imp[last]] + [p[2] for p in proj], "hi": pad() + [imp[last]] + [p[3] for p in proj],
             "dlo": pad() + [dl.get(last, 0)] + [round(p[1] * rate) for p in proj], "dmid": pad() + [dl.get(last, 0)] + [round(p[2] * rate) for p in proj],
-            "dhi": pad() + [dl.get(last, 0)] + [round(p[3] * rate) for p in proj], "n0": n0}
+            "dhi": pad() + [dl.get(last, 0)] + [round(p[3] * rate) for p in proj], "n0": n0,
+            "eimp": [e[0] for e in ex] + [p[2] for p in proj], "edl": [e[1] for e in ex] + [round(p[2] * rate) for p in proj]}
     P = proj[-1]
     note = (f"Projected {D(P[0]).strftime('%a %-m/%-d')}: about <b>{P[2]:,}</b> times shown ({P[1]:,}-{P[3]:,}) and "
             f"<b>{round(P[2] * rate):,}</b> downloads ({round(P[1] * rate):,}-{round(P[3] * rate):,}).")
@@ -1230,13 +1241,24 @@ def search_section():
   L({label: 'dhi', data: X.dhi, yAxisID: 'y2', borderWidth: 0, fill: false}),
   L({label: 'dlo', data: X.dlo, yAxisID: 'y2', borderWidth: 0, backgroundColor: 'rgba(42,120,214,.12)', fill: '-1'}),
   L({label: 'Downloads (projected)', data: X.dmid, yAxisID: 'y2', borderColor: '#2a78d6', borderDash: [6, 4], borderWidth: 1.5, fill: false})];
+ const n = v => v == null ? '-' : Math.round(v).toLocaleString();   // Guy, Nov 20: pop-up = table, Actual vs Expected
+ const html = i => `<div class="ctt-h">${X.full[i]}</div><div class="stt"><span></span><small>Actual</small><small>Expected</small>`
+  + `<span><i style="background:#c9c8c2"></i>Times shown</span><b>${n(X.imp[i])}</b><b>${n(X.eimp[i])}</b>`
+  + `<span><i style="background:#2a78d6"></i>Downloads</span><b>${n(i < X.n0 ? X.dl[i] : null)}</b><b>${n(X.edl[i])}</b></div>`;
+ const tt = ({chart: c, tooltip: t}) => { let el = c.canvas.parentNode.querySelector('.ctt');
+  if (!el) { el = document.createElement('div'); el.className = 'ctt'; c.canvas.parentNode.appendChild(el); }
+  if (!t.opacity || !t.dataPoints.length) { el.style.opacity = 0; return; }
+  el.innerHTML = html(t.dataPoints[0].dataIndex + (c.$off || 0)); el.style.opacity = 1;
+  const W = c.canvas.parentNode.clientWidth, w = el.offsetWidth, hh = el.offsetHeight;
+  let x = t.caretX + 16; if (x + w > W) x = t.caretX - w - 16; if (x < 0) x = Math.max(0, (W - w) / 2);
+  el.style.left = x + 'px'; el.style.top = Math.max(0, Math.min(t.caretY - hh / 2, c.canvas.clientHeight - hh)) + 'px'; };
  const ch = new Chart(cv, {type: 'line', data: {labels: X.labels, datasets: ds},
   options: {responsive: true, maintainAspectRatio: false, animation: false, interaction: {mode: 'index', intersect: false},
-   plugins: {legend: {display: false}, tooltip: {filter: i => i.parsed.y != null && !/^d?(hi|lo)$/.test(i.dataset.label) && !(i.dataset.label.includes('projected') && i.dataIndex + (ch.$off || 0) < X.n0),
-     callbacks: {title: t => t.length ? X.full[t[0].dataIndex + (ch.$off || 0)] : '', label: c => c.dataset.label + ': ' + Math.round(c.parsed.y).toLocaleString()}}},
+   plugins: {legend: {display: false}, tooltip: {enabled: false, external: tt}},
    scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: 12}, callback(v) { return window.TWO ? TWO(this.getLabelForValue(v)) : this.getLabelForValue(v); }}},
     y: {beginAtZero: true, grid: {color: grid}, ticks: {color: muted, precision: 0, callback: v => Math.round(v).toLocaleString()}, title: {display: true, text: 'Times shown', color: muted}},
     y2: {beginAtZero: true, position: 'right', grid: {display: false}, ticks: {color: '#2a78d6', precision: 0}, title: {display: true, text: 'Downloads', color: '#2a78d6'}}}}});
+ document.addEventListener('touchstart', e => { if (e.target !== cv) { const el = cv.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); } }, {passive: true});
  if (window.RANGE) RANGE(ch, X.labels, X.labels.map((_, i) => X.imp[i] != null ? X.imp[i] : X.mid[i]), document.getElementById('rngh'), document.getElementById('rnghl')); }; </script>""".replace("__DATA__", json.dumps(data))
     sw = lambda st: f"<svg width='16' height='10'><line x1='0' y1='5' x2='16' y2='5' stroke-width='2' {st}/></svg>"
     s1, s2, s3 = sw("stroke='#888780' stroke-dasharray='2 3'"), sw("stroke='#2a78d6'"), sw("stroke='#2a78d6' stroke-dasharray='6 4' opacity='.7'")
@@ -1869,7 +1891,7 @@ th{{font-weight:500;color:var(--ink2)}} th.rl{{text-align:left}} thead th{{borde
 h2.sh{{font-size:18px;font-weight:500;margin:36px 0 10px}} .dot{{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}}
 .old{{display:none}} .showold .old{{display:revert}} .vgrid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}} @media (max-width:900px){{.vgrid{{grid-template-columns:1fr}}}}
 .vc{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}} .vch{{display:flex;justify-content:space-between;gap:10px;align-items:baseline}}
-.rtt{{min-width:260px}} .rtt-bar{{display:flex;height:12px;border-radius:6px;overflow:hidden;margin:2px 0 10px;gap:2px}} .rtt-bar i{{display:block;height:100%}} .rtt .ctt-r{{display:grid;column-gap:10px;align-items:center}} .rtt .ctt-r.rb{{grid-template-columns:13px minmax(84px,1fr) 100px 52px}} .rtt .ctt-r.rs{{grid-template-columns:13px minmax(84px,1fr) 60px 42px}} .rtt .ctt-r b{{text-align:right}} .rtt-n{{white-space:nowrap}} .rtt-t{{font-size:13px;opacity:.75;margin:-3px 0 6px 22px;white-space:nowrap}} .rtt .ctt-r b{{font-weight:600;font-variant-numeric:tabular-nums}} .rtt .ctt-r small{{width:42px;text-align:right;opacity:.75;font-variant-numeric:tabular-nums}} .rtt-m{{width:100px;height:8px;border-radius:4px;background:rgba(255,255,255,.12);overflow:hidden}} .rtt-m em{{display:block;height:100%;border-radius:4px}} .ctt{{position:absolute;pointer-events:none;z-index:5;opacity:0;transition:opacity .15s,left .12s ease-out,top .12s ease-out;background:rgba(18,18,20,.62);-webkit-backdrop-filter:blur(12px) saturate(140%);backdrop-filter:blur(12px) saturate(140%);color:#fff;border-radius:12px;padding:12px 16px 13px;box-shadow:0 8px 28px rgba(0,0,0,.28);font-size:16px;line-height:1.5;white-space:nowrap}} .ctt-h{{font-size:19px;font-weight:700;margin-bottom:6px}} .ctt-y{{font-size:14px;font-weight:700;opacity:.85;margin:-2px 0 8px}} .ctt-r{{display:flex;align-items:center;gap:9px}} .ctt-r i{{width:13px;height:13px;border-radius:3px;flex:none}} .ctt-sep{{height:1px;background:rgba(255,255,255,.7);margin:10px 0}} @media (max-width:700px){{.ctt{{font-size:14px;padding:10px 12px}} .ctt-h{{font-size:16px}} .ctt-y{{font-size:12.5px}}}} .ns{{display:none}} @media (max-width:700px){{.nf{{display:none}} .ns{{display:inline}}}} .vct{{font-weight:600;line-height:1.3;margin-top:2px}} .pcol{{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none}} .pdist{{font-size:13px;font-weight:700;color:var(--ink2);font-variant-numeric:tabular-nums;white-space:nowrap}} .pdot{{width:14px;height:14px;border-radius:50%;flex:none;align-self:center;box-shadow:0 0 0 3px var(--card),0 0 0 4px var(--line)}} .vcn{{white-space:nowrap;font-size:18px;font-variant-numeric:tabular-nums}} .vcn small{{font-size:12px;color:var(--muted);font-weight:400}}
+.rtt{{min-width:260px}} .rtt-bar{{display:flex;height:12px;border-radius:6px;overflow:hidden;margin:2px 0 10px;gap:2px}} .rtt-bar i{{display:block;height:100%}} .rtt .ctt-r{{display:grid;column-gap:10px;align-items:center}} .rtt .ctt-r.rb{{grid-template-columns:13px minmax(84px,1fr) 100px 52px}} .rtt .ctt-r.rs{{grid-template-columns:13px minmax(84px,1fr) 60px 42px}} .rtt .ctt-r b{{text-align:right}} .rtt-n{{white-space:nowrap}} .rtt-t{{font-size:13px;opacity:.75;margin:-3px 0 6px 22px;white-space:nowrap}} .rtt .ctt-r b{{font-weight:600;font-variant-numeric:tabular-nums}} .rtt .ctt-r small{{width:42px;text-align:right;opacity:.75;font-variant-numeric:tabular-nums}} .rtt-m{{width:100px;height:8px;border-radius:4px;background:rgba(255,255,255,.12);overflow:hidden}} .rtt-m em{{display:block;height:100%;border-radius:4px}} .ctt{{position:absolute;pointer-events:none;z-index:5;opacity:0;transition:opacity .15s,left .12s ease-out,top .12s ease-out;background:rgba(18,18,20,.62);-webkit-backdrop-filter:blur(12px) saturate(140%);backdrop-filter:blur(12px) saturate(140%);color:#fff;border-radius:12px;padding:12px 16px 13px;box-shadow:0 8px 28px rgba(0,0,0,.28);font-size:16px;line-height:1.5;white-space:nowrap}} .ctt-h{{font-size:19px;font-weight:700;margin-bottom:6px}} .ctt-y{{font-size:14px;font-weight:700;opacity:.85;margin:-2px 0 8px}} .ctt-r{{display:flex;align-items:center;gap:9px}} .ctt-r i{{width:13px;height:13px;border-radius:3px;flex:none}} .stt{{display:grid;grid-template-columns:auto auto auto;column-gap:22px;row-gap:2px;align-items:center}} .stt span{{display:flex;align-items:center;gap:9px}} .stt span i{{width:13px;height:13px;border-radius:3px;flex:none}} .stt small{{font-size:14px;opacity:.7;text-align:right}} .stt b{{font-weight:600;text-align:right;font-variant-numeric:tabular-nums}} .ctt-sep{{height:1px;background:rgba(255,255,255,.7);margin:10px 0}} @media (max-width:700px){{.ctt{{font-size:14px;padding:10px 12px}} .ctt-h{{font-size:16px}} .ctt-y{{font-size:12.5px}}}} .ns{{display:none}} @media (max-width:700px){{.nf{{display:none}} .ns{{display:inline}}}} .vct{{font-weight:600;line-height:1.3;margin-top:2px}} .pcol{{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none}} .pdist{{font-size:13px;font-weight:700;color:var(--ink2);font-variant-numeric:tabular-nums;white-space:nowrap}} .pdot{{width:14px;height:14px;border-radius:50%;flex:none;align-self:center;box-shadow:0 0 0 3px var(--card),0 0 0 4px var(--line)}} .vcn{{white-space:nowrap;font-size:18px;font-variant-numeric:tabular-nums}} .vcn small{{font-size:12px;color:var(--muted);font-weight:400}}
 .vcm{{color:var(--muted);font-size:12px;margin:2px 0 8px}} table.vt{{width:100%;background:transparent}} table.vt th,table.vt td{{padding:5px 6px;font-size:13px;border-bottom:1px solid var(--line)}}
 table.vt thead th{{color:var(--muted);font-weight:500;border-bottom:1px solid var(--line)}} table.vt tbody tr:last-child th,table.vt tbody tr:last-child td{{border-bottom:0}}
 table.vt tr.lead td,table.vt tr.lead th{{background:rgba(42,120,214,.10)}} table.vt a.tp{{text-decoration:none;color:inherit;border-bottom:1px solid #2A78D6}}
