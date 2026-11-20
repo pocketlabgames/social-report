@@ -756,11 +756,22 @@ def group_videos(posts):
                 g["posts"].append(r); placed = True; break
         if not placed:
             groups.append({"name": "", "mapped": False, "posts": [r]})
+    try:   # Guy, Nov 20: "make captions consistent". A post the log has no ID for (a second upload) still gets its ad's short title
+        rows = json.load(open(os.path.join(HERE, "ad-log.json")))
+        caps = {}
+        for a in rows:
+            for s in ("facebook", "instagram"):
+                if a.get(s):
+                    caps.setdefault(a[s][:90], set()).add(a["title"])
+        short_of = {c: t.pop() for c, t in caps.items() if len(t) == 1}
+    except Exception:
+        short_of = {}
     for g in groups:
         if not g["name"]:
+            t = next((short_of[x["title"][:90]] for x in g["posts"] if x["title"][:90] in short_of), None)
             yt = next((x for x in g["posts"] if x["site"] == "youtube" and x["title"]), None)
             src = yt["title"] if yt else max((x["title"] for x in g["posts"]), key=len, default="")
-            g["name"] = src.replace("#shorts", "").strip() or "(no title)"
+            g["name"] = t or src.replace("#shorts", "").strip() or "(no title)"
         g["created"] = min(x["created"] for x in g["posts"])
         g["posts"].sort(key=lambda x: PLAT.index(x["site"]) if x["site"] in PLAT else 9)
     return sorted(groups, key=lambda g: g["created"], reverse=True)
