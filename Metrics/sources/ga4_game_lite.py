@@ -22,7 +22,9 @@ STEPS = list(range(1, 11)) + [11, 16, 21, 26, 31]   # Guy, Nov 6: "Where players
 RELEASED = {"1.3.1": START, "1.3.2": dt.date(2026, 11, 4), "1.3.3": dt.date(2026, 11, 6), "1.3.11": dt.date(2026, 11, 15)}   # App Store release days; later versions use Apple's date while live
 VF = (1, 3, 11)   # Guy, Nov 16: Game stats filter "1.3.11+"
 VX = [(1, 3, 18)]   # Guy, Nov 19: one more filter option "1.3.18+" (1.3.19 dropped, Guy); each shows once that version is on the App Store (vers stops at the live version)
-COMPARE = (1, 3, 11)   # Guy, Nov 16: "Did 1.3.11 help?" (was 1.3.4); first version with the new-player changes; new players on it vs new players before it
+COMPARE = (1, 3, 18)   # Guy, Nov 20: "Did 1.3.18+ help?" vs 1.3.11+ (1.3.11 to 1.3.17); was 1.3.11 vs before.
+BASE = (1, 3, 11)   # reference line: new players who started on BASE..COMPARE-1, from BASE's release to the day before COMPARE's
+# Guy, Nov 16: "Did 1.3.11 help?" (was 1.3.4); first version with the new-player changes; new players on it vs new players before it
 EVENTS = ["level_end", "level_up", "ad_shown", "purchase_ok", "super_stir", "super_solve"]
 
 
@@ -158,7 +160,9 @@ def fetch(keys_dir, today):
             group = lambda vs, ds: {"andGroup": {"expressions": [newer, {"filter": {"fieldName": "appVersion", "inListFilter": {"values": vs}}}, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": ds}}}]}}
             cmp["since"] = since.isoformat()
             cmp["new"] = reached(group([v for v in vers if _ver(v) >= COMPARE], dates(since, today)), dall, STEPS)
-            cmp["old"] = reached(group([v for v in vers if _ver(v) < COMPARE], dates(START, since - dt.timedelta(days=1))), dall, STEPS)
+            b0 = RELEASED.get(".".join(map(str, BASE))) or START
+            cmp["base"], cmp["bsince"] = ".".join(map(str, BASE)), b0.isoformat()
+            cmp["old"] = reached(group([v for v in vers if BASE <= _ver(v) < COMPARE], dates(b0, since - dt.timedelta(days=1))), dall, STEPS)
     out["compare"] = cmp
     # Guy, Nov 8: win rate per level. 1.3.4+ sends lv_start_N / lv_win_N for levels 1-25 (players = different people; tries = every start)
     lvf = {"andGroup": {"expressions": [newer, {"filter": {"fieldName": "eventName", "stringFilter": {"matchType": "BEGINS_WITH", "value": "lv_"}}}]}}

@@ -315,7 +315,8 @@ def _check_game(C, page, keys, today, G, on_sale):
         since, ver = dt.date.fromisoformat(G["compare"]["since"]), _ver(X["cver"])
         dates = lambda a, b: [(a + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((b - a).days + 1)]
         new = AND(released_only(START, today, [v for v in want if _ver(v) >= ver]), among("firstSessionDate", dates(since, today)))
-        old = AND(released_only(START, today, [v for v in want if _ver(v) < ver]), among("firstSessionDate", dates(START, since - dt.timedelta(days=1))))
+        bv = _ver(G["compare"].get("base") or "0.0.0"); b0 = dt.date.fromisoformat(G["compare"].get("bsince") or START.isoformat())   # Guy, Nov 20: reference = 1.3.11+
+        old = AND(released_only(START, today, [v for v in want if bv <= _ver(v) < ver]), among("firstSessionDate", dates(b0, since - dt.timedelta(days=1))))
         C.same("New players on the new version", X["cn"], reach_of(1, new, (START, today)), 1)
         C.same("New players before the new version", X["co"], reach_of(1, old, (START, today)), 1)
     # retention (the same way Firebase's cohorts define it)

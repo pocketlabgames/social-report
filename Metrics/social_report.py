@@ -1403,7 +1403,7 @@ def game_section():
     p1 = LVD["lvs"][0] if lvn else 0
     winrate = ("<h3 class='sh3'>Win rate per level</h3><div class='chart' style='height:240px'><canvas id='glv' role='img' aria-label='Win rate per level, levels 1 to 25'></canvas></div>") if lvn else \
               "<h3 class='sh3'>Win rate per level</h3><p class='sub gempty'>Starts once players on 1.3.4 or later play a level (Google Analytics needs up to a day).</p>"
-    data = {"steps": steps, "reach": reach, "playing": playing, "mp": mp, "vfun": vfun, "pfun": pfun, "xfun": xfun, "cver": CM.get("version", ""), "cn": cn, "co": co, "cnew": [round(cnew.get(str(s), 0) / cn * 100) for s in steps] if show_cmp else [], "cold": [round(cold.get(str(s), 0) / co * 100) for s in steps] if show_cmp else [], "labels": [md(d) for d in days], "full": [dt.date.fromisoformat(d).strftime("%a. %-m/%-d") for d in days],
+    data = {"steps": steps, "reach": reach, "playing": playing, "mp": mp, "vfun": vfun, "pfun": pfun, "xfun": xfun, "cver": CM.get("version", ""), "cbase": CM.get("base", ""), "cn": cn, "co": co, "cnew": [round(cnew.get(str(s), 0) / cn * 100) for s in steps] if show_cmp else [], "cold": [round(cold.get(str(s), 0) / co * 100) for s in steps] if show_cmp else [], "labels": [md(d) for d in days], "full": [dt.date.fromisoformat(d).strftime("%a. %-m/%-d") for d in days],
             "players": [A.get("daily", {}).get(d, 0) for d in days], "newer": [D[d].get("players", 0) for d in days], **{k: [D[d].get(k, 0) for d in days] for k in ("level_end", "level_up", "ad_shown", "super_stir", "super_solve")}, "purchase_ok": [(MONEY.get(d) or {}).get("n") or 0 for d in days], **LVD,
             # Guy, Nov 9: rewarded videos per day (AdMob, all players) replaces "Did 1.3.4 help?"; dashed = same weekday one week earlier
             "rwd": [(MONEY.get(d) or {}).get("rwd") for d in days], "rwp": [(MONEY.get(wk(d)) or {}).get("rwd") for d in days], "pfull": [dt.date.fromisoformat(wk(d)).strftime("%a. %-m/%-d") for d in days]}
@@ -1412,10 +1412,10 @@ def game_section():
     legend = ("<div class='lgs' style='margin-top:6px'><span class='gk'><i style='background:#12A4A4'></i>Still playing</span> <span class='gk'><i style='background:var(--gleft)'></i>Quit (3+ days away)</span></div>" if playing and steps else "")
     cv = CM.get("version", "")
     if show_cmp:
-        compare = (f"<h3 class='sh3'>Did {e(cv)} help?</h3>"
+        compare = (f"<h3 class='sh3'>Did {e(cv)}+ help?</h3>"
                    "<div class='chart' style='height:240px'><canvas id='gcmp' role='img' aria-label='Share of new players reaching each level, new version vs earlier'></canvas></div>")
     elif cv:
-        compare = (f"<h3 class='sh3'>Did {e(cv)} help?</h3><p class='sub gempty'>" + (f"This comparison appears at {CMIN} new players on {e(cv)}; {cn:,} so far." if CM.get("live") else f"This comparison starts when {e(cv)} is live on the App Store and appears at {CMIN} new players.") + "</p>")
+        compare = (f"<h3 class='sh3'>Did {e(cv)}+ help?</h3><p class='sub gempty'>" + (f"This comparison appears at {CMIN} new players on {e(cv)}; {cn:,} so far." if CM.get("live") else f"This comparison starts when {e(cv)} is live on the App Store and appears at {CMIN} new players.") + "</p>")
     else:
         compare = ""
     rewarded = ("<h3 class='sh3'>Rewarded videos per day</h3>"
@@ -1463,9 +1463,9 @@ def game_section():
     scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: innerWidth < 500 ? 9 : 11}, callback(v) { return window.TWO ? TWO(this.getLabelForValue(v)) : this.getLabelForValue(v); }}, title: {display: true, text: 'Day', color: muted}},
      y: {beginAtZero: true, grid: {color: grid}, ticks: {color: muted, precision: 0}, title: {display: true, text: 'Rewarded videos', color: muted}}}}}); }
  const gc = document.getElementById('gcmp');   // Guy, Nov 16: "Did 1.3.11 help?" is back: new players on the new version vs before it
- if (gc && !Chart.getChart(gc) && X.cnew.length) { const f = i => `<div class="ctt-h">Reached level ${lbl(X.steps[i])}</div><div class="ctt-r">${X.cver}+: ${X.cnew[i]}% of ${n(X.cn)}</div><div class="ctt-r">Before: ${X.cold[i]}% of ${n(X.co)}</div>`;
+ if (gc && !Chart.getChart(gc) && X.cnew.length) { const f = i => `<div class="ctt-h">Reached level ${lbl(X.steps[i])}</div><div class="ctt-r">${X.cver}+: ${X.cnew[i]}% of ${n(X.cn)}</div><div class="ctt-r">${X.cbase ? X.cbase + '+' : 'Before'}: ${X.cold[i]}% of ${n(X.co)}</div>`;
   const line = (label, data, color, dash) => ({label, data, borderColor: color, backgroundColor: color, borderDash: dash, borderWidth: 2, pointRadius: 3, tension: 0.2});
-  new Chart(gc, {type: 'line', data: {labels: X.steps.map(lbl), datasets: [line(X.cver + ' and later', X.cnew, '#12A4A4', []), line('Before ' + X.cver, X.cold, muted, [5, 4])]},
+  new Chart(gc, {type: 'line', data: {labels: X.steps.map(lbl), datasets: [line(X.cver + '+', X.cnew, '#12A4A4', []), line(X.cbase ? X.cbase + '+' : 'Before ' + X.cver, X.cold, muted, [5, 4])]},
    options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false}, plugins: {legend: {display: true, labels: {color: muted, boxWidth: 18, boxHeight: 2}}, tooltip: {enabled: false, external: tip(f)}},
     scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: false, font: {size: innerWidth < 500 ? 9 : 11}}, title: {display: true, text: 'Level reached', color: muted}},
      y: {beginAtZero: true, max: 100, grid: {color: grid}, ticks: {color: muted, callback: v => v + '%'}, title: {display: true, text: 'New players', color: muted}}}}}); }
