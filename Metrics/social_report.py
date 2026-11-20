@@ -788,6 +788,9 @@ def posts_section(posts, phist, now):
         except ValueError: return c[:10]
     cards, hidden = [], 0
     groups = group_videos(posts)
+    for g in groups:   # build log only: why a card kept a raw caption (verify_report "Video cards use the ad-log title")
+        if not g.get("ad") and len(g["name"]) > 60:
+            print("UNMATCHED CARD", [(x["site"], x["created"], x["title"][:90]) for x in g["posts"]])
     def age_h(g):
         try: return (now - dt.datetime.strptime(g["created"], "%Y-%m-%d %H:%M")).total_seconds() / 3600
         except ValueError: return 999
