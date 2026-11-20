@@ -1050,7 +1050,12 @@ PIN_JS = """<script>(() => { const c = document.querySelector('.day'), M = match
 
 GSEL_JS = """<script>(() => { const S = [...document.querySelectorAll('.gsel')]; if (!S.length) return;   // Guy, Nov 16: one version filter; changing either dropdown updates both
  const go = val => { S.forEach(x => x.value = val); document.querySelectorAll('.gst').forEach(x => x.hidden = x.id !== 'gst-' + val); if (window.LVDRAW) LVDRAW(val); if (window.FUNDRAW) FUNDRAW(val); };
- S.forEach(x => x.addEventListener('change', () => go(x.value))); go('all'); })();</script>"""   # Guy, Nov 19: always opens on All versions (no remembered choice)
+ const K = 'bl_gsel_default', lab = v => { const o = [...S[0].options].find(o => o.value === v); return o ? o.text : ''; };   // Guy, Nov 20: "Set as default" button; saved in this browser by label (keys can change between builds)
+ let d = ''; try { d = localStorage.getItem(K) || ''; } catch (e) {}
+ const b = document.getElementById('gdef'), mark = () => { if (b) { const on = lab(S[0].value) === d || (!d && S[0].value === 'all'); b.textContent = on ? 'Default ✓' : 'Set as default'; b.disabled = on; } };
+ if (b) b.addEventListener('click', () => { d = lab(S[0].value); try { localStorage.setItem(K, d); } catch (e) {} mark(); });
+ S.forEach(x => x.addEventListener('change', () => { go(x.value); mark(); }));
+ const o = d && [...S[0].options].find(o => o.text === d); go(o ? o.value : 'all'); mark(); })();</script>"""   # opens on the saved default, else All versions
 
 
 def sources_section():
@@ -1361,7 +1366,7 @@ def game_section():
     for k, BX in XB.items():
         tiles_html += f"<div class='gst' id='gst-{k}' hidden>{grid(mk_tiles(BX, True))}</div>"
     gsel = lambda i: (f" <select id='{i}' class='gsel' aria-label='App versions'><option value='all'>All versions</option>" + (f"<option value='pre'>{e(PB['label'])}</option>" if PB else "") + f"<option value='vf'>{e(VB['label'])}</option>" + "".join(f"<option value='{k}'>{e(BX['label'])}</option>" for k, BX in XB.items()) + "</select>") if VB else ""   # Guy, Nov 16: one filter, shown on the tiles and the win rate chart
-    gsel_html = gsel("gsel")
+    gsel_html = gsel("gsel") + (" <button id='gdef' type='button' class='gdef'>Set as default</button>" if VB else "")
     top = lv[-1] if lv else 0
     steps = [s for s in list(range(1, 11)) + [11, 16, 21, 26, 31] if s <= top]   # Guy, Nov 6: early levels one by one, then steps of 5, then 31+
     reach = [reached(s) for s in steps]
@@ -1481,7 +1486,7 @@ def game_section():
     stale_note = f"<p class='sub' style='color:#C0392B'>Google Analytics didn't answer this run; showing the last numbers from {e(GAME['_stale'])}.</p>" if GAME.get("_stale") else ""
     return (f"<style>.sh3{{font-size:18px;margin:22px 0 4px}} .gst{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:4px 0 18px}} "
             f".gt{{border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:1px}} .gt b{{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}} "
-            f".gcard{{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:0 0 14px}} @media (max-width:700px){{.gcard{{padding:14px 12px}}}} .gcard .gt{{background:var(--bg);border-color:transparent}} .gst[hidden]{{display:none}} .gsel{{margin-left:8px;font:inherit;font-size:14px;padding:4px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}} .gt span{{font-size:13px;color:var(--ink2)}} .gt small{{font-size:11px;color:var(--muted);line-height:1.3}} .gcmp{{font-style:normal;font-size:11px;font-weight:600;margin-top:3px}} .gcmp.up{{color:#1a8f4a}} .gcmp.down{{color:#c0392b}} .gcmp.same{{color:var(--muted)}} :root{{--gleft:#c9c7bd}} @media (prefers-color-scheme:dark){{:root{{--gleft:#55544f}}}} .gk{{font-size:12px;color:var(--muted);margin-right:12px;white-space:normal}} .gk i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}} @media (max-width:700px){{.gst{{grid-template-columns:1fr 1fr}} .gt b{{font-size:18px}}}}</style>"
+            f".gdef{{font:inherit;font-size:14px;padding:5px 12px;margin-left:6px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;vertical-align:middle}} .gdef:disabled{{color:var(--muted);cursor:default}} .gcard{{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:0 0 14px}} @media (max-width:700px){{.gcard{{padding:14px 12px}}}} .gcard .gt{{background:var(--bg);border-color:transparent}} .gst[hidden]{{display:none}} .gsel{{margin-left:8px;font:inherit;font-size:14px;padding:4px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}} .gt span{{font-size:13px;color:var(--ink2)}} .gt small{{font-size:11px;color:var(--muted);line-height:1.3}} .gcmp{{font-style:normal;font-size:11px;font-weight:600;margin-top:3px}} .gcmp.up{{color:#1a8f4a}} .gcmp.down{{color:#c0392b}} .gcmp.same{{color:var(--muted)}} :root{{--gleft:#c9c7bd}} @media (prefers-color-scheme:dark){{:root{{--gleft:#55544f}}}} .gk{{font-size:12px;color:var(--muted);margin-right:12px;white-space:normal}} .gk i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}} @media (max-width:700px){{.gst{{grid-template-columns:1fr 1fr}} .gt b{{font-size:18px}}}}</style>"
             f"<h2 class='sh' id='sec-game'>Game Analytics</h2><section class='gcard'>{stale_note}<p class='sub' style='margin-top:0'>From Firebase (Google Analytics).{gsel_html}</p><h3 class='sh3'>Game stats</h3>{tiles_html}"   # Guy, Nov 16: one header, one note, one filter for all game charts; no descriptions under chart titles
             f"<h3 class='sh3'>How far players get</h3>{legend}{funnel}{compare}{rewarded}{winrate}"
             f"<h3 class='sh3'>Players per day</h3>"
