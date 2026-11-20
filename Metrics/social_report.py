@@ -670,20 +670,23 @@ def short_title(t, n=36):
 
 def ad_of(posts):
     """{post id: ad-log.json row}. Guy, Nov 4: cards group by ad number. By post ID when the log has the link; Facebook and
-    Instagram posts scheduled without a link go by exact caption on the same date, only when one ad fits."""
+    Instagram posts scheduled without a link go by exact caption within a day of the log date, only when one ad fits."""
     path = os.path.join(HERE, "ad-log.json")
     if not os.path.exists(path):
         return {}
     with open(path) as f:
         rows = json.load(f)
     by_id = {(s, i): a for a in rows for s, i in a["ids"].items()}
+    # Guy, Nov 20: "make captions consistent". ad236 (logged Nov 18, slot 11:55 PM) went up on Instagram at 12:00 AM Nov 19
+    # and got its own card titled from the raw caption. Allow a day either side; the caption must still match exactly.
+    near = lambda a, b: abs((dt.date.fromisoformat(a) - dt.date.fromisoformat(b)).days) <= 1
     out = {}
     for r in posts:
         site = r["site"]
         key = r["url"].rstrip("/").rsplit("/", 1)[-1] if site == "instagram" else r["id"].split(":", 1)[1]
         a = by_id.get((site, key))
         if a is None and site in ("facebook", "instagram"):
-            fits = [x for x in rows if site not in x["ids"] and x[site] and x["date"] == r["created"][:10] and x[site][:90] == r["title"]]
+            fits = [x for x in rows if site not in x["ids"] and x[site] and near(x["date"], r["created"][:10]) and x[site][:90] == r["title"]]
             a = fits[0] if len(fits) == 1 else None
         if a:
             out[r["id"]] = a

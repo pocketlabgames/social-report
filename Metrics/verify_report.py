@@ -407,5 +407,14 @@ def run(html_path, keys, G, snap, prev, stale, errors, plats, today=None):
     fulls = [x for arr in re.findall(r'"p?full": \[([^\]]*)\]', page) for x in re.findall(r'"([^"]*)"', arr)]
     C.true("Pop-up dates read 'Sun. 11/15'", bool(fulls) and all(re.fullmatch(r"(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\. \d{1,2}/\d{1,2}", x) for x in fulls), f"{len(fulls)} dates, e.g. {[x for x in fulls if not re.fullmatch(r'(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\. \d{1,2}/\d{1,2}', x)][:2]}")
     C.true("Views and earnings pop-ups add the day", "window.DDD = " in page and page.count("DDD(") >= 2, "DDD helper missing")
+    try:   # Guy, Nov 20: "make captions consistent". A Videos card titled with a logged ad's raw caption missed its ad match
+        import html as _h, json as _j, os as _o
+        rows = _j.load(open(_o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "ad-log.json")))
+        caps = {(a.get(s) or "")[:90]: a["ad"] for a in rows for s in ("facebook", "instagram") if a.get(s) and (a.get(s) or "")[:90] != a["title"][:90]}
+        cards = [_h.unescape(t) for t in re.findall(r"<div class='vct'>(.*?)</div>", page)]
+        bad = [f"{caps[t]}: {t[:40]}" for t in cards if t in caps]
+        C.true("Video cards use the ad-log title (no raw captions)", bool(cards) and not bad, "; ".join(bad[:3]))
+    except Exception as e:
+        C.fails.append(f"Video card title check could not run: {type(e).__name__}"[:240])
     # Guy, Nov 7: the data check is a build step, not part of the report; results go to the build log only, nothing on the page
     return C
