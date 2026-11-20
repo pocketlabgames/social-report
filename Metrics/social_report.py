@@ -16,6 +16,7 @@ import json
 import os
 import re
 import sys
+import time
 import webbrowser
 
 import pandas as pd
@@ -102,9 +103,12 @@ def fetch():
     from concurrent.futures import ThreadPoolExecutor
 
     def pull(m):   # one site: up to 3 tries (e.g. YouTube Analytics 500s are usually temporary)
+        t0 = time.time()
         for attempt in range(1, 4):
             try:
-                return {k: df for k, (df, _) in m.fetch(KEYS, dt.date.today()).items()}, None
+                got = {k: df for k, (df, _) in m.fetch(KEYS, dt.date.today()).items()}
+                print(f"TIMING {m.__name__.split('.')[-1]}: {time.time() - t0:.0f}s", flush=True)   # build log only (Guy, Nov 20: why runs take 5+ min)
+                return got, None
             except Exception as e:
                 if attempt == 3:
                     msg = re.sub(r"(token|key|secret)=[^&\s'\"]+", r"\1=***", f"{type(e).__name__}: {e}", flags=re.I)   # never show keys
@@ -2302,7 +2306,9 @@ def write_xlsx(stamp, rows, labels, series):
 def main():
     now = dt.datetime.now()
     stamp = now.strftime("%b %-d, %Y · %-I:%M %p")
+    T0 = time.time()
     snap, errors = fetch()
+    print(f"TIMING all sources: {time.time() - T0:.0f}s", flush=True)
     hist = json.load(open(HIST)) if os.path.exists(HIST) else []
     prev = hist[-1] if hist else None
     stale = {}   # platform -> time of the last good check whose numbers are reused
@@ -2373,7 +2379,9 @@ def main():
                money=money_bits(dict(MONEY), now), money_daily=dict(MONEY), est=dl_estimate(dict(INSTALLS), dict(RCNEW), now))
     try:   # compare the finished page with the sources; results go to the build log only (Guy, Nov 7: not on the report)
         import verify_report
+        print(f"TIMING page built: {time.time() - T0:.0f}s", flush=True)
         chk = verify_report.run(OUT_HTML, KEYS, GAME, snap, prev, stale, errors, PLAT)
+        print(f"TIMING data check done: {time.time() - T0:.0f}s", flush=True)
         print(f"DATA CHECK: {chk.ok} matched, {len(chk.fails)} failed")
         for x in chk.fails:
             print("DATA CHECK FAILED:", x)
