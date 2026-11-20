@@ -686,7 +686,8 @@ def ad_of(posts):
         key = r["url"].rstrip("/").rsplit("/", 1)[-1] if site == "instagram" else r["id"].split(":", 1)[1]
         a = by_id.get((site, key))
         if a is None and site in ("facebook", "instagram"):
-            fits = [x for x in rows if site not in x["ids"] and x[site] and near(x["date"], r["created"][:10]) and x[site][:90] == r["title"]]
+            cap = [x for x in rows if site not in x["ids"] and x[site] and x[site][:90] == r["title"]]
+            fits = [x for x in cap if x["date"] == r["created"][:10]] or [x for x in cap if near(x["date"], r["created"][:10])]   # same day first: the 9 AM caption repeats daily
             a = fits[0] if len(fits) == 1 else None
         if a:
             out[r["id"]] = a
