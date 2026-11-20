@@ -60,7 +60,7 @@ jobs:
         with:
           timeout: 300000
       - if: steps.deploy.outcome == 'failure'
-        run: sleep 360
+        run: sleep 30   # Guy, Nov 20: most first failures are "No artifacts named github-pages" right after upload; 30 s is enough (was 360)
       - id: deploy2
         if: steps.deploy.outcome == 'failure'
         uses: actions/deploy-pages@v4
