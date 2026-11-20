@@ -27,10 +27,22 @@ EVENTS = ["level_end", "level_up", "ad_shown", "purchase_ok", "super_stir", "sup
 
 
 def _run(s, body):
-    r = s.post(f"https://analyticsdata.googleapis.com/v1beta/properties/{PROPERTY}:runReport", json=body, timeout=60)
+    for wait in (2, 5, 10, 0):   # 429 / 5xx: wait and ask again (queries now run several at a time)
+        r = s.post(f"https://analyticsdata.googleapis.com/v1beta/properties/{PROPERTY}:runReport", json=body, timeout=60)
+        if r.ok or r.status_code not in (429, 500, 503) or not wait:
+            break
+        time.sleep(wait)
     if not r.ok:
         raise RuntimeError(f"GA4 {r.status_code}: {r.text[:200]}")
     return [([d["value"] for d in row.get("dimensionValues", [])], [float(m["value"]) for m in row["metricValues"]]) for row in r.json().get("rows", [])]
+
+
+def _many(s, bodies):
+    """Guy, Nov 20: the per-level questions ran one after another and the step took ~10 min (one more question per new
+    highest level, every day). Same questions, 8 at a time (GA4 allows 10 at once per property); answers in the same order."""
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(8) as ex:
+        return list(ex.map(lambda b: _run(s, b), bodies))
 
 
 def _ver(v):
@@ -126,12 +138,15 @@ def fetch(keys_dir, today):
     # Guy, Nov 4: a player whose furthest level changes shows up once per level in a by-level report (285 "players" vs 53 real),
     # so ask for each level how many different players reached it or beyond
     lvs = sorted(int(lv) for (lv,), _ in _run(s, {"dateRanges": [dall], "dimensions": [{"name": "customUser:max_level"}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": newer, "limit": 1000}) if lv.isdigit())
-    for lv in lvs:
-        f = {"andGroup": {"expressions": [newer, {"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in lvs if x >= lv]}}}]}}
-        r = _run(s, {"dateRanges": [{"startDate": dall["startDate"], "endDate": dall["endDate"]}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": f})
+    rs = _many(s, [{"dateRanges": [{"startDate": dall["startDate"], "endDate": dall["endDate"]}], "metrics": [{"name": "activeUsers"}],
+                    "dimensionFilter": {"andGroup": {"expressions": [newer, {"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in lvs if x >= lv]}}}]}}} for lv in lvs])
+    for lv, r in zip(lvs, rs):
         out["reach"][str(lv)] = int(r[0][1][0]) if r else 0
     # Guy, Nov 6: split each bar: played in the last 3 days (today + 2 before) = still playing; the rest of that bar has left
-    reached = lambda base, dr, st: {str(lv): int(next(iter(_run(s, {"dateRanges": [dr], "metrics": [{"name": "activeUsers"}], "dimensionFilter": {"andGroup": {"expressions": [base, {"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in lvs if x >= lv]}}}]}}})), ([], [0]))[1][0]) for lv in st if any(x >= lv for x in lvs)}
+    def reached(base, dr, st):
+        ks = [lv for lv in st if any(x >= lv for x in lvs)]
+        rs = _many(s, [{"dateRanges": [dr], "metrics": [{"name": "activeUsers"}], "dimensionFilter": {"andGroup": {"expressions": [base, {"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in lvs if x >= lv]}}}]}}} for lv in ks])
+        return {str(lv): int(next(iter(r), ([], [0]))[1][0]) for lv, r in zip(ks, rs)}
     out["active"] = reached(newer, {"startDate": max(today - dt.timedelta(days=2), START).isoformat(), "endDate": today.isoformat()}, STEPS)
     # Guy, Nov 6: did 1.3.4 help? New players only (first opened the game after it came out) vs new players before it, so updaters with high levels don't flatter it
     cmp = {"version": ".".join(map(str, COMPARE)), "live": live >= COMPARE}
@@ -181,9 +196,9 @@ def fetch(keys_dir, today):
             r = _run(s, {"dateRanges": [dr], "metrics": [{"name": "eventCount"}, {"name": "totalUsers"}], "dimensionFilter": f})
             B["moves"][e] = [int(r[0][1][0]), int(r[0][1][1])] if r else [0, 0]
         vl = sorted(int(lv) for (lv,), _ in _run(s, {"dateRanges": [dr], "dimensions": [{"name": "customUser:max_level"}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": vfil, "limit": 1000}) if lv.isdigit())
-        for lv in vl:
-            f = {"andGroup": {"expressions": [vfil, {"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in vl if x >= lv]}}}]}}
-            r = _run(s, {"dateRanges": [dr], "metrics": [{"name": "activeUsers"}], "dimensionFilter": f})
+        rs = _many(s, [{"dateRanges": [dr], "metrics": [{"name": "activeUsers"}],
+                        "dimensionFilter": {"andGroup": {"expressions": [vfil, {"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in vl if x >= lv]}}}]}}} for lv in vl])
+        for lv, r in zip(vl, rs):
             B["reach"][str(lv)] = int(r[0][1][0]) if r else 0
         B["freach"] = reached(vfil, dr, STEPS)   # Guy, Nov 16: "How far players get" for the newest versions (players who reached each step)
         B["factive"] = reached(vfil, {"startDate": max(until - dt.timedelta(days=2), since).isoformat(), "endDate": until.isoformat()}, STEPS)   # still playing = played in the last 3 days
