@@ -170,6 +170,8 @@ def fetch():
             if "RC New Lite" in got:
                 d = got.pop("RC New Lite")
                 RCNEW.update({r.date: int(r.new) for r in d.itertuples() if pd.notna(r.new)})
+            if "RC Test Lite" in got:   # Guy, Nov 21: test-build first opens, already left out of RCNEW (build log only)
+                d = got.pop("RC Test Lite"); print("RC test installs left out:", {r.date: int(r.test) for r in d.itertuples()})
             if "RC Purchases Lite" in got:
                 d = got.pop("RC Purchases Lite")
                 RCTX.update({r.date: int(r.tx) for r in d.itertuples() if pd.notna(r.tx)})

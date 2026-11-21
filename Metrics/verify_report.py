@@ -192,9 +192,20 @@ def _check_game(C, page, keys, today, G, on_sale):
         try:
             from sources import rc_lite
             import pandas as _pd
-            _rc = rc_lite.fetch(keys, today).get("RC Purchases Lite")
+            _rcall = rc_lite.fetch(keys, today); _rc = _rcall.get("RC Purchases Lite")
         except Exception:
-            _rc = None
+            _rcall = _rc = None
+        try:   # Guy, Nov 21: "~N today" leaves out test installs (first opens on a build newer than the App Store's live version)
+            _new = {r.date: int(r.new) for r in _rcall["RC New Lite"][0].itertuples()}
+            _ins = {k: v for k, v in json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "installs-cache.json"))).items() if v is not None}
+            import social_report as _sr
+            _now = dt.datetime.now(); _td = _now.date().isoformat()   # same clock as the report's "today" (dl_estimate / write_html)
+            _est = _sr.dl_estimate(_ins, _new, _now)
+            _m = re.search(r"App Store installs: <b>~([\d,]+)</b> today", page)
+            if _td in _est:
+                C.same("Installs today estimate (test installs left out)", int(_m.group(1).replace(",", "")) if _m else None, _est[_td], 2)
+        except Exception as _e:
+            C.fails.append(f"Installs estimate check could not run: {type(_e).__name__}: {_e}"[:240])
         if _rc is not None:
             _src = int(sum(r.tx for r in _rc[0].itertuples() if r.date >= VB["since"]))
             C.same("1.3.11+ purchases (RevenueCat, real App Store)", n1(vtile("Purchases")[0], r"([\d,]+)"), _src, 0)
