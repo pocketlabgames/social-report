@@ -1325,6 +1325,16 @@ def game_section():
             return ("—", "Reminders on", f"no new players, {when}")
         return (f"{R['on'] / R['new'] * 100:.0f}%", "Reminders on", f"{R['on']:,} of {R['new']:,} new players · {R['quiet']:,} quiet (1.3.19+) · {R['yes']:,} said yes" + (f" · {R['off']:,} turned off" if R.get('off') else "") + f", {when}")
 
+    def d7tile(B, newest):   # Guy, Nov 21: "add d-7 after d-1 card" (came back on day 7 or later, complete day 7 only)
+        if not newest:
+            return (f"{RET['d7']:.0f}%", "Day-7 return", f"{round(RET['d7'] * (RET.get('d7_n') or 0) / 100):,} of {int(RET.get('d7_n') or 0):,} new players came back on day 7 or later · first days 8-14 days ago") if RET.get("d7") is not None else ("—", "Day-7 return", "Firebase retention not loaded")
+        d = B.get("d7")
+        if not d or not d[1]:
+            return ("—", "Day-7 return", "no player has reached day 7 yet")
+        a, b = dt.date.fromisoformat(d[2]), dt.date.fromisoformat(d[3])
+        span = a.strftime('%b %-d') + ("" if a == b else "–" + b.strftime('%-d' if a.month == b.month else '%b %-d'))
+        return (f"{d[0] / d[1] * 100:.0f}%", "Day-7 return", f"{d[0]:,} of {d[1]:,} new players came back on day 7 or later · started {span}")
+
     def mk_tiles(B, newest=False):   # Guy, Nov 16: one tile set per filter (all versions / newest versions)
         W2, P2 = B.get("week", {}), B.get("week", {}).get("players", 0)
         per2 = lambda n: f"{n / P2:.1f}" if P2 else "—"
@@ -1345,8 +1355,9 @@ def game_section():
         return [(f"{P2:,}" if newest else f"{A.get('week', 0):,}", "Active players",
                  (f"{B['label']}, {when}" if pre else f"{B['label']} {when} · {B.get('today', 0):,} today") if newest else f"last 7 days, all versions · {A.get('today', 0):,} today · {A.get('ever', 0):,} since launch"),
                 d1tile(B, newest),
-                (f"{half2}" if mp2 else "—", "Typical furthest level", f"half of {pl(mp2)} reached level {half2}+ · top player: {lv2[-1]:,}, " + (when if newest else "since Nov 1") if mp2 else "no level data yet"),   # Guy, Nov 8: middle player, not the average
+                d7tile(B, newest),
                 (f"{oc2.get('win', 0) / on2 * 100:.0f}%" if on2 else "—", "Win rate", f"{oc2.get('win', 0):,} wins of {on2:,} level attempts" + (f", {when}" if newest else "") + (f" · {sk2:,} skips left out" if sk2 else "") if on2 else "no win/loss data yet"),
+                (f"{half2}" if mp2 else "—", "Typical furthest level", f"half of {pl(mp2)} reached level {half2}+ · top player: {lv2[-1]:,}, " + (when if newest else "since Nov 1") if mp2 else "no level data yet"),   # Guy, Nov 8: middle player, not the average
                 (per2(ads2), "Ad views per player", (" · ".join(f"{v:,} {'between levels' if k == 'interstitial' else k}" for k, v in sorted(kd2.items())) or f"{ads2:,} ads") + f" {'' if newest else 'in '}{when}" + few(P2)),
                 (f"{mw2:,}", "+Moves videos watched", f"{mw2:,} of {mo2:,} offers{f' ({mw2 / mo2 * 100:.0f}%)' if mo2 else ''} · {pl(mwp2)} · out of moves popup, {when}"),   # Guy, Nov 9: +5 moves per video
                 (f"{sup2:,}", "Super Stir / Solve uses", f"{W2.get('super_stir', 0):,} Super Stir · {W2.get('super_solve', 0):,} Super Solve, by {pl(P2)} on {('versions before ' + B['label'][7:]) if B.get('label', '').startswith('Before ') else B['label'] if newest else '1.3.1+'}"),

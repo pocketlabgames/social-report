@@ -226,7 +226,25 @@ def _check_game(C, page, keys, today, G, on_sale):
                     back += one((day + dt.timedelta(days=1),) * 2, flt=AND(among("appVersion", later), has("firstSessionDate", key)))
             C.same(f"{name} Day-1: new players", n1(tl("Day-1 return")[1], r"of ([\d,]+) new"), base, 0)
             C.same(f"{name} Day-1: came back", n1(tl("Day-1 return")[1], r"^([\d,]+) of"), back, 0)
+        def d7_check(name, B, tl):   # Guy, Nov 21: Day-7 return tile (came back on day 7 or later), own pulls
+            d = B.get("d7")
+            if not d:
+                C.true(f"{name} Day-7 tile says no data yet", "no player has reached day 7 yet" in tl("Day-7 return")[1], f"tile says {tl('Day-7 return')}")
+                return
+            vs = [v for v in want if (_ver(v) >= (1, 3, 11)) == (not B["label"].startswith("Before"))]
+            later = [v for v in want if _ver(v) >= min(map(_ver, vs))]
+            a, b = dt.date.fromisoformat(d[2]), dt.date.fromisoformat(d[3])
+            base = back = 0
+            for i in range((b - a).days + 1):
+                day = a + dt.timedelta(days=i); key = day.strftime("%Y%m%d")
+                n0 = one((day, day), flt=AND(released_only(day, day, vs), has("firstSessionDate", key)))
+                base += n0
+                if n0:
+                    back += min(n0, one((day + dt.timedelta(days=7), today), flt=AND(among("appVersion", later), has("firstSessionDate", key))))
+            C.same(f"{name} Day-7: new players", n1(tl("Day-7 return")[1], r"of ([\d,]+) new"), base, 1)
+            C.same(f"{name} Day-7: came back", n1(tl("Day-7 return")[1], r"^([\d,]+) of"), back, 1)
         d1_check("1.3.11+", VB, vtile)
+        d7_check("1.3.11+", VB, vtile)
         PB = G.get("pre"); p0 = page.find("id='gst-pre'")
         C.true("Before 1.3.11 option in the version filter", bool(PB) == ("<option value='pre'>" in page), "drop-down option and data disagree")
         _o = re.findall(r"<select id='gsel'.*?</select>", page)
@@ -256,6 +274,7 @@ def _check_game(C, page, keys, today, G, on_sale):
             pa, pb = dt.date.fromisoformat(PB["since"]), dt.date.fromisoformat(PB["until"])
             C.same("Before 1.3.11 active players", n1(ptile("Active players")[0], r"([\d,]+)"), one((pa, pb), flt=released_only(pa, pb, pvs)), 0)
             d1_check("Before 1.3.11", PB, ptile)
+            d7_check("Before 1.3.11", PB, ptile)
             po = PB.get("outcome") or {}
             C.same("Before 1.3.11 win rate: attempts (no skips)", n1(ptile("Win rate")[1], r"of ([\d,]+) level"), sum(v for k, v in po.items() if k != "skip"), 0)
             vblk = page[v0:p0]
@@ -281,6 +300,20 @@ def _check_game(C, page, keys, today, G, on_sale):
     C.same("Active players, last 7 days", n1(tile("Active players")[0], r"([\d,]+)"), one((today - dt.timedelta(days=6), today)), 1)
     C.same("Active players today", n1(tile("Active players")[1], r"([\d,]+) today"), one((today, today)), 1)
     C.same("Active players since launch", n1(tile("Active players")[1], r"([\d,]+) since launch"), one((dt.date(2026, 1, 1), today)), 1)
+    try:   # Guy, Nov 21: All versions Day-7 tile, own pull (first days 8-14 days ago, back on day 7 or later)
+        _b7 = _k7 = 0
+        for i in range(8, 15):
+            _d = today - dt.timedelta(days=i); _key = _d.strftime("%Y%m%d")
+            _n = one((_d, _d), flt=has("firstSessionDate", _key)); _b7 += _n
+            if _n:
+                _k7 += one((_d + dt.timedelta(days=7), today), flt=has("firstSessionDate", _key))
+        _t7 = tile("Day-7 return")
+        C.same("Day-7 return: new players (all versions)", n1(_t7[1], r"of ([\d,]+) new"), _b7, max(2, wobble(_b7)))
+        C.same("Day-7 return: came back (all versions)", n1(_t7[1], r"^([\d,]+) of"), _k7, 1)
+        _o7 = [m.group(1) for m in re.finditer(r"<div class='gt'><b>.*?</b><span>(.*?)</span>", page[a0:v0] if a0 >= 0 and v0 > a0 else page)]
+        C.true("Game stats order: Day-1, Day-7, Win rate, Typical furthest level", _o7[1:5] == ["Day-1 return", "Day-7 return", "Win rate", "Typical furthest level"], f"order is {_o7[:6]}")
+    except Exception as _e7:
+        C.fails.append(f"Day-7 check could not run: {type(_e7).__name__}: {_e7}"[:240])
     # Guy, Nov 21: Reminders on = new players (first opened in the last 7 days) with quiet (soft_provisional) or full reminders (soft_authorized / remind_allow)
     try:
         _co = AND(wk, among("firstSessionDate", [(d7[0] + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((today - d7[0]).days + 1)]))

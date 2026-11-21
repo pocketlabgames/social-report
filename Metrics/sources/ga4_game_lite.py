@@ -237,6 +237,18 @@ def fetch(keys_dir, today):
             back = {d: int(n) for (d, d2), (n,) in _run(s, {"dateRanges": [{"startDate": (since + dt.timedelta(days=1)).isoformat(), "endDate": (c_end + dt.timedelta(days=1)).isoformat()}], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}], "metrics": [{"name": "activeUsers"}],
                     "dimensionFilter": {"andGroup": {"expressions": [{"filter": {"fieldName": "appVersion", "inListFilter": {"values": later}}}, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": cd(since, c_end)}}}]}}, "limit": 10000}) if d2 == nxt(d)}
             B["d1"] = [sum(back.get(d, 0) for d in base), sum(base.values()), since.isoformat(), c_end.isoformat()]
+        # Guy, Nov 21: "add d-7 after d-1 card". Day-7 return = new players (first day on these versions) who played again on day 7 OR LATER
+        # (same rule as the all-versions Day-7, Guy Nov 8); only first days with a complete day 7 (first day <= today - 8)
+        c7 = min(until, today - dt.timedelta(days=8))
+        if c7 >= since:
+            cd7 = [(since + dt.timedelta(days=i)) for i in range((c7 - since).days + 1)]
+            later7 = [v for v in vers if _ver(v) >= min(map(_ver, vf))]
+            base7 = {d: int(n) for (d, d2), (n,) in _run(s, {"dateRanges": [{"startDate": since.isoformat(), "endDate": c7.isoformat()}], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}], "metrics": [{"name": "activeUsers"}],
+                     "dimensionFilter": {"andGroup": {"expressions": [vfil, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": [x.strftime("%Y%m%d") for x in cd7]}}}]}}, "limit": 10000}) if d == d2}
+            days7 = [x for x in cd7 if base7.get(x.strftime("%Y%m%d"))]
+            rs7 = _many(s, [{"dateRanges": [{"startDate": (x + dt.timedelta(days=7)).isoformat(), "endDate": today.isoformat()}], "metrics": [{"name": "activeUsers"}],
+                             "dimensionFilter": {"andGroup": {"expressions": [{"filter": {"fieldName": "appVersion", "inListFilter": {"values": later7}}}, {"filter": {"fieldName": "firstSessionDate", "stringFilter": {"value": x.strftime("%Y%m%d")}}}]}}} for x in days7])
+            B["d7"] = [sum(min(int(r[0][1][0]) if r else 0, base7[x.strftime("%Y%m%d")]) for x, r in zip(days7, rs7)), sum(base7.values()), since.isoformat(), c7.isoformat()]
         return B
     vf = [v for v in vers if _ver(v) >= VF]
     if vf:
