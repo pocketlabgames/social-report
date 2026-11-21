@@ -1318,6 +1318,13 @@ def game_section():
         span = a.strftime('%b %-d') + ("" if a == b else "–" + b.strftime('%-d' if a.month == b.month else '%b %-d'))
         return (f"{d[0] / d[1] * 100:.0f}%", "Day-1 return", f"{d[0]:,} of {d[1]:,} new players came back the next day · started {span}")
 
+    def rmtile(R, when):   # Guy, Nov 21: "add quiet reminders opt-in rate"
+        if not R:
+            return ("—", "Reminders on", "Firebase reminder data not loaded")
+        if not R.get("new"):
+            return ("—", "Reminders on", f"no new players, {when}")
+        return (f"{R['on'] / R['new'] * 100:.0f}%", "Reminders on", f"{R['on']:,} of {R['new']:,} new players · {R['quiet']:,} quiet (1.3.19+) · {R['yes']:,} said yes" + (f" · {R['off']:,} turned off" if R.get('off') else "") + f", {when}")
+
     def mk_tiles(B, newest=False):   # Guy, Nov 16: one tile set per filter (all versions / newest versions)
         W2, P2 = B.get("week", {}), B.get("week", {}).get("players", 0)
         per2 = lambda n: f"{n / P2:.1f}" if P2 else "—"
@@ -1344,7 +1351,8 @@ def game_section():
                 (f"{mw2:,}", "+Moves videos watched", f"{mw2:,} of {mo2:,} offers{f' ({mw2 / mo2 * 100:.0f}%)' if mo2 else ''} · {pl(mwp2)} · out of moves popup, {when}"),   # Guy, Nov 9: +5 moves per video
                 (f"{sup2:,}", "Super Stir / Solve uses", f"{W2.get('super_stir', 0):,} Super Stir · {W2.get('super_solve', 0):,} Super Solve, by {pl(P2)} on {('versions before ' + B['label'][7:]) if B.get('label', '').startswith('Before ') else B['label'] if newest else '1.3.1+'}"),
                 (f"{SH2.get('n', 0):,}" if SH2.get('n') else "—", "Shares", (f"{pl(SH2.get('players', 0))} · " + " · ".join(f"{v:,} {SHN.get(k, k)}" for k, v in sorted((SH2.get('by') or {}).items(), key=lambda x: -x[1])) + f" · {when}") if SH2.get('n') else (f"finished shares, {when}" if newest else "finished shares, 7 days · counted from the next app update (save 205)")),
-                (((f"{rcb:,}", "Purchases", f"real App Store purchases, {when} (RevenueCat; test buys left out)") if RCTX else ("—", "Purchases", "RevenueCat not loaded")) if newest else (f"{buy:,}", "Purchases", "App Store sales, last 7 days"))]
+                (((f"{rcb:,}", "Purchases", f"real App Store purchases, {when} (RevenueCat; test buys left out)") if RCTX else ("—", "Purchases", "RevenueCat not loaded")) if newest else (f"{buy:,}", "Purchases", "App Store sales, last 7 days")),
+                rmtile(B.get("remind"), when)]
     grid = lambda T: "".join(f"<div class='gt'><b>{e(x[0])}</b><span>{e(x[1])}</span><small>{e(x[2])}</small>{x[3] if len(x) > 3 else ''}</div>" for x in T)
     VB, PB = G.get("vf"), G.get("pre")
     tiles_html = f"<div class='gst' id='gst-all'>{grid(mk_tiles(G))}</div>"

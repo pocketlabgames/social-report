@@ -281,6 +281,23 @@ def _check_game(C, page, keys, today, G, on_sale):
     C.same("Active players, last 7 days", n1(tile("Active players")[0], r"([\d,]+)"), one((today - dt.timedelta(days=6), today)), 1)
     C.same("Active players today", n1(tile("Active players")[1], r"([\d,]+) today"), one((today, today)), 1)
     C.same("Active players since launch", n1(tile("Active players")[1], r"([\d,]+) since launch"), one((dt.date(2026, 1, 1), today)), 1)
+    # Guy, Nov 21: Reminders on = new players (first opened in the last 7 days) with quiet (soft_provisional) or full reminders (soft_authorized / remind_allow)
+    try:
+        _co = AND(wk, among("firstSessionDate", [(d7[0] + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((today - d7[0]).days + 1)]))
+        _rn = one(d7, metrics=("totalUsers",), flt=_co)
+        _ro = one(d7, metrics=("totalUsers",), flt=AND(_co, among("eventName", ["soft_provisional", "soft_authorized", "remind_allow"])))
+        _rt = tile("Reminders on")
+        C.same("Reminders on: new players (7 days)", n1(_rt[1], r"of ([\d,]+) new players"), _rn, max(1, wobble(_rn)))
+        C.same("Reminders on: players with reminders (7 days)", n1(_rt[1], r"^([\d,]+) of"), _ro, max(1, wobble(_ro)))
+        C.same("Reminders on %", n1(_rt[0], r"(\d+)%"), round(_ro / _rn * 100) if _rn else 0, 2)
+        for _id in re.findall(r"id='(gst-[\w-]+)'", page):   # every Game stats view has the tile, and its % matches its own counts
+            _o = page.find(f"id='{_id}'"); _e = page.find("<div class='gst'", _o + 10); _t = parse(page[_o:_e if _e > _o else _o + 6000]).get("Reminders on")
+            C.true(f"Reminders on tile in {_id}", bool(_t), "missing")
+            if _t and "%" in _t[0]:
+                _a, _b = n1(_t[1], r"^([\d,]+) of"), n1(_t[1], r"of ([\d,]+) new")
+                C.true(f"Reminders on % adds up in {_id}", _b and abs(round(_a / _b * 100) - n1(_t[0], r"(\d+)%")) <= 1, f"{_t[0]} vs {_a} of {_b}")
+    except Exception as _e2:
+        C.fails.append(f"Reminders on check could not run: {type(_e2).__name__}: {_e2}"[:240])
     # levels
     everyone = released_only(START, today)
     levels = sorted(int(r[0][0]) for r in run((START, today), ["customUser:max_level"], flt=everyone) if r[0][0].isdigit())

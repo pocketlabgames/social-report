@@ -172,6 +172,18 @@ def fetch(keys_dir, today):
         if kind in ("lv_start", "lv_win") and n.isdigit():
             row = out["lv"].setdefault(n, {})
             row[kind[3:]], row[kind[3:] + "s"] = int(u), int(c)
+    # Guy, Nov 21: "add quiet reminders opt-in rate". New players (first opened in the window, on these versions) who get reminders:
+    # soft_provisional = Apple's quiet trial (game save 290+, 1.3.19+), soft_authorized / remind_allow = full permission; off = soft_denied / remind_off
+    R_ON, R_OFF = ["soft_provisional", "soft_authorized", "remind_allow"], ["soft_denied", "remind_off"]
+    def remind(fil, since, until):
+        days = [(since + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((until - since).days + 1)]
+        co = {"andGroup": {"expressions": [fil, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": days}}}]}}
+        n1 = lambda dr, f: int(next(iter(_run(s, {"dateRanges": [dr], "metrics": [{"name": "totalUsers"}], "dimensionFilter": f})), ([], [0]))[1][0])
+        win, upto = {"startDate": since.isoformat(), "endDate": until.isoformat()}, {"startDate": since.isoformat(), "endDate": today.isoformat()}
+        evs = lambda names: {"andGroup": {"expressions": [co, {"filter": {"fieldName": "eventName", "inListFilter": {"values": names}}}]}}
+        by = {e: int(u) for (e,), (u,) in _run(s, {"dateRanges": [upto], "dimensions": [{"name": "eventName"}], "metrics": [{"name": "totalUsers"}], "dimensionFilter": evs(R_ON + R_OFF)})}
+        return {"new": n1(win, co), "on": n1(upto, evs(R_ON)), "off": n1(upto, evs(R_OFF)), "quiet": by.get("soft_provisional", 0), "yes": by.get("remind_allow", 0) + by.get("soft_authorized", 0)}
+    out["remind"] = remind(newer, max(today - dt.timedelta(days=6), START), today)
     # Guy, Nov 16: the same tiles for the newest versions only (1.3.11+), from the first one's release day to today
     # Guy, Nov 19: and for the versions before 1.3.11, over the same number of days just before 1.3.11 came out (each 1.3.11+ tile compares to it)
     def block(vf, since, until, label):
@@ -213,6 +225,7 @@ def fetch(keys_dir, today):
             if kind in ("lv_start", "lv_win") and n.isdigit():
                 row = B["lv"].setdefault(n, {})
                 row[kind[3:]], row[kind[3:] + "s"] = int(u), int(c)
+        B["remind"] = remind(vfil, since, until)
         # Guy, Nov 19: Day-1 return = new players (first day on these versions) who played again the very next day; complete days only
         c_end = min(until, today - dt.timedelta(days=2))
         if c_end >= since:
