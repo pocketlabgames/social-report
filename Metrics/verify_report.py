@@ -446,6 +446,16 @@ def _check_views(C, page, snap, prev, stale, errors, plats):
         C.true(f"{p} views present", now is not None)
         if now is not None and was:
             C.true(f"{p} views didn't fall", now >= was * 0.99, f"{was:,} at the last check, {now:,} now")
+    # Guy, Nov 21 ("this is something you should've caught"): a site total that isn't the sum of its own posts can jump with no post moving
+    # (YouTube counted unlisted Google Ads videos: +1,202 in one check). Every site's total must equal its posts in this check's post history.
+    try:
+        _ph = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "posts-history.json")))[-1]["posts"]
+        for p in plats:
+            if (snap.get(p) or {}).get("views") is not None:
+                _sum = sum(v or 0 for k, v in _ph.items() if k.startswith(p + ":"))
+                C.same(f"{p} total = sum of its posts (no ads or hidden videos)", snap[p]["views"], _sum, max(5, round(_sum * 0.002)))
+    except Exception as _e:
+        C.fails.append(f"Site totals vs posts check could not run: {type(_e).__name__}: {_e}"[:240])
 
 
 def run(html_path, keys, G, snap, prev, stale, errors, plats, today=None):

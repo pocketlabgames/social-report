@@ -268,6 +268,11 @@ def fetch():
                           "comments": int(r.comments) if "comments" in d and pd.notna(r.get("comments")) else None,
                           "avg_watch_s": aw, "watch_pct": wp, "url": str(r.get("url") or "")})
 
+    # Guy, Nov 21: "leave them out": unlisted YouTube videos are Google Ads ads, not social posts; counting them made the total jump +1,202
+    # when YouTube's uploads list returned an old ad video again. Social totals = public (and scheduled private) videos only.
+    _yv = out.get("YouTube Videos")
+    if _yv is not None and not _yv.empty and "privacy" in _yv:
+        out["YouTube Videos"] = _yv[_yv.privacy != "unlisted"].copy()
     POSTS.clear()
     collect("instagram", "IG Media", "likes", "caption", "created")
     collect("facebook", "FB Reels", "reactions", "caption", "created")
