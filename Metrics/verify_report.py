@@ -144,7 +144,9 @@ def _check_game(C, page, keys, today, G, on_sale):
             body["dimensionFilter"] = flt
         r = s.post(f"https://analyticsdata.googleapis.com/v1beta/properties/{PROPERTY}:runReport", json=body, timeout=60)
         r.raise_for_status()
-        return [([x["value"] for x in row.get("dimensionValues", [])], [float(x["value"]) for x in row["metricValues"]]) for row in r.json().get("rows", [])]
+        rows = r.json().get("rows", [])
+        C.true(f"Google Analytics answer complete ({', '.join(dims) or 'totals'})", r.json().get("rowCount", len(rows)) <= len(rows), "rows were cut off, so missing ones would read as 0")   # Nov 21: super_solve 11/17 read 0 from a cut-off answer
+        return [([x["value"] for x in row.get("dimensionValues", [])], [float(x["value"]) for x in row["metricValues"]]) for row in rows]
 
     one = lambda *a, **k: int(next(iter(run(*a, **k)), ([], [0]))[1][0])
     has = lambda f, v: {"filter": {"fieldName": f, "stringFilter": {"value": v}}}
