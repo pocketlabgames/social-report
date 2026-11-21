@@ -70,7 +70,7 @@ def _live(keys_dir):
     ver, day = (), None
     for _ in range(3):
         try:
-            r = requests.get("https://itunes.apple.com/lookup", params={"id": APP_ID, "country": "us"}, timeout=20).json()["results"][0]
+            r = requests.get("https://itunes.apple.com/lookup", params={"id": APP_ID, "country": "us", "t": int(time.time())}, timeout=20).json()["results"][0]   # Guy, Nov 21: "t" skips Apple's cached answer (said 1.3.17 for 9+ hours after 1.3.18 went live, so 1.3.18+ started a day late)
             ver, day = _ver(r["version"]), pd.Timestamp(r["currentVersionReleaseDate"]).tz_convert("America/New_York").date()
             break
         except Exception:

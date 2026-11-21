@@ -230,6 +230,15 @@ def _check_game(C, page, keys, today, G, on_sale):
                 xa = dt.date.fromisoformat(BX["since"])
                 C.same(f"{BX['label']} active players", n1(xt.get("Active players", ("", ""))[0], r"([\d,]+)"), one((xa, today), flt=released_only(xa, today, [v for v in want if _ver(v) >= X])), 0)
                 C.true(f"{BX['label']} is on the App Store", X <= _ver(G.get("live", "0")), f"live is {G.get('live')}")
+                if X == _ver(G.get("live", "0")):   # Guy, Nov 21: 1.3.18+ started a day late (Apple's cached lookup still said 1.3.17); start = Apple's release day (ET), fresh lookup
+                    try:
+                        import requests as _rq, time as _t
+                        _r = _rq.get("https://itunes.apple.com/lookup", params={"id": "6816478290", "country": "us", "t": f"{_t.time():.0f}rel"}, timeout=20).json()["results"][0]
+                        if _ver(_r["version"]) == X:
+                            _rd = dt.datetime.fromisoformat(_r["currentVersionReleaseDate"].replace("Z", "+00:00")).astimezone(__import__("zoneinfo").ZoneInfo("America/New_York")).date()
+                            C.true(f"{BX['label']} starts on Apple's release day", BX["since"] == _rd.isoformat(), f"report starts {BX['since']}, Apple released {_rd.isoformat()}")
+                    except Exception as _e:
+                        C.fails.append(f"{BX['label']} release-day check could not run: {type(_e).__name__}"[:240])
         if PB and p0 >= 0:
             _pe2 = page.find("<div class='gst'", p0 + 10); pt = parse(page[p0:_pe2 if _pe2 > p0 else p0 + 6000]); ptile = lambda l: pt.get(l, ("", ""))
             pvs = [v for v in want if _ver(v) < (1, 3, 11)]
