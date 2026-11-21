@@ -167,7 +167,7 @@ def _check_game(C, page, keys, today, G, on_sale):
                 out.append(AND(has("appVersion", v), among("date", [(r + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((b - r).days + 1)])))
         return {"orGroup": {"expressions": out}}
 
-    d7 = (max(today - dt.timedelta(days=7), START), max(today - dt.timedelta(days=1), START))
+    d7 = (max(today - dt.timedelta(days=6), START), today)   # Guy, Nov 21: All versions tiles include today, like the version views
     wk = released_only(*d7)
     ev = {r[0][0]: int(r[1][0]) for r in run(d7, ["eventName"], ["eventCount"], wk)}
     players = one(d7, flt=wk)
@@ -270,7 +270,7 @@ def _check_game(C, page, keys, today, G, on_sale):
     C.same("Super Stir uses", n1(tile("Super Stir / Solve uses")[1], r"([\d,]+) Super Stir"), ev.get("super_stir", 0), wobble(ev.get("super_stir", 0)))
     C.same("Super Solve uses", n1(tile("Super Stir / Solve uses")[1], r"([\d,]+) Super Solve"), ev.get("super_solve", 0), wobble(ev.get("super_solve", 0)))
     C.same("Purchases (App Store sales, last 7 days)", n1(tile("Purchases")[0], r"([\d,]+)"), sum(C.iapn.get((today - dt.timedelta(days=i)).isoformat(), 0) for i in range(7)))
-    C.same("Players, last 7 days", n1(tile("Super Stir / Solve uses")[1], r"by ([\d,]+) player"), players, 1)
+    C.same("Players, last 7 days", n1(tile("Super Stir / Solve uses")[1], r"by ([\d,]+) player"), players, max(1, wobble(players)))
     C.same("Ad views per player", _num(r"([\d.]+)", tile("Ad views per player")[0]), round(ev.get("ad_shown", 0) / players, 1) if players else 0, 0.3)
     C.same("Rewarded ads", n1(tile("Ad views per player")[1], r"([\d,]+) rewarded"), kind.get("rewarded", 0), wobble(kind.get("rewarded", 0)))
     C.same("Ads between levels", n1(tile("Ad views per player")[1], r"([\d,]+) between levels"), kind.get("interstitial", 0), wobble(kind.get("interstitial", 0)))

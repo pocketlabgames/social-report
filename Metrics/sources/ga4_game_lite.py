@@ -91,7 +91,7 @@ def fetch(keys_dir, today):
     s = AuthorizedSession(creds)
     rng = lambda days, end=0: {"startDate": max(today - dt.timedelta(days=days), START).isoformat(), "endDate": max(today - dt.timedelta(days=end), START).isoformat()}
     ev = lambda name: {"filter": {"fieldName": "eventName", "stringFilter": {"value": name}}}
-    d14, d7, dall = rng(14), rng(7, 1), rng(9999)   # d7 = last 7 complete days; dall = everything since Nov 1
+    d14, d7, dall = rng(14), rng(6, 0), rng(9999)   # d7 = last 7 days incl. today (Guy, Nov 21: "All versions should include today too"); dall = everything since Nov 1
     live, released = _live(keys_dir)
     first_day = lambda v: min((dt.date(int(d[:4]), int(d[4:6]), int(d[6:])) for (d,), (n,) in _run(s, {"dateRanges": [dall], "dimensions": [{"name": "date"}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": {"filter": {"fieldName": "appVersion", "stringFilter": {"value": v}}}}) if n >= 5), default=None)   # first day a version had 5+ players
     released = released or first_day(".".join(map(str, live))) or today
@@ -125,7 +125,7 @@ def fetch(keys_dir, today):
     for (k,), (n,) in _run(s, {"dateRanges": [d7], "dimensions": [{"name": "customEvent:kind"}], "metrics": [{"name": "eventCount"}], "dimensionFilter": one("ad_shown")}):
         if k != "(not set)":
             out["kind"][k] = int(n)
-    # Guy, Nov 12: finished shares (game save 205+ logs share_done; kind = what was shared), last 7 complete days
+    # Guy, Nov 12: finished shares (game save 205+ logs share_done; kind = what was shared), last 7 days incl. today
     out["shares"] = {"by": {}}
     for (k,), (c, u) in _run(s, {"dateRanges": [d7], "dimensions": [{"name": "customEvent:kind"}], "metrics": [{"name": "eventCount"}, {"name": "totalUsers"}], "dimensionFilter": one("share_done")}):
         out["shares"]["by"][k] = int(c)
