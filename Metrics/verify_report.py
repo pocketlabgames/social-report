@@ -139,7 +139,7 @@ def _check_game(C, page, keys, today, G, on_sale):
     s = AuthorizedSession(creds)
 
     def run(dates, dims=(), metrics=("activeUsers",), flt=None):
-        body = {"dateRanges": [{"startDate": dates[0].isoformat(), "endDate": dates[1].isoformat()}], "dimensions": [{"name": d} for d in dims], "metrics": [{"name": m} for m in metrics], "limit": 2000}
+        body = {"dateRanges": [{"startDate": dates[0].isoformat(), "endDate": dates[1].isoformat()}], "dimensions": [{"name": d} for d in dims], "metrics": [{"name": m} for m in metrics], "limit": 100000}   # Nov 21: 2,000 rows cut off date x eventName (per-level events), so super_solve on 11/17 read 0
         if flt:
             body["dimensionFilter"] = flt
         r = s.post(f"https://analyticsdata.googleapis.com/v1beta/properties/{PROPERTY}:runReport", json=body, timeout=60)
@@ -359,7 +359,7 @@ def _check_game(C, page, keys, today, G, on_sale):
     # players per day chart
     daily = {r[0][0]: int(r[1][0]) for r in run((START, today), ["date"])}
     newer = {r[0][0]: int(r[1][0]) for r in run((START, today), ["date"], flt=everyone)}
-    day_ev = {(r[0][0], r[0][1]): int(r[1][0]) for r in run((START, today), ["date", "eventName"], ["eventCount"], everyone)}
+    day_ev = {(r[0][0], r[0][1]): int(r[1][0]) for r in run((START, today), ["date", "eventName"], ["eventCount"], AND(everyone, among("eventName", ["super_solve", "super_stir", "ad_shown", "level_up", "level_end"])))}
     for i, lab in enumerate(X["labels"]):
         d = dt.datetime.strptime(f"{lab} {today.year}", "%m/%d %Y" if "/" in lab else "%b %d %Y").date()
         k, gap, recent_day = d.strftime("%Y%m%d"), (1 if d >= today - dt.timedelta(days=1) else 0), d >= today - dt.timedelta(days=1)
