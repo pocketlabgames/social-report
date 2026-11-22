@@ -322,7 +322,7 @@ def _check_game(C, page, keys, today, G, on_sale):
     C.same("+Moves videos watched", n1(tile("+Moves videos watched")[0], r"([\d,]+)"), mw, wobble(mw))
     C.same("+Moves video offers", n1(tile("+Moves videos watched")[1], r"of ([\d,]+) offers"), mo, wobble(mo))
     C.same("Active players, last 7 days", n1(tile("Active players")[0], r"([\d,]+)"), one((today - dt.timedelta(days=6), today)), 1)
-    C.same("Active players today", n1(tile("Active players")[1], r"([\d,]+) today"), one((today, today)), 1)
+    C.same("Active players today", n1(tile("Active players")[1], r"([\d,]+) played today"), one((today, today)), 1)
     C.same("Active players since launch", n1(tile("Active players")[1], r"([\d,]+) since launch"), one((dt.date(2026, 1, 1), today)), 1)
     try:   # Guy, Nov 21: All versions Day-7 tile, own pull (first days 8-14 days ago, back on day 7 or later)
         _b7 = _k7 = 0
