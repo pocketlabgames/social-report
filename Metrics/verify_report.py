@@ -353,6 +353,11 @@ def _check_game(C, page, keys, today, G, on_sale):
             if _t and "%" in _t[0]:
                 _a, _b = n1(_t[1], r"^([\d,]+) of"), n1(_t[1], r"of ([\d,]+) new")
                 C.true(f"Reminders on % adds up in {_id}", _b and abs(round(_a / _b * 100) - n1(_t[0], r"(\d+)%")) <= 1, f"{_t[0]} vs {_a} of {_b}")
+        # Guy, Nov 22: Installed (est.) tile's 30-day line = GA4 devices active in the last 30 days (own pull)
+        _m30 = re.search(r"([\d,]+) devices opened it in the last 30 days", page)
+        C.true("Installed tile: 30-day devices line", bool(_m30) or "Installed (est.)" not in page, "missing")
+        if _m30:
+            C.same("Installed tile: devices opened in the last 30 days", int(_m30[1].replace(",", "")), one((today - dt.timedelta(days=29), today)), max(1, wobble(int(_m30[1].replace(",", "")))))
         # Guy, Nov 22: Day-1 return by version chart: "All" bar = that version's Day-1 tile; Google Ads + other = All
         _dv = page.find("Day-1 return by version")
         C.true("Day-1 by version chart on the page", _dv >= 0, "missing")

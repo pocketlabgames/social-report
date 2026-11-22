@@ -1828,7 +1828,8 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
             dl = sum(v for v in installs.values() if v is not None)
             kept = max(0.0, 1 - ASCR["s_del"] / ASCR["s_first"])
             tiles.append((f"~{round(dl * kept):,}", "Installed (est.)",
-                          f"of {dl:,} downloads; in Apple's opt-in sample {ASCR['s_del']:,} deletions per {ASCR['s_first']:,} installs"))
+                          f"of {dl:,} downloads; in Apple's opt-in sample {ASCR['s_del']:,} deletions per {ASCR['s_first']:,} installs"
+                          + (f" · {GAME['all']['m30']:,} devices opened it in the last 30 days (some since deleted)" if (GAME.get("all") or {}).get("m30") else "")))   # Guy, Nov 22: add the 30-day count
         asc_tpl = ("<template id='ascret'><div class='asc'><div class='ash'>App</div><div class='atg'>"   # Guy, Nov 8: short title; dates live on each Apple tile
                    + "".join(f"<div class='at'><b>{e(v)}</b><span>{e(l)}</span><small>{e(n)}</small></div>" for v, l, n in tiles)
                    + "</div></div></template>")
