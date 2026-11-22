@@ -207,6 +207,19 @@ def _check_game(C, page, keys, today, G, on_sale):
             _m = re.search(r"App Store installs: <b>~([\d,]+)</b> today", page)
             if _td in _est:
                 C.same("Installs today estimate (test installs left out)", int(_m.group(1).replace(",", "")) if _m else None, _est[_td], 2)
+            # Guy, Nov 22: "today" showed 58 at 3 AM because RevenueCat's chart counts UTC days (from 7 PM ET the night before).
+            # Own count: customers first seen since Eastern midnight; today's estimate can never be more than that.
+            import requests as _rq
+            _key = open(os.path.join(keys, "revenuecat-key.txt")).read().strip()
+            _t0 = dt.datetime.combine(_now.date(), dt.time()).astimezone().timestamp() * 1000
+            _u, _since = f"{rc_lite.API}/v2/projects/{rc_lite.PROJECT}/customers?limit=1000", 0
+            while _u:
+                _j = _rq.get(_u, headers={"Authorization": "Bearer " + _key}, timeout=60).json()
+                _since += sum(1 for c in _j.get("items") or [] if c.get("first_seen_at", 0) >= _t0)
+                _n = _j.get("next_page"); _u = _n if not _n or _n.startswith("http") else (rc_lite.API + _n if _n else None)
+            if _m:
+                C.true("Installs today estimate counts only since midnight (Eastern)", int(_m.group(1).replace(",", "")) <= _since,
+                       f"page ~{_m.group(1)} today, RevenueCat has {_since} new players since midnight")
         except Exception as _e:
             C.fails.append(f"Installs estimate check could not run: {type(_e).__name__}: {_e}"[:240])
         if _rc is not None:
