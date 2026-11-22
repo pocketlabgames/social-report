@@ -185,7 +185,7 @@ def _check_game(C, page, keys, today, G, on_sale):
     if VB and v0 >= 0:   # the newest-versions tiles must match their own numbers
         _pe = page.find("id='gst-pre'"); vt = parse(page[v0:_pe if _pe > v0 else v0 + 6000]); vtile = lambda l: vt.get(l, ("", ""))
         vo = VB.get("outcome") or {}; vw = VB.get("week") or {}
-        C.same("1.3.11+ active players", n1(vtile("Active players")[0], r"([\d,]+)"), vw.get("players", 0), 0)
+        C.same("1.3.11+ active players", n1(vtile("Active players")[0], r"([\d,]+)"), vw.get("players", 0), 1)   # includes today: 1 player may arrive between pulls
         C.same("1.3.11+ win rate: wins", n1(vtile("Win rate")[1], r"([\d,]+) wins"), vo.get("win", 0), 0)
         C.same("1.3.11+ win rate: attempts", n1(vtile("Win rate")[1], r"of ([\d,]+) level"), sum(v for k, v in vo.items() if k != "skip"), 0)
         C.same("1.3.11+ win rate: skips left out", n1(vtile("Win rate")[1], r"([\d,]+) skips left out") or 0, vo.get("skip", 0), 0)
@@ -274,7 +274,7 @@ def _check_game(C, page, keys, today, G, on_sale):
             if xo >= 0:
                 _xe = page.find("<div class='gst'", xo + 10); xt = parse(page[xo:_xe if _xe > xo else xo + 6000])
                 xa = dt.date.fromisoformat(BX["since"])
-                C.same(f"{BX['label']} active players", n1(xt.get("Active players", ("", ""))[0], r"([\d,]+)"), one((xa, today), flt=released_only(xa, today, [v for v in want if _ver(v) >= X])), 0)
+                C.same(f"{BX['label']} active players", n1(xt.get("Active players", ("", ""))[0], r"([\d,]+)"), one((xa, today), flt=released_only(xa, today, [v for v in want if _ver(v) >= X])), 1)   # includes today
                 C.true(f"{BX['label']} is on the App Store", X <= _ver(G.get("live", "0")), f"live is {G.get('live')}")
                 if X == _ver(G.get("live", "0")):   # Guy, Nov 21: 1.3.18+ started a day late (Apple's cached lookup still said 1.3.17); start = Apple's release day (ET), fresh lookup
                     try:
@@ -308,6 +308,11 @@ def _check_game(C, page, keys, today, G, on_sale):
     C.same("Purchases (App Store sales, last 7 days)", n1(tile("Purchases")[0], r"([\d,]+)"), sum(C.iapn.get((today - dt.timedelta(days=i)).isoformat(), 0) for i in range(7)))
     C.same("Players, last 7 days", n1(tile("Super Stir / Solve uses")[1], r"by ([\d,]+) player"), players, max(1, wobble(players)))
     C.same("Ad views per player", _num(r"([\d.]+)", tile("Ad views per player")[0]), round(ev.get("ad_shown", 0) / players, 1) if players else 0, 0.3)
+    # Guy, Nov 22 audit: the tile must equal its own listed counts / its own listed players (0.7 read as 160/260 = 0.6 before)
+    _at = tile("Ad views per player")
+    _ap = n1(_at[1], r"per player on 1\.3\.1\+ \(([\d,]+)\)")
+    _ak = sum(int(x.replace(",", "")) for x in re.findall(r"([\d,]+) (?:between levels|rewarded)", _at[1]))
+    C.true("Ad views per player = its listed ads / its listed players", _ap is not None and _num(r"([\d.]+)", _at[0]) == round(_ak / _ap, 1), f"tile {_at[0]}, {_ak} ads, players {_ap}")
     C.same("Rewarded ads", n1(tile("Ad views per player")[1], r"([\d,]+) rewarded"), kind.get("rewarded", 0), wobble(kind.get("rewarded", 0)))
     C.same("Ads between levels", n1(tile("Ad views per player")[1], r"([\d,]+) between levels"), kind.get("interstitial", 0), wobble(kind.get("interstitial", 0)))
     mv = lambda e, m="eventCount": int(next(iter(run(d7, (), (m,), AND(wk, has("eventName", e), has("customEvent:placement", "out_of_moves")))), ([], [0]))[1][0])
