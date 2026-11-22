@@ -22,7 +22,8 @@ RELFILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 STEPS = list(range(1, 11)) + [11, 16, 21, 26, 31]   # Guy, Nov 6: "Where players stop" bars: levels 1-10 one by one, then steps of 5, then 31+
 RELEASED = {"1.3.1": START, "1.3.2": dt.date(2026, 11, 4), "1.3.3": dt.date(2026, 11, 6), "1.3.11": dt.date(2026, 11, 15), "1.3.18": dt.date(2026, 11, 20), "1.3.19": dt.date(2026, 11, 21), "1.3.20": dt.date(2026, 11, 21)}   # App Store release days; later versions use Apple's date while live
 VF = (1, 3, 11)   # Guy, Nov 16: Game stats filter "1.3.11+"
-VX = [(1, 3, 18), (1, 3, 19), (1, 3, 20)]   # Guy, Nov 21: 1.3.19+ and 1.3.20+ added at the bottom, in order. Guy, Nov 19: one more filter option "1.3.18+" (1.3.19 dropped, Guy); each shows once that version is on the App Store (vers stops at the live version)
+VF_TO = (1, 3, 17)   # Guy, Nov 22: "1.3.11 to 1.3.17" (only the newest option keeps the +)
+VX = [((1, 3, 18), (1, 3, 19), "1.3.18/19"), ((1, 3, 20), None, None)]   # Guy, Nov 22: 1.3.18 and 1.3.19 combined into "1.3.18/19"; only the highest option has a +. Was   # Guy, Nov 21: 1.3.19+ and 1.3.20+ added at the bottom, in order. Guy, Nov 19: one more filter option "1.3.18+" (1.3.19 dropped, Guy); each shows once that version is on the App Store (vers stops at the live version)
 COMPARE = (1, 3, 20)   # Guy, Nov 21: "Did 1.3.20+ help?" vs 1.3.11+ (1.3.11 to 1.3.19); Nov 20 was 1.3.18; was 1.3.11 vs before.
 BASE = (1, 3, 11)   # reference line: new players who started on BASE..COMPARE-1, from BASE's release to the day before COMPARE's
 # Guy, Nov 16: "Did 1.3.11 help?" (was 1.3.4); first version with the new-player changes; new players on it vs new players before it
@@ -274,20 +275,21 @@ def fetch(keys_dir, today):
                              "dimensionFilter": {"andGroup": {"expressions": [{"filter": {"fieldName": "appVersion", "inListFilter": {"values": later7}}}, {"filter": {"fieldName": "firstSessionDate", "stringFilter": {"value": x.strftime("%Y%m%d")}}}]}}} for x in days7])
             B["d7"] = [sum(min(int(r[0][1][0]) if r else 0, base7[x.strftime("%Y%m%d")]) for x, r in zip(days7, rs7)), sum(base7.values()), since.isoformat(), c7.isoformat()]
         return B
-    vf = [v for v in vers if _ver(v) >= VF]
+    vf = [v for v in vers if VF <= _ver(v) <= VF_TO]
     if vf:
         since = min(rel(v) for v in vf)
-        out["vf"] = block(vf, since, today, ".".join(map(str, VF)) + "+")
+        out["vf"] = block(vf, since, today, ".".join(map(str, VF)) + " to " + ".".join(map(str, VF_TO)))
         pv = [v for v in vers if _ver(v) < VF]
         n = (today - since).days + 1
         p0, p1 = max(since - dt.timedelta(days=n), START), since - dt.timedelta(days=1)
         if pv and p1 >= p0:
             out["pre"] = block(pv, p0, p1, "Before " + ".".join(map(str, VF)))
     out["vx"] = {}
-    for X in VX:
-        xv = [v for v in vers if _ver(v) >= X]
+    for X, H, L in VX:
+        xv = [v for v in vers if X <= _ver(v) <= (H or (999,))]
         if xv:
-            out["vx"]["v" + "_".join(map(str, X))] = block(xv, min(rel(v) for v in xv), today, ".".join(map(str, X)) + "+")
+            out["vx"]["v" + "_".join(map(str, X))] = block(xv, min(rel(v) for v in xv), today, L or ".".join(map(str, X)) + "+")
+            out["vx"]["v" + "_".join(map(str, X))]["range"] = [".".join(map(str, X)), ".".join(map(str, H)) if H else None]
     # Guy, Nov 22: "Players (all, new)" filter: the same tile sets for new players only (first day in each view's days)
     out["new"] = {"all": block(vers, max(today - dt.timedelta(days=6), START), today, "All versions", True)}
     for k, B0 in [("vf", out.get("vf")), ("pre", out.get("pre"))] + list(out["vx"].items()):

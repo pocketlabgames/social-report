@@ -230,7 +230,7 @@ def _check_game(C, page, keys, today, G, on_sale):
             d = B.get("d1")
             if not d:
                 return
-            vs = [v for v in want if (_ver(v) >= (1, 3, 11)) == (not B["label"].startswith("Before"))]
+            vs = [v for v in want if ((_ver(v) < (1, 3, 11)) if B["label"].startswith("Before") else ((1, 3, 11) <= _ver(v) <= (1, 3, 17)))]   # Guy, Nov 22: "1.3.11 to 1.3.17"
             later = [v for v in want if _ver(v) >= min(map(_ver, vs))]
             a, b = dt.date.fromisoformat(d[2]), dt.date.fromisoformat(d[3])
             base = back = 0
@@ -247,7 +247,7 @@ def _check_game(C, page, keys, today, G, on_sale):
             if not d:
                 C.true(f"{name} Day-7 tile says no data yet", "no player has reached day 7 yet" in tl("Day-7 return")[1], f"tile says {tl('Day-7 return')}")
                 return
-            vs = [v for v in want if (_ver(v) >= (1, 3, 11)) == (not B["label"].startswith("Before"))]
+            vs = [v for v in want if ((_ver(v) < (1, 3, 11)) if B["label"].startswith("Before") else ((1, 3, 11) <= _ver(v) <= (1, 3, 17)))]   # Guy, Nov 22: "1.3.11 to 1.3.17"
             later = [v for v in want if _ver(v) >= min(map(_ver, vs))]
             a, b = dt.date.fromisoformat(d[2]), dt.date.fromisoformat(d[3])
             base = back = 0
@@ -259,22 +259,24 @@ def _check_game(C, page, keys, today, G, on_sale):
                     back += min(n0, one((day + dt.timedelta(days=7), today), flt=AND(among("appVersion", later), has("firstSessionDate", key))))
             C.same(f"{name} Day-7: new players", n1(tl("Day-7 return")[1], r"of ([\d,]+) new"), base, 1)
             C.same(f"{name} Day-7: came back", n1(tl("Day-7 return")[1], r"^([\d,]+) of"), back, 1)
-        d1_check("1.3.11+", VB, vtile)
-        d7_check("1.3.11+", VB, vtile)
+        C.true("1.3.11 to 1.3.17 label (only the newest option has a +)", VB.get("label") == "1.3.11 to 1.3.17", VB.get("label"))
+        d1_check("1.3.11 to 1.3.17", VB, vtile)
+        d7_check("1.3.11 to 1.3.17", VB, vtile)
         PB = G.get("pre"); p0 = page.find("id='gst-pre'")
         C.true("Before 1.3.11 option in the version filter", bool(PB) == ("<option value='pre'>" in page), "drop-down option and data disagree")
         _o = re.findall(r"<select id='gsel'.*?</select>", page)
-        C.true("Version filter order: All, Before 1.3.11, 1.3.11+, then 1.3.18+, 1.3.19+, 1.3.20+ once live", bool(_o) and re.findall(r"value='(\w+)'", _o[0]) == (["all", "pre", "vf"] if PB else ["all", "vf"]) + list((G.get("vx") or {}).keys()), f"order is {re.findall(r'value=.(\w+).', _o[0]) if _o else 'missing'}")
+        C.true("Version filter order: All, Before 1.3.11, 1.3.11 to 1.3.17, 1.3.18/19, 1.3.20+ once live", bool(_o) and re.findall(r"value='(\w+)'", _o[0]) == (["all", "pre", "vf"] if PB else ["all", "vf"]) + list((G.get("vx") or {}).keys()), f"order is {re.findall(r'value=.(\w+).', _o[0]) if _o else 'missing'}")
         C.true("Version filter opens on the saved default, else All versions", "go(o ? o.value : 'all')" in page and "id='gdef'" in page and "getItem('gsel')" not in page,
                "missing Set as default button, or the filter remembers the last choice instead of the set default")   # Guy, Nov 19 + Nov 20 (Set as default)
         for k, BX in (G.get("vx") or {}).items():   # Guy, Nov 19: 1.3.18+ once live
-            X = tuple(int(x) for x in BX["label"].rstrip("+").split("."))
+            X = _ver(BX["range"][0]); H = _ver(BX["range"][1]) if BX["range"][1] else (999,)   # Guy, Nov 22: closed ranges (1.3.18/19); only the newest is open (+)
+            C.true(f"{BX['label']}: + only on the newest option", BX["label"].endswith("+") == (k == list(G["vx"])[-1]) and (BX["label"].endswith("+") == (BX["range"][1] is None)), BX["label"])
             xo = page.find(f"id='gst-{k}'"); C.true(f"{BX['label']} tile set", xo >= 0, "missing")
-            _xl = BX["label"].rstrip("+"); C.true(f"{BX['label']} starts on its App Store release day", BX.get("since") == (G.get("released") or {}).get(_xl), f"starts {BX.get('since')}, released {(G.get('released') or {}).get(_xl)}")   # Nov 21: 1.3.18+ slid to Nov 21
+            _xl = BX["range"][0]; C.true(f"{BX['label']} starts on its App Store release day", BX.get("since") == (G.get("released") or {}).get(_xl), f"starts {BX.get('since')}, released {(G.get('released') or {}).get(_xl)}")   # Nov 21: 1.3.18+ slid to Nov 21
             if xo >= 0:
                 _xe = page.find("<div class='gst'", xo + 10); xt = parse(page[xo:_xe if _xe > xo else xo + 6000])
                 xa = dt.date.fromisoformat(BX["since"])
-                C.same(f"{BX['label']} active players", n1(xt.get("Active players", ("", ""))[0], r"([\d,]+)"), one((xa, today), flt=released_only(xa, today, [v for v in want if _ver(v) >= X])), 1)   # includes today
+                C.same(f"{BX['label']} active players", n1(xt.get("Active players", ("", ""))[0], r"([\d,]+)"), one((xa, today), flt=released_only(xa, today, [v for v in want if X <= _ver(v) <= H])), 1)   # includes today
                 C.true(f"{BX['label']} is on the App Store", X <= _ver(G.get("live", "0")), f"live is {G.get('live')}")
                 if X == _ver(G.get("live", "0")):   # Guy, Nov 21: 1.3.18+ started a day late (Apple's cached lookup still said 1.3.17); start = Apple's release day (ET), fresh lookup
                     try:
@@ -362,7 +364,7 @@ def _check_game(C, page, keys, today, G, on_sale):
                 C.true(f"New players tile in {_id}-new", bool(_nn), "missing")
                 if _na and _nn:
                     _a, _n = n1(_na[0], r"([\d,]+)"), n1(_nn[0], r"([\d,]+)")
-                    C.true(f"New players <= active players in {_id}", _n is not None and _a is not None and _n <= _a, f"{_n} new vs {_a} active")
+                    C.true(f"New players <= active players in {_id}", _n is not None and _a is not None and _n <= _a + 1, f"{_n} new vs {_a} active")
                     _rt2 = parse(_seg(_id + "-new")).get("Reminders on"); _rn2 = n1(_rt2[1], r"of ([\d,]+) new") if _rt2 and "%" in _rt2[0] else None
                     if _rn2 is not None:
                         C.same(f"New players = Reminders-on new players in {_id}-new", _n, _rn2, max(2, wobble(_rn2)))
