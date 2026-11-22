@@ -19,9 +19,9 @@ FIRST = (1, 3, 1)   # first app version that sends the game events
 START = dt.date(2026, 11, 1)   # 1.3.1 went live Nov 1; earlier days were test devices only (Guy, Nov 2)
 APP_ID = "6816478290"
 STEPS = list(range(1, 11)) + [11, 16, 21, 26, 31]   # Guy, Nov 6: "Where players stop" bars: levels 1-10 one by one, then steps of 5, then 31+
-RELEASED = {"1.3.1": START, "1.3.2": dt.date(2026, 11, 4), "1.3.3": dt.date(2026, 11, 6), "1.3.11": dt.date(2026, 11, 15)}   # App Store release days; later versions use Apple's date while live
+RELEASED = {"1.3.1": START, "1.3.2": dt.date(2026, 11, 4), "1.3.3": dt.date(2026, 11, 6), "1.3.11": dt.date(2026, 11, 15), "1.3.19": dt.date(2026, 11, 21), "1.3.20": dt.date(2026, 11, 21)}   # App Store release days; later versions use Apple's date while live
 VF = (1, 3, 11)   # Guy, Nov 16: Game stats filter "1.3.11+"
-VX = [(1, 3, 18)]   # Guy, Nov 19: one more filter option "1.3.18+" (1.3.19 dropped, Guy); each shows once that version is on the App Store (vers stops at the live version)
+VX = [(1, 3, 18), (1, 3, 19), (1, 3, 20)]   # Guy, Nov 21: 1.3.19+ and 1.3.20+ added at the bottom, in order. Guy, Nov 19: one more filter option "1.3.18+" (1.3.19 dropped, Guy); each shows once that version is on the App Store (vers stops at the live version)
 COMPARE = (1, 3, 18)   # Guy, Nov 20: "Did 1.3.18+ help?" vs 1.3.11+ (1.3.11 to 1.3.17); was 1.3.11 vs before.
 BASE = (1, 3, 11)   # reference line: new players who started on BASE..COMPARE-1, from BASE's release to the day before COMPARE's
 # Guy, Nov 16: "Did 1.3.11 help?" (was 1.3.4); first version with the new-player changes; new players on it vs new players before it

@@ -250,7 +250,7 @@ def _check_game(C, page, keys, today, G, on_sale):
         PB = G.get("pre"); p0 = page.find("id='gst-pre'")
         C.true("Before 1.3.11 option in the version filter", bool(PB) == ("<option value='pre'>" in page), "drop-down option and data disagree")
         _o = re.findall(r"<select id='gsel'.*?</select>", page)
-        C.true("Version filter order: All, Before 1.3.11, 1.3.11+, then 1.3.18+ once live", bool(_o) and re.findall(r"value='(\w+)'", _o[0]) == (["all", "pre", "vf"] if PB else ["all", "vf"]) + list((G.get("vx") or {}).keys()), f"order is {re.findall(r'value=.(\w+).', _o[0]) if _o else 'missing'}")
+        C.true("Version filter order: All, Before 1.3.11, 1.3.11+, then 1.3.18+, 1.3.19+, 1.3.20+ once live", bool(_o) and re.findall(r"value='(\w+)'", _o[0]) == (["all", "pre", "vf"] if PB else ["all", "vf"]) + list((G.get("vx") or {}).keys()), f"order is {re.findall(r'value=.(\w+).', _o[0]) if _o else 'missing'}")
         C.true("Version filter opens on the saved default, else All versions", "go(o ? o.value : 'all')" in page and "id='gdef'" in page and "getItem('gsel')" not in page,
                "missing Set as default button, or the filter remembers the last choice instead of the set default")   # Guy, Nov 19 + Nov 20 (Set as default)
         for k, BX in (G.get("vx") or {}).items():   # Guy, Nov 19: 1.3.18+ once live
