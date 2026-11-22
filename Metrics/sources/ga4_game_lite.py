@@ -29,7 +29,17 @@ BASE = (1, 3, 11)   # reference line: new players who started on BASE..COMPARE-1
 EVENTS = ["level_end", "level_up", "ad_shown", "purchase_ok", "super_stir", "super_solve"]
 
 
+NO_CT = {"notExpression": {"filter": {"fieldName": "region", "stringFilter": {"value": "Connecticut"}}}}   # Guy, Nov 21: Connecticut = Guy's own test plays (11 of 12 "1.3.20 players"); left out of every game stat
+
+
+def no_ct(body):
+    """Same question without Connecticut players (Guy testing)."""
+    f = body.get("dimensionFilter")
+    return {**body, "dimensionFilter": {"andGroup": {"expressions": [f, NO_CT]}} if f else NO_CT}
+
+
 def _run(s, body):
+    body = no_ct(body)
     for wait in (2, 5, 10, 0):   # 429 / 5xx: wait and ask again (queries now run several at a time)
         r = s.post(f"https://analyticsdata.googleapis.com/v1beta/properties/{PROPERTY}:runReport", json=body, timeout=60)
         if r.ok or r.status_code not in (429, 500, 503) or not wait:

@@ -13,6 +13,8 @@ import json
 import os
 import re
 import time
+
+NO_CT = {"notExpression": {"filter": {"fieldName": "region", "stringFilter": {"value": "Connecticut"}}}}   # Guy, Nov 21: Connecticut = Guy testing, left out of game stats (own copy so the check stays independent)
 from concurrent.futures import ThreadPoolExecutor
 
 import jwt
@@ -140,8 +142,7 @@ def _check_game(C, page, keys, today, G, on_sale):
 
     def run(dates, dims=(), metrics=("activeUsers",), flt=None):
         body = {"dateRanges": [{"startDate": dates[0].isoformat(), "endDate": dates[1].isoformat()}], "dimensions": [{"name": d} for d in dims], "metrics": [{"name": m} for m in metrics], "limit": 100000}   # Nov 21: 2,000 rows cut off date x eventName (per-level events), so super_solve on 11/17 read 0
-        if flt:
-            body["dimensionFilter"] = flt
+        body["dimensionFilter"] = {"andGroup": {"expressions": [flt, NO_CT]}} if flt else NO_CT   # Guy, Nov 21: same as the report, Connecticut (Guy testing) left out
         r = s.post(f"https://analyticsdata.googleapis.com/v1beta/properties/{PROPERTY}:runReport", json=body, timeout=60)
         r.raise_for_status()
         rows = r.json().get("rows", [])
