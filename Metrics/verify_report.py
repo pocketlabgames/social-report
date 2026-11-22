@@ -374,6 +374,7 @@ def _check_game(C, page, keys, today, G, on_sale):
         # Guy, Nov 22: Players (all, new) filter: every version view has a New players view; new players are part of that view's active players
         _ids = re.findall(r"id='(gst-[\w-]+)'", page)
         C.true("Players filter on the page", "id='psel'" in page and "bl_psel_default" in page, "missing")
+        C.true("Game tiles say 'played today' (Guy, Nov 22: '89 today' read as new today)", "played today" in page and not re.search(r"\d today ·|\d today<", page), "old 'N today' label on the page")
         for _id in [x for x in _ids if not x.endswith("-new")]:
             C.true(f"New players view for {_id}", _id + "-new" in _ids, "missing")
             if _id + "-new" in _ids:

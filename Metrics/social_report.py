@@ -1360,7 +1360,7 @@ def game_section():
         rcb = sum(v for k, v in RCTX.items() if newest and B["since"] <= k <= B.get("until", "9999"))   # Guy, Nov 18: Firebase purchase_ok counted test buys (14 on Nov 18, 0 real)
         pl = lambda n: f"{n:,} player{'' if n == 1 else 's'}"
         return [(f"{P2:,}" if newest else f"{A.get('week', 0):,}", "Active players",
-                 (f"{B['label']}, {when}" if pre else f"{B['label']} {when} · {B.get('today', 0):,} today") if newest else f"last 7 days, all versions · {A.get('today', 0):,} today · {A.get('ever', 0):,} since launch"),
+                 (f"{B['label']}, {when}" if pre else f"{B['label']} {when} · {B.get('today', 0):,} played today") if newest else f"last 7 days, all versions · {A.get('today', 0):,} played today · {A.get('ever', 0):,} since launch"),
                 d1tile(B, newest),
                 d7tile(B, newest),
                 (f"{oc2.get('win', 0) / on2 * 100:.0f}%" if on2 else "—", "Win rate", f"{oc2.get('win', 0):,} wins of {on2:,} level attempts" + (f", {when}" if newest else "") + (f" · {sk2:,} skip{'' if sk2 == 1 else 's'} left out" if sk2 else "") if on2 else "no win/loss data yet"),
