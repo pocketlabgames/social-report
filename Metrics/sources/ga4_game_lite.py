@@ -18,8 +18,9 @@ SCOPES = ["https://www.googleapis.com/auth/analytics.readonly"]
 FIRST = (1, 3, 1)   # first app version that sends the game events
 START = dt.date(2026, 11, 1)   # 1.3.1 went live Nov 1; earlier days were test devices only (Guy, Nov 2)
 APP_ID = "6816478290"
+RELFILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "released-days.json")   # Apple release day of each version, saved while it is live
 STEPS = list(range(1, 11)) + [11, 16, 21, 26, 31]   # Guy, Nov 6: "Where players stop" bars: levels 1-10 one by one, then steps of 5, then 31+
-RELEASED = {"1.3.1": START, "1.3.2": dt.date(2026, 11, 4), "1.3.3": dt.date(2026, 11, 6), "1.3.11": dt.date(2026, 11, 15), "1.3.19": dt.date(2026, 11, 21), "1.3.20": dt.date(2026, 11, 21)}   # App Store release days; later versions use Apple's date while live
+RELEASED = {"1.3.1": START, "1.3.2": dt.date(2026, 11, 4), "1.3.3": dt.date(2026, 11, 6), "1.3.11": dt.date(2026, 11, 15), "1.3.18": dt.date(2026, 11, 20), "1.3.19": dt.date(2026, 11, 21), "1.3.20": dt.date(2026, 11, 21)}   # App Store release days; later versions use Apple's date while live
 VF = (1, 3, 11)   # Guy, Nov 16: Game stats filter "1.3.11+"
 VX = [(1, 3, 18), (1, 3, 19), (1, 3, 20)]   # Guy, Nov 21: 1.3.19+ and 1.3.20+ added at the bottom, in order. Guy, Nov 19: one more filter option "1.3.18+" (1.3.19 dropped, Guy); each shows once that version is on the App Store (vers stops at the live version)
 COMPARE = (1, 3, 18)   # Guy, Nov 20: "Did 1.3.18+ help?" vs 1.3.11+ (1.3.11 to 1.3.17); was 1.3.11 vs before.
@@ -94,7 +95,18 @@ def fetch(keys_dir, today):
     d14, d7, dall = rng(14), rng(6, 0), rng(9999)   # d7 = last 7 days incl. today (Guy, Nov 21: "All versions should include today too"); dall = everything since Nov 1
     live, released = _live(keys_dir)
     first_day = lambda v: min((dt.date(int(d[:4]), int(d[4:6]), int(d[6:])) for (d,), (n,) in _run(s, {"dateRanges": [dall], "dimensions": [{"name": "date"}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": {"filter": {"fieldName": "appVersion", "stringFilter": {"value": v}}}}) if n >= 5), default=None)   # first day a version had 5+ players
-    released = released or first_day(".".join(map(str, live))) or today
+    # Guy, Nov 21: 1.3.18+ moved from Nov 20 to Nov 21 once 1.3.19 shipped (a version no longer live fell back to its first 5-player day).
+    # Apple's own date is saved while a version is live and used from then on.
+    _lv = ".".join(map(str, live))
+    try: _saved = json.load(open(RELFILE))
+    except Exception: _saved = {}
+    if released and _lv not in RELEASED and _saved.get(_lv) != released.isoformat():
+        _saved[_lv] = released.isoformat()
+        try: json.dump(_saved, open(RELFILE, "w"), indent=1, sort_keys=True)
+        except Exception: pass
+    for _v, _d in _saved.items():
+        RELEASED.setdefault(_v, dt.date.fromisoformat(_d))
+    released = released or RELEASED.get(_lv) or first_day(_lv) or today
     vers = [v[0] for v, _ in _run(s, {"dateRanges": [dall], "dimensions": [{"name": "appVersion"}], "metrics": [{"name": "activeUsers"}]}) if FIRST <= _ver(v[0]) <= live]
     out = {"versions": vers, "live": ".".join(map(str, live)), "daily": {}, "week": {}, "outcome": {}, "kind": {}, "reach": {}, "all": {}}
     if not vers:

@@ -256,6 +256,7 @@ def _check_game(C, page, keys, today, G, on_sale):
         for k, BX in (G.get("vx") or {}).items():   # Guy, Nov 19: 1.3.18+ once live
             X = tuple(int(x) for x in BX["label"].rstrip("+").split("."))
             xo = page.find(f"id='gst-{k}'"); C.true(f"{BX['label']} tile set", xo >= 0, "missing")
+            _xl = BX["label"].rstrip("+"); C.true(f"{BX['label']} starts on its App Store release day", BX.get("since") == (G.get("released") or {}).get(_xl), f"starts {BX.get('since')}, released {(G.get('released') or {}).get(_xl)}")   # Nov 21: 1.3.18+ slid to Nov 21
             if xo >= 0:
                 _xe = page.find("<div class='gst'", xo + 10); xt = parse(page[xo:_xe if _xe > xo else xo + 6000])
                 xa = dt.date.fromisoformat(BX["since"])
