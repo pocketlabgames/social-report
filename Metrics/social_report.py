@@ -1410,6 +1410,33 @@ def game_section():
             NV["vf"] = [(v, l, n, cmpn(v, l)) for v, l, n in NV["vf"]]
         for k, T in NV.items():
             tiles_html += f"<div class='gst' id='gst-{k}-new' hidden>{grid(T)}</div>"
+    def d1v_chart():   # Guy, Nov 22: "Day-1 return by version" (one bar per version group, Google Ads players vs everyone else, likely range; test days left out like the tiles)
+        def wil(k, n):
+            z = 1.96; p = k / n; d = 1 + z * z / n; c = (p + z * z / (2 * n)) / d; h = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / d
+            return p * 100, max(0, c - h) * 100, min(1, c + h) * 100
+        GR = ([PB] if PB else []) + ([VB] if VB else []) + list(XB.values())
+        if not GR:
+            return ""
+        MX, COL, LB = 40, {"all": "#12A4A4", "ads": "#E8833A", "other": "#6C7BD9"}, {"all": "All new players", "ads": "Google Ads players", "other": "Other players"}
+        out = ""
+        for BB in GR:
+            d1, src = BB.get("d1"), BB.get("d1src") or {}
+            out += f"<div class='dvg'><div class='dvh'>{e(BB['label'])}</div>"
+            for k in ("all", "ads", "other"):
+                kn = (d1[0], d1[1]) if k == "all" and d1 else tuple(src.get(k) or (0, 0))
+                if not kn[1]:
+                    msg = "no complete day yet" if not d1 else "no players"
+                    out += f"<div class='dvr'><span class='dvl'>{LB[k]}</span><div class='dvt'><span class='dve'>{msg}</span></div><span class='dvv'>—</span></div>"
+                    continue
+                p, lo, hi = wil(*kn); few = kn[1] < 100
+                out += (f"<div class='dvr'><span class='dvl'>{LB[k]}</span><div class='dvt'><div class='dvb{' few' if few else ''}' style='width:{min(p, MX) / MX * 100:.1f}%;background:{COL[k]}'></div>"
+                        f"<div class='dvc' style='left:{min(lo, MX) / MX * 100:.1f}%;width:{(min(hi, MX) - min(lo, MX)) / MX * 100:.1f}%'></div></div>"
+                        f"<span class='dvv'>{p:.0f}%<small>{kn[0]:,} of {kn[1]:,}{' · too early' if few else ''}</small></span></div>")
+            out += "</div>"
+        ax = "".join(f"<span style='left:{t / MX * 100:.0f}%'>{t}%</span>" for t in range(0, MX + 1, 10))
+        return (f"<h3 class='sh3'>Day-1 return by version</h3><div class='dv'>{out}<div class='dvx'>{ax}</div>"
+                "<p class='dvk'>Black line = likely range; overlapping ranges = no real difference yet. Faded = under 100 players (too early). Same new players and days as each version's Day-1 tile.</p></div>")
+    d1v_html = d1v_chart()
     psel_html = " <select id='psel' class='psel' aria-label='Players'><option value='all'>All players</option><option value='new'>New players</option></select>" if VB and NB else ""
     gsel = lambda i: (f" <select id='{i}' class='gsel' aria-label='App versions'><option value='all'>All versions</option>" + (f"<option value='pre'>{e(PB['label'])}</option>" if PB else "") + f"<option value='vf'>{e(VB['label'])}</option>" + "".join(f"<option value='{k}'>{e(BX['label'])}</option>" for k, BX in XB.items()) + "</select>") if VB else ""   # Guy, Nov 16: one filter, shown on the tiles and the win rate chart
     gsel_html = gsel("gsel") + psel_html + (" <button id='gdef' type='button' class='gdef'>Set as default</button>" if VB else "")
@@ -1532,8 +1559,8 @@ def game_section():
     stale_note = f"<p class='sub' style='color:#C0392B'>Google Analytics didn't answer this run; showing the last numbers from {e(GAME['_stale'])}.</p>" if GAME.get("_stale") else ""
     return (f"<style>.sh3{{font-size:18px;margin:22px 0 4px}} .gst{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:4px 0 18px}} "
             f".gt{{border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:1px}} .gt b{{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}} "
-            f".gdef{{font:inherit;font-size:14px;padding:5px 12px;margin-left:6px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;vertical-align:middle}} .gdef:disabled{{color:var(--muted);cursor:default}} .gcard{{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:0 0 14px}} @media (max-width:700px){{.gcard{{padding:14px 12px}}}} .gcard .gt{{background:var(--bg);border-color:transparent}} .gst[hidden]{{display:none}} .gsel,.psel{{margin-left:8px;font:inherit;font-size:14px;padding:4px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}} .gt span{{font-size:13px;color:var(--ink2)}} .gt small{{font-size:11px;color:var(--muted);line-height:1.3}} .gcmp{{font-style:normal;font-size:11px;font-weight:600;margin-top:3px}} .gcmp.up{{color:#1a8f4a}} .gcmp.down{{color:#c0392b}} .gcmp.same{{color:var(--muted)}} :root{{--gleft:#c9c7bd}} @media (prefers-color-scheme:dark){{:root{{--gleft:#55544f}}}} .gk{{font-size:12px;color:var(--muted);margin-right:12px;white-space:normal}} .gk i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}} @media (max-width:700px){{.gst{{grid-template-columns:1fr 1fr}} .gt b{{font-size:18px}}}}</style>"
-            f"<h2 class='sh' id='sec-game'>Game Analytics</h2><section class='gcard'>{stale_note}<p class='sub' style='margin-top:0'>From Firebase (Google Analytics).{gsel_html}</p><h3 class='sh3'>Game stats</h3>{tiles_html}"   # Guy, Nov 16: one header, one note, one filter for all game charts; no descriptions under chart titles
+            f".gdef{{font:inherit;font-size:14px;padding:5px 12px;margin-left:6px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;vertical-align:middle}} .gdef:disabled{{color:var(--muted);cursor:default}} .gcard{{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:0 0 14px}} @media (max-width:700px){{.gcard{{padding:14px 12px}}}} .gcard .gt{{background:var(--bg);border-color:transparent}} .gst[hidden]{{display:none}} .dv{{margin:4px 0 18px}} .dvg{{margin:10px 0 4px}} .dvh{{font-weight:600;font-size:14px;margin-bottom:3px}} .dvr{{display:grid;grid-template-columns:120px 1fr 84px;align-items:center;gap:8px;margin:3px 0}} @media (max-width:700px){{.dvr{{grid-template-columns:92px 1fr 74px}}}} .dvl{{font-size:12px;color:var(--ink2)}} .dvt{{position:relative;height:16px;background:var(--bg);border-radius:4px}} .dvb{{height:100%;border-radius:4px}} .dvb.few{{opacity:.35}} .dvc{{position:absolute;top:7px;height:2px;background:var(--ink)}} .dvc:before,.dvc:after{{content:'';position:absolute;top:-4px;width:2px;height:10px;background:var(--ink)}} .dvc:before{{left:0}} .dvc:after{{right:0}} .dvv{{font-weight:600;font-size:14px;line-height:1.1}} .dvv small{{display:block;font-weight:400;font-size:10px;color:var(--muted)}} .dve{{position:absolute;left:6px;top:1px;font-size:11px;color:var(--muted)}} .dvx{{position:relative;height:14px;margin:6px 92px 0 128px;font-size:10px;color:var(--muted)}} @media (max-width:700px){{.dvx{{margin:6px 82px 0 100px}}}} .dvx span{{position:absolute;transform:translateX(-50%)}} .dvk{{font-size:11px;color:var(--muted);margin:10px 0 0}} .gsel,.psel{{margin-left:8px;font:inherit;font-size:14px;padding:4px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}} .gt span{{font-size:13px;color:var(--ink2)}} .gt small{{font-size:11px;color:var(--muted);line-height:1.3}} .gcmp{{font-style:normal;font-size:11px;font-weight:600;margin-top:3px}} .gcmp.up{{color:#1a8f4a}} .gcmp.down{{color:#c0392b}} .gcmp.same{{color:var(--muted)}} :root{{--gleft:#c9c7bd}} @media (prefers-color-scheme:dark){{:root{{--gleft:#55544f}}}} .gk{{font-size:12px;color:var(--muted);margin-right:12px;white-space:normal}} .gk i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}} @media (max-width:700px){{.gst{{grid-template-columns:1fr 1fr}} .gt b{{font-size:18px}}}}</style>"
+            f"<h2 class='sh' id='sec-game'>Game Analytics</h2><section class='gcard'>{stale_note}<p class='sub' style='margin-top:0'>From Firebase (Google Analytics).{gsel_html}</p><h3 class='sh3'>Game stats</h3>{tiles_html}{d1v_html}"   # Guy, Nov 16: one header, one note, one filter for all game charts; no descriptions under chart titles
             f"<h3 class='sh3'>How far players get</h3>{legend}{funnel}{compare}{rewarded}{winrate}"
             f"<h3 class='sh3'>Players per day</h3>"
             f"<div class='chart' style='height:260px'><canvas id='gday' role='img' aria-label='Active players per day on all versions'></canvas></div>{RNG('rngg')}</section>{js}{GSEL_JS if VB else ''}")

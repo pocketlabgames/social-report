@@ -262,6 +262,14 @@ def fetch(keys_dir, today):
             back = {d: int(n) for (d, d2), (n,) in _run(s, {"dateRanges": [{"startDate": (since + dt.timedelta(days=1)).isoformat(), "endDate": (c_end + dt.timedelta(days=1)).isoformat()}], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}], "metrics": [{"name": "activeUsers"}],
                     "dimensionFilter": {"andGroup": {"expressions": [{"filter": {"fieldName": "appVersion", "inListFilter": {"values": later}}}, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": cd(since, c_end)}}}]}}, "limit": 10000}) if d2 == nxt(d)}
             B["d1"] = [sum(back.get(d, 0) for d in base), sum(base.values()), since.isoformat(), c_end.isoformat()]
+            # Guy, Nov 22: "Day-1 return by version" chart: the same players split by Google Ads (firstUserMedium cpc) vs everyone else
+            B["d1src"] = {}
+            for med, mf in (("ads", {"filter": {"fieldName": "firstUserMedium", "stringFilter": {"value": "cpc"}}}), ("other", {"notExpression": {"filter": {"fieldName": "firstUserMedium", "stringFilter": {"value": "cpc"}}}})):
+                b2 = {d: int(n) for (d, d2), (n,) in _run(s, {"dateRanges": [{"startDate": since.isoformat(), "endDate": c_end.isoformat()}], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}], "metrics": [{"name": "activeUsers"}],
+                      "dimensionFilter": {"andGroup": {"expressions": [vfil, mf, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": cd(since, c_end)}}}]}}, "limit": 10000}) if d == d2}
+                k2 = {d: int(n) for (d, d2), (n,) in _run(s, {"dateRanges": [{"startDate": (since + dt.timedelta(days=1)).isoformat(), "endDate": (c_end + dt.timedelta(days=1)).isoformat()}], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}], "metrics": [{"name": "activeUsers"}],
+                      "dimensionFilter": {"andGroup": {"expressions": [{"filter": {"fieldName": "appVersion", "inListFilter": {"values": later}}}, mf, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": cd(since, c_end)}}}]}}, "limit": 10000}) if d2 == nxt(d)}
+                B["d1src"][med] = [sum(k2.get(d, 0) for d in b2), sum(b2.values())]
         # Guy, Nov 21: "add d-7 after d-1 card". Day-7 return = new players (first day on these versions) who played again on day 7 OR LATER
         # (same rule as the all-versions Day-7, Guy Nov 8); only first days with a complete day 7 (first day <= today - 8)
         c7 = min(until, today - dt.timedelta(days=8))

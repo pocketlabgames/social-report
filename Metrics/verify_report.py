@@ -353,6 +353,19 @@ def _check_game(C, page, keys, today, G, on_sale):
             if _t and "%" in _t[0]:
                 _a, _b = n1(_t[1], r"^([\d,]+) of"), n1(_t[1], r"of ([\d,]+) new")
                 C.true(f"Reminders on % adds up in {_id}", _b and abs(round(_a / _b * 100) - n1(_t[0], r"(\d+)%")) <= 1, f"{_t[0]} vs {_a} of {_b}")
+        # Guy, Nov 22: Day-1 return by version chart: "All" bar = that version's Day-1 tile; Google Ads + other = All
+        _dv = page.find("Day-1 return by version")
+        C.true("Day-1 by version chart on the page", _dv >= 0, "missing")
+        for BB in [G.get("pre"), G.get("vf")] + list((G.get("vx") or {}).values()):
+            if not BB or not BB.get("d1"):
+                continue
+            _sg = page[page.find(f"<div class='dvh'>{html.escape(BB['label'])}</div>", _dv):]
+            _m = re.search(r"All new players</span>.*?<small>([\d,]+) of ([\d,]+)", _sg[:3000])
+            C.true(f"Day-1 chart {BB['label']}: All = its tile ({BB['d1'][0]} of {BB['d1'][1]})", bool(_m) and (int(_m[1].replace(',', '')), int(_m[2].replace(',', ''))) == (BB["d1"][0], BB["d1"][1]), _m.group(0)[-40:] if _m else "missing")
+            _sr = BB.get("d1src") or {}
+            if _sr:
+                C.same(f"Day-1 chart {BB['label']}: Google Ads + other new players = all", sum((_sr.get(k) or [0, 0])[1] for k in ("ads", "other")), BB["d1"][1], max(1, wobble(BB["d1"][1])))
+                C.same(f"Day-1 chart {BB['label']}: Google Ads + other came back = all", sum((_sr.get(k) or [0, 0])[0] for k in ("ads", "other")), BB["d1"][0], max(1, wobble(BB["d1"][0])))
         # Guy, Nov 22: Players (all, new) filter: every version view has a New players view; new players are part of that view's active players
         _ids = re.findall(r"id='(gst-[\w-]+)'", page)
         C.true("Players filter on the page", "id='psel'" in page and "bl_psel_default" in page, "missing")
