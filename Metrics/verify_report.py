@@ -188,7 +188,7 @@ def _check_game(C, page, keys, today, G, on_sale):
         C.same("1.3.11+ active players", n1(vtile("Active players")[0], r"([\d,]+)"), vw.get("players", 0), 1)   # includes today: 1 player may arrive between pulls
         C.same("1.3.11+ win rate: wins", n1(vtile("Win rate")[1], r"([\d,]+) wins"), vo.get("win", 0), 0)
         C.same("1.3.11+ win rate: attempts", n1(vtile("Win rate")[1], r"of ([\d,]+) level"), sum(v for k, v in vo.items() if k != "skip"), 0)
-        C.same("1.3.11+ win rate: skips left out", n1(vtile("Win rate")[1], r"([\d,]+) skips left out") or 0, vo.get("skip", 0), 0)
+        C.same("1.3.11+ win rate: skips left out", n1(vtile("Win rate")[1], r"([\d,]+) skips? left out") or 0, vo.get("skip", 0), 0)
         C.same("1.3.11+ Super Stir uses", n1(vtile("Super Stir / Solve uses")[1], r"([\d,]+) Super Stir"), vw.get("super_stir", 0), 0)
         C.same("1.3.11+ Super Solve uses", n1(vtile("Super Stir / Solve uses")[1], r"([\d,]+) Super Solve"), vw.get("super_solve", 0), 0)
         # Guy, Nov 18: version Purchases tile = real App Store purchases from RevenueCat (own pull), never Firebase test buys
