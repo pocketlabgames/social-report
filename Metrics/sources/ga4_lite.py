@@ -11,13 +11,16 @@ PROPERTY = "558070583"
 SCOPES = ["https://www.googleapis.com/auth/analytics.readonly"]
 
 
+NO_CT = {"notExpression": {"filter": {"fieldName": "region", "stringFilter": {"value": "Connecticut"}}}}   # Guy, Nov 21: his own test plays
+
+
 def _cohorts(s, start, end, nth):
     days = (end - start).days + 1
     body = {"dimensions": [{"name": "cohort"}, {"name": "cohortNthDay"}], "metrics": [{"name": "cohortActiveUsers"}],
             "cohortSpec": {"cohorts": [{"name": d.isoformat(), "dimension": "firstSessionDate",
                                         "dateRange": {"startDate": d.isoformat(), "endDate": d.isoformat()}}
                                        for d in (start + dt.timedelta(days=i) for i in range(days))],
-                           "cohortsRange": {"granularity": "DAILY", "startOffset": 0, "endOffset": nth}}}
+                           "cohortsRange": {"granularity": "DAILY", "startOffset": 0, "endOffset": nth}}, "dimensionFilter": NO_CT}   # Guy, Nov 21: Connecticut = Guy testing, left out
     r = s.post(f"https://analyticsdata.googleapis.com/v1beta/properties/{PROPERTY}:runReport", json=body, timeout=60)
     if not r.ok:
         raise RuntimeError(f"GA4 {r.status_code}: {r.text[:200]}")
@@ -46,7 +49,7 @@ def fetch(keys_dir, today):
     for c in d7:
         d = dt.date.fromisoformat(c)
         body = {"dateRanges": [{"startDate": (d + dt.timedelta(days=7)).isoformat(), "endDate": today.isoformat()}], "metrics": [{"name": "activeUsers"}],
-                "dimensionFilter": {"filter": {"fieldName": "firstSessionDate", "stringFilter": {"value": d.strftime("%Y%m%d")}}}}
+                "dimensionFilter": {"andGroup": {"expressions": [{"filter": {"fieldName": "firstSessionDate", "stringFilter": {"value": d.strftime("%Y%m%d")}}}, NO_CT]}}}
         r = s.post(f"https://analyticsdata.googleapis.com/v1beta/properties/{PROPERTY}:runReport", json=body, timeout=60)
         if not r.ok:
             raise RuntimeError(f"GA4 {r.status_code}: {r.text[:200]}")

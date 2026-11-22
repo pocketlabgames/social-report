@@ -396,7 +396,7 @@ def _check_game(C, page, keys, today, G, on_sale):
     # retention (the same way Firebase's cohorts define it)
     a, b = today - dt.timedelta(days=8), today - dt.timedelta(days=2)
     body = {"dimensions": [{"name": "cohort"}, {"name": "cohortNthDay"}], "metrics": [{"name": "cohortActiveUsers"}], "cohortSpec": {"cohortsRange": {"granularity": "DAILY", "startOffset": 0, "endOffset": 1},
-            "cohorts": [{"name": str(i), "dimension": "firstSessionDate", "dateRange": {"startDate": (a + dt.timedelta(days=i)).isoformat(), "endDate": (a + dt.timedelta(days=i)).isoformat()}} for i in range((b - a).days + 1)]}}
+            "cohorts": [{"name": str(i), "dimension": "firstSessionDate", "dateRange": {"startDate": (a + dt.timedelta(days=i)).isoformat(), "endDate": (a + dt.timedelta(days=i)).isoformat()}} for i in range((b - a).days + 1)]}, "dimensionFilter": NO_CT}
     rows = s.post(f"https://analyticsdata.googleapis.com/v1beta/properties/{PROPERTY}:runReport", json=body, timeout=60).json().get("rows", [])
     base = sum(int(r["metricValues"][0]["value"]) for r in rows if int(r["dimensionValues"][1]["value"]) == 0)
     back = sum(int(r["metricValues"][0]["value"]) for r in rows if int(r["dimensionValues"][1]["value"]) == 1)
