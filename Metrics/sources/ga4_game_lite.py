@@ -208,11 +208,13 @@ def fetch(keys_dir, today):
     out["remind"] = remind(newer, max(today - dt.timedelta(days=6), START), today)
     # Guy, Nov 16: the same tiles for the newest versions only (1.3.11+), from the first one's release day to today
     # Guy, Nov 19: and for the versions before 1.3.11, over the same number of days just before 1.3.11 came out (each 1.3.11+ tile compares to it)
-    def block(vf, since, until, label):
+    def block(vf, since, until, label, new=False):
         vfil = {"andGroup": {"expressions": [newer, {"filter": {"fieldName": "appVersion", "inListFilter": {"values": vf}}}]}}   # newer already drops pre-release test days
+        if new:   # Guy, Nov 22: Players filter "New" = players whose first day falls in this view's days
+            vfil = {"andGroup": {"expressions": [vfil, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": [(since + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((until - since).days + 1)]}}}]}}
         dr = {"startDate": since.isoformat(), "endDate": until.isoformat()}
         one2 = lambda name: {"andGroup": {"expressions": [ev(name), vfil]}}
-        B = {"label": label, "since": since.isoformat(), "until": until.isoformat(), "week": {}, "outcome": {}, "kind": {}, "shares": {"by": {}}, "moves": {}, "reach": {}}
+        B = {"label": label, "vers": vf, "since": since.isoformat(), "until": until.isoformat(), "week": {}, "outcome": {}, "kind": {}, "shares": {"by": {}}, "moves": {}, "reach": {}}
         r = _run(s, {"dateRanges": [dr], "metrics": [{"name": "activeUsers"}], "dimensionFilter": vfil})
         B["week"]["players"] = int(r[0][1][0]) if r else 0
         r = _run(s, {"dateRanges": [{"startDate": today.isoformat(), "endDate": today.isoformat()}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": vfil})
@@ -286,6 +288,11 @@ def fetch(keys_dir, today):
         xv = [v for v in vers if _ver(v) >= X]
         if xv:
             out["vx"]["v" + "_".join(map(str, X))] = block(xv, min(rel(v) for v in xv), today, ".".join(map(str, X)) + "+")
+    # Guy, Nov 22: "Players (all, new)" filter: the same tile sets for new players only (first day in each view's days)
+    out["new"] = {"all": block(vers, max(today - dt.timedelta(days=6), START), today, "All versions", True)}
+    for k, B0 in [("vf", out.get("vf")), ("pre", out.get("pre"))] + list(out["vx"].items()):
+        if B0:
+            out["new"][k] = block([v for v in vers if v in B0.get("vers", vers)], dt.date.fromisoformat(B0["since"]), dt.date.fromisoformat(B0["until"]), B0["label"], True)
     # active players on every app version (the game events above only come from 1.3.1+)
     span = lambda a: {"startDate": a, "endDate": today.isoformat()}
     total = lambda a: int(next(iter(_run(s, {"dateRanges": [span(a)], "metrics": [{"name": "activeUsers"}]})), ([], [0]))[1][0])

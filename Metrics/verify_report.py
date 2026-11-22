@@ -351,6 +351,21 @@ def _check_game(C, page, keys, today, G, on_sale):
             if _t and "%" in _t[0]:
                 _a, _b = n1(_t[1], r"^([\d,]+) of"), n1(_t[1], r"of ([\d,]+) new")
                 C.true(f"Reminders on % adds up in {_id}", _b and abs(round(_a / _b * 100) - n1(_t[0], r"(\d+)%")) <= 1, f"{_t[0]} vs {_a} of {_b}")
+        # Guy, Nov 22: Players (all, new) filter: every version view has a New players view; new players are part of that view's active players
+        _ids = re.findall(r"id='(gst-[\w-]+)'", page)
+        C.true("Players filter on the page", "id='psel'" in page and "bl_psel_default" in page, "missing")
+        for _id in [x for x in _ids if not x.endswith("-new")]:
+            C.true(f"New players view for {_id}", _id + "-new" in _ids, "missing")
+            if _id + "-new" in _ids:
+                _pa = lambda i: page.find(f"id='{i}'"); _seg = lambda i: page[_pa(i):(lambda q: q if q > _pa(i) else _pa(i) + 6000)(page.find("<div class='gst'", _pa(i) + 10))]
+                _na, _nn = parse(_seg(_id)).get("Active players"), parse(_seg(_id + "-new")).get("New players")
+                C.true(f"New players tile in {_id}-new", bool(_nn), "missing")
+                if _na and _nn:
+                    _a, _n = n1(_na[0], r"([\d,]+)"), n1(_nn[0], r"([\d,]+)")
+                    C.true(f"New players <= active players in {_id}", _n is not None and _a is not None and _n <= _a, f"{_n} new vs {_a} active")
+                    _rt2 = parse(_seg(_id + "-new")).get("Reminders on"); _rn2 = n1(_rt2[1], r"of ([\d,]+) new") if _rt2 and "%" in _rt2[0] else None
+                    if _rn2 is not None:
+                        C.same(f"New players = Reminders-on new players in {_id}-new", _n, _rn2, max(2, wobble(_rn2)))
     except Exception as _e2:
         C.fails.append(f"Reminders on check could not run: {type(_e2).__name__}: {_e2}"[:240])
     # levels
