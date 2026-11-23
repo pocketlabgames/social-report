@@ -1437,6 +1437,55 @@ def game_section():
         return (f"<h3 class='sh3'>Day-1 return by version</h3><div class='dv'>{out}<div class='dvx'>{ax}</div>"
                 "<p class='dvk'>Black line = likely range; overlapping ranges = no real difference yet. Faded = under 100 players (too early). Same new players and days as each version's Day-1 tile.</p></div>")
     d1v_html = d1v_chart()
+
+    def d1t_chart():   # Guy, Nov 23: "Day-1 return" over time; blue = the D-1 badge's number (7 start days), dotted = each start day, bars = new players
+        try: dd = json.loads(RET.get("d1days") or "{}")
+        except Exception: dd = {}
+        ks = sorted(dd)
+        if len(ks) < 8:
+            return ""
+        base, back = [dd[k][0] for k in ks], [dd[k][1] for k in ks]
+        roll = [None] * 6 + [round(sum(back[i - 6:i + 1]) / sum(base[i - 6:i + 1]) * 100, 1) if sum(base[i - 6:i + 1]) else None for i in range(6, len(ks))]
+        rn = [None] * 6 + [sum(base[i - 6:i + 1]) for i in range(6, len(ks))]
+        vals = [v for v in roll if v is not None]
+        lo = max(i for i, v in enumerate(roll) if v is not None and v == min(vals))
+        D = lambda k: dt.date.fromisoformat(k)
+        data = {"labels": [D(k).strftime("%-m/%-d (%a)") for k in ks], "full": [D(k).strftime("%a. %-m/%-d") for k in ks],
+                "first": [D(ks[max(0, i - 6)]).strftime("%-m/%-d") for i in range(len(ks))],
+                "roll": roll, "rn": rn, "day": [round(b2 / b * 100, 1) if b else None for b, b2 in zip(base, back)], "base": base, "back": back, "lo": lo}
+        js = """<script>window.D1TCHART = () => { const X = __DATA__, cv = document.getElementById('d1tc'); if (!cv || !window.Chart || Chart.getChart(cv)) return;
+ const dark = matchMedia('(prefers-color-scheme: dark)').matches, grid = dark ? '#2c2c2a' : '#e1e0d9', muted = '#898781', last = X.roll.length - 1;
+ const ds = [
+  {type: 'line', label: 'Day-1 (7 start days)', data: X.roll, yAxisID: 'y', borderColor: '#2a78d6', borderWidth: 2.5, backgroundColor: 'rgba(42,120,214,.15)', fill: true, tension: .3, spanGaps: false,
+   pointRadius: X.roll.map((v, i) => i === X.lo || i === last ? 4 : 0), pointHoverRadius: 4, pointBackgroundColor: X.roll.map((v, i) => i === X.lo ? '#d0453a' : '#1e8e3e'), pointBorderWidth: 0, order: 1},
+  {type: 'line', label: 'Day-1 of that start day', data: X.day, yAxisID: 'y', borderColor: '#888780', borderDash: [2, 3], borderWidth: 2, pointRadius: 0, pointHoverRadius: 3, tension: .3, fill: false, order: 2},
+  {type: 'bar', label: 'New players', data: X.base, yAxisID: 'y2', backgroundColor: dark ? 'rgba(180,178,169,.18)' : 'rgba(180,178,169,.3)', barPercentage: .6, order: 3}];
+ const p = v => v == null ? '-' : v.toFixed(1) + '%';
+ const html = i => `<div class="ctt-h">${X.full[i]}</div><div class="stt"><span></span><small>Day-1</small><small>Players</small>`
+  + `<span><i style="background:#2a78d6"></i>${X.first[i]}-${X.labels[i].split(' ')[0]}</span><b>${p(X.roll[i])}</b><b>${X.rn[i] == null ? '-' : X.rn[i].toLocaleString()}</b>`
+  + `<span><i style="background:#c9c8c2"></i>That day</span><b>${p(X.day[i])}</b><b>${X.back[i]} of ${X.base[i]}</b></div>` + (i === X.lo ? '<div class="ctt-h" style="font-size:12px;margin-top:4px">Low point</div>' : '');
+ const tt = ({chart: c, tooltip: t}) => { let el = c.canvas.parentNode.querySelector('.ctt');
+  if (!el) { el = document.createElement('div'); el.className = 'ctt'; c.canvas.parentNode.appendChild(el); }
+  if (!t.opacity || !t.dataPoints.length) { el.style.opacity = 0; return; }
+  el.innerHTML = html(t.dataPoints[0].dataIndex + (c.$off || 0)); el.style.opacity = 1;
+  const W = c.canvas.parentNode.clientWidth, w = el.offsetWidth, hh = el.offsetHeight;
+  let x = t.caretX + 16; if (x + w > W) x = t.caretX - w - 16; if (x < 0) x = Math.max(0, (W - w) / 2);
+  el.style.left = x + 'px'; el.style.top = Math.max(0, Math.min(t.caretY - hh / 2, c.canvas.clientHeight - hh)) + 'px'; };
+ const ch = new Chart(cv, {data: {labels: X.labels, datasets: ds},
+  options: {responsive: true, maintainAspectRatio: false, animation: false, interaction: {mode: 'index', intersect: false},
+   plugins: {legend: {display: false}, tooltip: {enabled: false, external: tt}},
+   scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: 12}, callback(v) { return window.TWO ? TWO(this.getLabelForValue(v)) : this.getLabelForValue(v); }}},
+    y: {beginAtZero: true, suggestedMax: 25, grid: {color: grid}, ticks: {color: muted, callback: v => v + '%'}, title: {display: true, text: 'Came back next day', color: muted}},
+    y2: {beginAtZero: true, position: 'right', grid: {display: false}, ticks: {color: muted, precision: 0}, title: {display: true, text: 'New players', color: muted}}}}});
+ document.addEventListener('touchstart', e => { if (e.target !== cv) { const el = cv.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); } }, {passive: true}); }; </script>""".replace("__DATA__", json.dumps(data))
+        sw = lambda st: f"<svg width='16' height='10'><line x1='0' y1='5' x2='16' y2='5' stroke-width='2' {st}/></svg>"
+        legend = (f"<span class='lg'>{sw(chr(39).join(['stroke=', '#2a78d6', '']))}Day-1, last 7 start days (the D-1 badge)</span>"
+                  f"<span class='lg'>{sw(chr(39).join(['stroke=', '#888780', ' stroke-dasharray=', '2 3', '']))}Day-1 of each start day</span>"
+                  "<span class='lg'><svg width='12' height='10'><rect width='12' height='10' fill='#c9c8c2'/></svg>New players (right)</span>")
+        return (f"<h3 class='sh3' id='d1t'>Day-1 return</h3><div class='lgs' style='margin-top:6px'>{legend}</div>"
+                f"<div class='chart' style='height:280px'><canvas id='d1tc' data-last='{roll[-1]}' data-lo='{roll[lo]}' role='img' aria-label='Day-1 return by start day: 7-day line, each day, new players'></canvas></div>"
+                f"<p class='sub' style='margin:4px 0 14px'>Low {roll[lo]:.1f}% (start days {data['first'][lo]}-{D(ks[lo]).strftime('%-m/%-d')}) · now {roll[-1]:.1f}% ({'+' if roll[-1] >= roll[lo] else ''}{roll[-1] - roll[lo]:.1f} pts). Start day = the day a player first opened the game; days still in progress left out.</p>{js}")
+    d1t_html = d1t_chart()
     psel_html = " <select id='psel' class='psel' aria-label='Players'><option value='all'>All players</option><option value='new'>New players</option></select>" if VB and NB else ""
     gsel = lambda i: (f" <select id='{i}' class='gsel' aria-label='App versions'><option value='all'>All versions</option>" + (f"<option value='pre'>{e(PB['label'])}</option>" if PB else "") + f"<option value='vf'>{e(VB['label'])}</option>" + "".join(f"<option value='{k}'>{e(BX['label'])}</option>" for k, BX in XB.items()) + "</select>") if VB else ""   # Guy, Nov 16: one filter, shown on the tiles and the win rate chart
     gsel_html = gsel("gsel") + psel_html + (" <button id='gdef' type='button' class='gdef'>Set as default</button>" if VB else "")
@@ -1482,7 +1531,7 @@ def game_section():
             "rwd": [(MONEY.get(d) or {}).get("rwd") for d in days], "rwp": [(MONEY.get(wk(d)) or {}).get("rwd") for d in days], "pfull": [dt.date.fromisoformat(wk(d)).strftime("%a. %-m/%-d") for d in days]}
     funnel = ("<div class='chart' style='height:260px'><canvas id='gfun' role='img' aria-label='How far players get: players who reached each level, split into still playing and quit, with players lost between levels in red'></canvas></div>" if steps else
               f"<p class='sub gempty'>No furthest-level data yet. Bars show once players on released versions send it (Google Analytics needs up to a day).</p>")
-    legend = ("<div class='lgs' style='margin-top:6px'><span class='gk'><i style='background:#12A4A4'></i>Still playing</span> <span class='gk'><i style='background:var(--gleft)'></i>Quit (3+ days away)</span></div>" if playing and steps else "")
+    legend = ("<div class='lgs' style='margin-top:6px'><span class='gk'><i style='background:#12A4A4'></i>Still playing</span> <span class='gk'><i style='background:var(--gleft)'></i>Quit (9+ days away)</span></div>" if playing and steps else "")
     cv = CM.get("version", "")
     if show_cmp:
         compare = (f"<h3 class='sh3'>Did {e(cv)}+ help?</h3>"
@@ -1514,7 +1563,7 @@ def game_section():
  const FUN1 = X => { const pctOf = i => Math.round(X.reach[i] / X.mp * 100), has = X.playing.length > 0, leftAt = i => X.reach[i] - (X.playing[i] || 0);
   const range = i => { const a = X.steps[i], b = X.steps[i + 1]; return b === undefined ? `level ${a}+` : b === a + 1 ? `level ${a}` : `levels ${a}–${b - 1}`; };
   if (!X.steps.length || !X.mp) return; const left = dark ? '#55544f' : '#c9c7bd';
-  const ds = has ? [{label: 'Still playing', data: X.playing, backgroundColor: '#12A4A4', maxBarThickness: 34}, {label: 'Quit (3+ days away)', data: X.steps.map((s, i) => leftAt(i)), backgroundColor: left, maxBarThickness: 34}] : [{data: X.reach, backgroundColor: '#12A4A4', maxBarThickness: 34}];
+  const ds = has ? [{label: 'Still playing', data: X.playing, backgroundColor: '#12A4A4', maxBarThickness: 34}, {label: 'Quit (9+ days away)', data: X.steps.map((s, i) => leftAt(i)), backgroundColor: left, maxBarThickness: 34}] : [{data: X.reach, backgroundColor: '#12A4A4', maxBarThickness: 34}];
   const pcts = {id: 'pcts', afterDatasetsDraw(ch) { const c = ch.ctx, m = ch.getDatasetMeta(ch.data.datasets.length - 1); c.save(); c.fillStyle = muted; c.font = '10px system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'bottom';
    X.steps.forEach((s, i) => { const b = m.data[i]; if (b) c.fillText(pctOf(i) + '%', b.x, ch.scales.y.getPixelForValue(X.reach[i]) - 3); });
    c.fillStyle = '#E24B4A'; c.font = '600 11px system-ui, sans-serif';   // Guy, Nov 8: players lost between back-to-back levels, in red
@@ -1560,7 +1609,7 @@ def game_section():
     return (f"<style>.sh3{{font-size:18px;margin:22px 0 4px}} .gst{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:4px 0 18px}} "
             f".gt{{border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:1px}} .gt b{{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}} "
             f".gdef{{font:inherit;font-size:14px;padding:5px 12px;margin-left:6px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;vertical-align:middle}} .gdef:disabled{{color:var(--muted);cursor:default}} .gcard{{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:0 0 14px}} @media (max-width:700px){{.gcard{{padding:14px 12px}}}} .gcard .gt{{background:var(--bg);border-color:transparent}} .gst[hidden]{{display:none}} .dv{{margin:4px 0 18px}} .dvg{{margin:10px 0 4px}} .dvh{{font-weight:600;font-size:14px;margin-bottom:3px}} .dvr{{display:grid;grid-template-columns:120px 1fr 84px;align-items:center;gap:8px;margin:3px 0}} @media (max-width:700px){{.dvr{{grid-template-columns:92px 1fr 74px}}}} .dvl{{font-size:12px;color:var(--ink2)}} .dvt{{position:relative;height:16px;background:var(--bg);border-radius:4px}} .dvb{{height:100%;border-radius:4px}} .dvb.few{{opacity:.35}} .dvc{{position:absolute;top:7px;height:2px;background:var(--ink)}} .dvc:before,.dvc:after{{content:'';position:absolute;top:-4px;width:2px;height:10px;background:var(--ink)}} .dvc:before{{left:0}} .dvc:after{{right:0}} .dvv{{font-weight:600;font-size:14px;line-height:1.1}} .dvv small{{display:block;font-weight:400;font-size:10px;color:var(--muted)}} .dve{{position:absolute;left:6px;top:1px;font-size:11px;color:var(--muted)}} .dvx{{position:relative;height:14px;margin:6px 92px 0 128px;font-size:10px;color:var(--muted)}} @media (max-width:700px){{.dvx{{margin:6px 82px 0 100px}}}} .dvx span{{position:absolute;transform:translateX(-50%)}} .dvk{{font-size:11px;color:var(--muted);margin:10px 0 0}} .gsel,.psel{{margin-left:8px;font:inherit;font-size:14px;padding:4px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}} .gt span{{font-size:13px;color:var(--ink2)}} .gt small{{font-size:11px;color:var(--muted);line-height:1.3}} .gcmp{{font-style:normal;font-size:11px;font-weight:600;margin-top:3px}} .gcmp.up{{color:#1a8f4a}} .gcmp.down{{color:#c0392b}} .gcmp.same{{color:var(--muted)}} :root{{--gleft:#c9c7bd}} @media (prefers-color-scheme:dark){{:root{{--gleft:#55544f}}}} .gk{{font-size:12px;color:var(--muted);margin-right:12px;white-space:normal}} .gk i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}} @media (max-width:700px){{.gst{{grid-template-columns:1fr 1fr}} .gt b{{font-size:18px}}}}</style>"
-            f"<h2 class='sh' id='sec-game'>Game Analytics</h2><section class='gcard'>{stale_note}<p class='sub' style='margin-top:0'>From Firebase (Google Analytics).{gsel_html}</p><h3 class='sh3'>Game stats</h3>{tiles_html}{d1v_html}"   # Guy, Nov 16: one header, one note, one filter for all game charts; no descriptions under chart titles
+            f"<h2 class='sh' id='sec-game'>Game Analytics</h2><section class='gcard'>{stale_note}<p class='sub' style='margin-top:0'>From Firebase (Google Analytics).{gsel_html}</p><h3 class='sh3'>Game stats</h3>{tiles_html}{d1v_html}{d1t_html}"   # Guy, Nov 16: one header, one note, one filter for all game charts; no descriptions under chart titles
             f"<h3 class='sh3'>How far players get</h3>{legend}{funnel}{compare}{rewarded}{winrate}"
             f"<h3 class='sh3'>Players per day</h3>"
             f"<div class='chart' style='height:260px'><canvas id='gday' role='img' aria-label='Active players per day on all versions'></canvas></div>{RNG('rngg')}</section>{js}{GSEL_JS if VB else ''}")
@@ -2353,6 +2402,7 @@ function rangeSlider(chart, D, O) {{   // Guy, Oct 27: drag the blue window to l
  const up = () => {{ x0 = null; box.classList.remove('drag'); }}; box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up); }}
 mk(document.getElementById('c'), D);
 if (window.SRCCHART) SRCCHART();
+if (window.D1TCHART) D1TCHART();   // Guy, Nov 23: Day-1 return chart
 if (window.SRCHCHART) SRCHCHART();   // Guy, Nov 17: App Store search chart
 if (window.GAMECHART) GAMECHART();   // Guy, Nov 2: Firebase game stats charts   // Guy, Oct 29: App Store sources chart
 </script>{cmap_html()}{earn_html(money_daily)}</body></html>"""

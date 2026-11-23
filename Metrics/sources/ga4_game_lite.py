@@ -18,6 +18,7 @@ SCOPES = ["https://www.googleapis.com/auth/analytics.readonly"]
 FIRST = (1, 3, 1)   # first app version that sends the game events
 START = dt.date(2026, 11, 1)   # 1.3.1 went live Nov 1; earlier days were test devices only (Guy, Nov 2)
 APP_ID = "6816478290"
+QUIT_DAYS = 9   # Guy, Nov 23: "Quit is 9+ days ago" (was 3): still playing = played today or in the 8 days before
 RELFILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "released-days.json")   # Apple release day of each version, saved while it is live
 STEPS = list(range(1, 11)) + [11, 16, 21, 26, 31]   # Guy, Nov 6: "Where players stop" bars: levels 1-10 one by one, then steps of 5, then 31+
 RELEASED = {"1.3.1": START, "1.3.2": dt.date(2026, 11, 4), "1.3.3": dt.date(2026, 11, 6), "1.3.11": dt.date(2026, 11, 15), "1.3.18": dt.date(2026, 11, 20), "1.3.19": dt.date(2026, 11, 21), "1.3.20": dt.date(2026, 11, 21)}   # App Store release days; later versions use Apple's date while live
@@ -194,7 +195,7 @@ def fetch(keys_dir, today):
         ks = [lv for lv in st if any(x >= lv for x in lvs)]
         rs = _many(s, [{"dateRanges": [dr], "metrics": [{"name": "activeUsers"}], "dimensionFilter": {"andGroup": {"expressions": [base, {"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in lvs if x >= lv]}}}]}}} for lv in ks])
         return {str(lv): int(next(iter(r), ([], [0]))[1][0]) for lv, r in zip(ks, rs)}
-    out["active"] = reached(newer, {"startDate": max(today - dt.timedelta(days=2), START).isoformat(), "endDate": today.isoformat()}, STEPS)
+    out["active"] = reached(newer, {"startDate": max(today - dt.timedelta(days=QUIT_DAYS - 1), START).isoformat(), "endDate": today.isoformat()}, STEPS)
     # Guy, Nov 6: did 1.3.4 help? New players only (first opened the game after it came out) vs new players before it, so updaters with high levels don't flatter it
     cmp = {"version": ".".join(map(str, COMPARE)), "live": live >= COMPARE}
     if live >= COMPARE:
@@ -265,7 +266,7 @@ def fetch(keys_dir, today):
         for lv, r in zip(vl, rs):
             B["reach"][str(lv)] = int(r[0][1][0]) if r else 0
         B["freach"] = reached(vfil, dr, STEPS)   # Guy, Nov 16: "How far players get" for the newest versions (players who reached each step)
-        B["factive"] = reached(vfil, {"startDate": max(until - dt.timedelta(days=2), since).isoformat(), "endDate": until.isoformat()}, STEPS)   # still playing = played in the last 3 days
+        B["factive"] = reached(vfil, {"startDate": max(until - dt.timedelta(days=QUIT_DAYS - 1), since).isoformat(), "endDate": until.isoformat()}, STEPS)   # still playing = played in the last QUIT_DAYS - 1 days
         B["lv"] = {}   # Guy, Nov 16: win rate per level for the newest versions too
         lvf2 = {"andGroup": {"expressions": [vfil, {"filter": {"fieldName": "eventName", "stringFilter": {"matchType": "BEGINS_WITH", "value": "lv_"}}}]}}
         for (e,), (u, c) in _run(s, {"dateRanges": [dr], "dimensions": [{"name": "eventName"}], "metrics": [{"name": "totalUsers"}, {"name": "eventCount"}], "dimensionFilter": lvf2}):

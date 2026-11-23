@@ -418,10 +418,10 @@ def _check_game(C, page, keys, today, G, on_sale):
     if not m:
         return
     X = json.loads(m.group(1))
-    recent = released_only(today - dt.timedelta(days=2), today)
+    recent = released_only(today - dt.timedelta(days=8), today)   # Guy, Nov 23: quit = 9+ days away
     for i, st in enumerate(X["steps"]):
         C.same(f"Reached level {st}", X["reach"][i], next((by[k] for k in levels if k >= st), 0), 1)
-        C.same(f"Still playing at level {st}", X["playing"][i], min(reach_of(st, recent, (today - dt.timedelta(days=2), today)), X["reach"][i]), 1)
+        C.same(f"Still playing at level {st}", X["playing"][i], min(reach_of(st, recent, (today - dt.timedelta(days=8), today)), X["reach"][i]), 1)
         C.true(f"Level {st} bar adds up", X["playing"][i] <= X["reach"][i] and (i == 0 or X["reach"][i] <= X["reach"][i - 1]))
     # players per day chart
     daily = {r[0][0]: int(r[1][0]) for r in run((START, today), ["date"])}
@@ -464,6 +464,17 @@ def _check_game(C, page, keys, today, G, on_sale):
     base = sum(int(r["metricValues"][0]["value"]) for r in rows if int(r["dimensionValues"][1]["value"]) == 0)
     back = sum(int(r["metricValues"][0]["value"]) for r in rows if int(r["dimensionValues"][1]["value"]) == 1)
     C.same("Day-1 retention", _num(r"(\d+)% <small><span class='nf'>day-1 retention", page), round(back / base * 100) if base else 0, 1)
+    # Guy, Nov 23: Day-1 return chart: last point = the badge's 7 start days (same cohorts), every start day since Nov 1 present
+    _m = re.search(r"id='d1tc' data-last='([\d.]+)' data-lo='([\d.]+)'", page)
+    C.true("Day-1 return chart on the page", bool(_m), "missing")
+    if _m:
+        C.same("Day-1 chart, last point = 7 start days (Google Analytics)", float(_m.group(1)), round(back / base * 100, 1) if base else 0, 1.0)
+        C.true("Day-1 chart low is not above its last point", float(_m.group(2)) <= float(_m.group(1)), f"low {_m.group(2)} > last {_m.group(1)}")
+        _dd = re.search(r"window.D1TCHART = \(\) => \{ const X = (\{.*?\}), cv = ", page)
+        _X = json.loads(_dd.group(1)) if _dd else {}
+        C.same("Day-1 chart start days (Nov 1 to 2 days ago)", len(_X.get("base", [])), (today - dt.timedelta(days=2) - dt.date(2026, 11, 1)).days + 1)
+    # Guy, Nov 23: "Quit is 9+ days ago" in How far players get
+    C.true("Levels chart says Quit (9+ days away)", "Quit (9+ days away)" in page and "3+ days away" not in page, "old 3-day wording or label missing")
 
 
 

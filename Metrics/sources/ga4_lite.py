@@ -1,6 +1,7 @@
 """Firebase / Google Analytics 4 retention for the social report: day-1 and day-7 return rate of new players.
 Key: Private Keys/ga4-token.json (analytics.readonly, made once with make_ga4_token.py). Property: beaker-lab (558070583)."""
 import datetime as dt
+import json
 import os
 
 import pandas as pd
@@ -55,4 +56,11 @@ def fetch(keys_dir, today):
             raise RuntimeError(f"GA4 {r.status_code}: {r.text[:200]}")
         back7 += sum(int(x["metricValues"][0]["value"]) for x in r.json().get("rows", []))
     r7 = round(back7 / n7 * 100, 1) if n7 else None
-    return {"GA4 Retention Lite": (pd.DataFrame([{"d1": r1, "d1_n": n1, "d7": r7, "d7_n": n7}]), None)}
+    # Guy, Nov 23: "Day-1 return" chart: every complete start day since Nov 1, same cohort question as the badge (7 days per question)
+    days, d = {}, dt.date(2026, 11, 1)
+    while d <= today - dt.timedelta(days=2):
+        e = min(d + dt.timedelta(days=6), today - dt.timedelta(days=2))
+        for c, v in _cohorts(s, d, e, 1).items():
+            days[c] = [v.get(0, 0), v.get(1, 0)]
+        d = e + dt.timedelta(days=1)
+    return {"GA4 Retention Lite": (pd.DataFrame([{"d1": r1, "d1_n": n1, "d7": r7, "d7_n": n7, "d1days": json.dumps(days, sort_keys=True)}]), None)}
