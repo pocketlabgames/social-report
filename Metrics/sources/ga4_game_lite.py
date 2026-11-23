@@ -51,6 +51,27 @@ def _run(s, body):
     return [([d["value"] for d in row.get("dimensionValues", [])], [float(m["value"]) for m in row["metricValues"]]) for row in r.json().get("rows", [])]
 
 
+# Guy, Nov 22: "remove tutorial uses from the super stir/solve card". From 1.3.19 every new player gets a free Super Stir
+# on level 4 and a free Super Solve on level 5 as part of the tutorial (kind "free", level param = that level); those are left out.
+TUT_VERS = r"1\.3\.(19|[2-9][0-9])|1\.([4-9]|[1-9][0-9])\..*|([2-9]|[1-9][0-9])\..*"
+SUPERS = ["super_stir", "super_solve"]
+
+
+def _tut():
+    v = {"filter": {"fieldName": "appVersion", "stringFilter": {"matchType": "FULL_REGEXP", "value": TUT_VERS}}}
+    f = lambda e, l: {"andGroup": {"expressions": [{"filter": {"fieldName": "eventName", "stringFilter": {"value": e}}}, {"filter": {"fieldName": "customEvent:kind", "stringFilter": {"value": "free"}}},
+                                                   {"filter": {"fieldName": "customEvent:level", "stringFilter": {"value": l}}}, v]}}
+    return {"orGroup": {"expressions": [f("super_stir", "4"), f("super_solve", "5")]}}
+
+
+def _supers(s, dr, fil):
+    """Super Stir / Super Solve uses without the tutorial ones, plus how many players made them."""
+    f = {"andGroup": {"expressions": [fil, {"filter": {"fieldName": "eventName", "inListFilter": {"values": SUPERS}}}, {"notExpression": _tut()}]}}
+    n = {e: int(c) for (e,), (c,) in _run(s, {"dateRanges": [dr], "dimensions": [{"name": "eventName"}], "metrics": [{"name": "eventCount"}], "dimensionFilter": f})}
+    u = _run(s, {"dateRanges": [dr], "metrics": [{"name": "activeUsers"}], "dimensionFilter": f})
+    return {"super_stir": n.get("super_stir", 0), "super_solve": n.get("super_solve", 0), "super_users": int(u[0][1][0]) if u else 0}
+
+
 def _many(s, bodies):
     """Guy, Nov 20: the per-level questions ran one after another and the step took ~10 min (one more question per new
     highest level, every day). Same questions, 8 at a time (GA4 allows 10 at once per property); answers in the same order."""
@@ -142,6 +163,7 @@ def fetch(keys_dir, today):
     out["week"]["players"] = int(wk[0][1][0]) if wk else 0
     for (e,), (n,) in _run(s, {"dateRanges": [d7], "dimensions": [{"name": "eventName"}], "metrics": [{"name": "eventCount"}], "dimensionFilter": evf}):
         out["week"][e] = int(n)
+    out["week"].update(_supers(s, d7, newer))   # Guy, Nov 22: tutorial uses left out
     for (o,), (n,) in _run(s, {"dateRanges": [d7], "dimensions": [{"name": "customEvent:outcome"}], "metrics": [{"name": "eventCount"}], "dimensionFilter": one("level_end")}):
         if o != "(not set)":
             out["outcome"][o] = int(n)
@@ -222,6 +244,7 @@ def fetch(keys_dir, today):
         B["today"] = int(r[0][1][0]) if r else 0
         for (e,), (n,) in _run(s, {"dateRanges": [dr], "dimensions": [{"name": "eventName"}], "metrics": [{"name": "eventCount"}], "dimensionFilter": {"andGroup": {"expressions": [{"filter": {"fieldName": "eventName", "inListFilter": {"values": EVENTS}}}, vfil]}}}):
             B["week"][e] = int(n)
+        B["week"].update(_supers(s, dr, vfil))   # Guy, Nov 22: tutorial uses left out
         for (o,), (n,) in _run(s, {"dateRanges": [dr], "dimensions": [{"name": "customEvent:outcome"}], "metrics": [{"name": "eventCount"}], "dimensionFilter": one2("level_end")}):
             if o not in ("(not set)", ""):
                 B["outcome"][o] = int(n)

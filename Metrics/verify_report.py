@@ -305,10 +305,19 @@ def _check_game(C, page, keys, today, G, on_sale):
     C.same("Win rate: wins", n1(tile("Win rate")[1], r"([\d,]+) wins"), wins, wobble(wins))
     C.same("Win rate: attempts", n1(tile("Win rate")[1], r"of ([\d,]+) level"), tries, wobble(tries))
     C.same("Win rate", n1(tile("Win rate")[0], r"(\d+)%"), round(wins / tries * 100) if tries else 0, 2)
-    C.same("Super Stir uses", n1(tile("Super Stir / Solve uses")[1], r"([\d,]+) Super Stir"), ev.get("super_stir", 0), wobble(ev.get("super_stir", 0)))
-    C.same("Super Solve uses", n1(tile("Super Stir / Solve uses")[1], r"([\d,]+) Super Solve"), ev.get("super_solve", 0), wobble(ev.get("super_solve", 0)))
+    # Guy, Nov 22: tutorial uses (free Super Stir on level 4, free Super Solve on level 5, 1.3.19+) are left out of the card; counted here per row
+    _tutv = lambda v: (1, 3, 19) <= _ver(v)
+    _sup = {"super_stir": 0, "super_solve": 0}
+    for (e, k, l, v), (n,) in run(d7, ["eventName", "customEvent:kind", "customEvent:level", "appVersion"], ["eventCount"], AND(wk, among("eventName", list(_sup)))):
+        if not (k == "free" and _tutv(v) and (e, l) in (("super_stir", "4"), ("super_solve", "5"))):
+            _sup[e] += int(n)
+    _tutf = {"orGroup": {"expressions": [AND(has("eventName", e), has("customEvent:kind", "free"), has("customEvent:level", l), among("appVersion", [v for v in seen if _tutv(v)] or ["none"])) for e, l in (("super_stir", "4"), ("super_solve", "5"))]}}
+    _supu = one(d7, flt=AND(wk, among("eventName", list(_sup)), {"notExpression": _tutf}))
+    C.same("Super Stir uses (tutorial left out)", n1(tile("Super Stir / Solve uses")[1], r"([\d,]+) Super Stir"), _sup["super_stir"], wobble(_sup["super_stir"]))
+    C.same("Super Solve uses (tutorial left out)", n1(tile("Super Stir / Solve uses")[1], r"([\d,]+) Super Solve"), _sup["super_solve"], wobble(_sup["super_solve"]))
     C.same("Purchases (App Store sales, last 7 days)", n1(tile("Purchases")[0], r"([\d,]+)"), sum(C.iapn.get((today - dt.timedelta(days=i)).isoformat(), 0) for i in range(7)))
-    C.same("Players, last 7 days", n1(tile("Super Stir / Solve uses")[1], r"by ([\d,]+) player"), players, max(1, wobble(players)))
+    C.same("Players who used Super Stir / Solve", n1(tile("Super Stir / Solve uses")[1], r"by ([\d,]+) player"), _supu, max(1, wobble(_supu)))
+    C.true("Super Stir / Solve card says tutorial uses are left out", all("free tutorial ones left out" in x for x in re.findall(r"<span>Super Stir / Solve uses</span><small>(.*?)</small>", page)) and "<span>Super Stir / Solve uses</span>" in page, "label missing on a view")
     C.same("Ad views per player", _num(r"([\d.]+)", tile("Ad views per player")[0]), round(ev.get("ad_shown", 0) / players, 1) if players else 0, 0.3)
     # Guy, Nov 22 audit: the tile must equal its own listed counts / its own listed players (0.7 read as 160/260 = 0.6 before)
     _at = tile("Ad views per player")
