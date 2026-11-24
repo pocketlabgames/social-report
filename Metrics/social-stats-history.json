@@ -93290,11 +93290,11 @@
     }
   },
   {
-    "checked_at": "2026-11-24 14:03",
+    "checked_at": "2026-11-24 14:08",
     "source": "social_report.py",
     "instagram": {
       "posts": 229,
-      "views": 127514,
+      "views": 127525,
       "top_views": 2210,
       "likes": 192,
       "comments": 0,
@@ -93306,7 +93306,7 @@
     },
     "facebook": {
       "posts": 232,
-      "views": 45753,
+      "views": 45756,
       "top_views": 587,
       "likes": 128,
       "comments": 0,
@@ -93318,7 +93318,7 @@
     },
     "youtube": {
       "posts": 230,
-      "views": 39599,
+      "views": 39606,
       "top_views": 3162,
       "likes": 162,
       "comments": 0,
@@ -93327,7 +93327,7 @@
       "likes_per_k": 4.1,
       "views_3s": 10005,
       "public_posts": 230,
-      "public_views": 39598,
+      "public_views": 39605,
       "followers": 10
     },
     "tiktok": {
