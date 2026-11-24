@@ -26,6 +26,8 @@ RELEASED = {"1.3.1": START, "1.3.2": dt.date(2026, 11, 4), "1.3.3": dt.date(2026
 VF = (1, 3, 11)   # Guy, Nov 16: Game stats filter "1.3.11+"
 VF_TO = (1, 3, 17)   # Guy, Nov 22: "1.3.11 to 1.3.17" (only the newest option keeps the +)
 VX = [((1, 3, 18), (1, 3, 23), "1.3.18 to 1.3.23"), ((1, 4, 0), None, None)]   # Guy, Nov 24: 1.3.18 to 1.3.23 grouped, new 1.4.0+ (was 1.3.18/19 and 1.3.20+, Nov 22); only an open-ended option has a +; each option shows once that version is on the App Store (vers stops at the live version), until then "vxnext" lists its label for the Day-1 chart
+QS_FROM = dt.date(2026, 11, 25)   # Guy, Nov 24: "track the quiet start update made today" (live config, done Nov 24 10:13 AM ET; that day is in neither group)
+QS_BEFORE = (dt.date(2026, 11, 21), dt.date(2026, 11, 23))   # before = new players on 1.3.20+ on these first days
 COMPARE = (1, 3, 20)   # Guy, Nov 21: "Did 1.3.20+ help?" vs 1.3.11+ (1.3.11 to 1.3.19); Nov 20 was 1.3.18; was 1.3.11 vs before.
 BASE = (1, 3, 11)   # reference line: new players who started on BASE..COMPARE-1, from BASE's release to the day before COMPARE's
 # Guy, Nov 16: "Did 1.3.11 help?" (was 1.3.4); first version with the new-player changes; new players on it vs new players before it
@@ -390,11 +392,31 @@ def fetch(keys_dir, today):
             k = "v" + "_".join(map(str, X))
             J[k] = (xv, min(rel(v) for v in xv), today, L or ".".join(map(str, X)) + "+")
             R[k] = [".".join(map(str, X)), ".".join(map(str, H)) if H else None]
+    def quiet(vs, a, b):   # one row of the Quiet start card: new players' first day (complete days), and the next day
+        ds = [(a + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((b - a).days + 1)]
+        if not vs or not ds:
+            return {"n": 0}
+        fil = {"andGroup": {"expressions": [newer, {"filter": {"fieldName": "appVersion", "inListFilter": {"values": vs}}}]}}
+        E = ["lv_win_1", "lv_win_2", "lv_win_3", "lv_win_7"]
+        r = _run(s, {"dateRanges": [{"startDate": a.isoformat(), "endDate": b.isoformat()}], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}, {"name": "eventName"}], "metrics": [{"name": "totalUsers"}], "limit": 10000,
+                     "dimensionFilter": {"andGroup": {"expressions": [fil, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": ds}}}, {"filter": {"fieldName": "eventName", "inListFilter": {"values": E}}}]}}})
+        l10 = day1_l10(fil, a, b)
+        base = {d: int(n) for (d, d2), (n,) in _run(s, {"dateRanges": [{"startDate": a.isoformat(), "endDate": b.isoformat()}], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}], "metrics": [{"name": "activeUsers"}], "limit": 10000,
+                "dimensionFilter": {"andGroup": {"expressions": [fil, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": ds}}}]}}}) if d == d2}
+        nx = [d for d in base if d <= (today - dt.timedelta(days=2)).strftime("%Y%m%d")]
+        bk = _back(s, nx, fil)
+        return {"n": l10[1], "l10": l10[0], "w": {e[7:]: sum(int(n) for (d, d2, x), (n,) in r if d == d2 and x == e) for e in E},
+                "back": [sum(min(bk[d], base[d]) for d in nx), sum(base[d] for d in nx)], "a": a.isoformat(), "b": b.isoformat()}
     with ThreadPoolExecutor(12) as ex:
+        yday = today - dt.timedelta(days=1)
+        Q = {"before": ex.submit(quiet, [v for v in vers if (1, 3, 20) <= _ver(v) < (1, 4, 0)], *QS_BEFORE),
+             "after": ex.submit(quiet, [v for v in vers if (1, 3, 20) <= _ver(v) < (1, 4, 0)], QS_FROM, yday),
+             "after140": ex.submit(quiet, [v for v in vers if _ver(v) >= (1, 4, 0)], QS_FROM, yday)}
         F = {k: ex.submit(block, *v) for k, v in J.items()}
         # Guy, Nov 22: "Players (all, new)" filter: the same tile sets for new players only (first day in each view's days)
         N = {"all": ex.submit(block, vers, max(today - dt.timedelta(days=6), START), today, "All versions", True)}
         N.update({k: ex.submit(block, *v, True) for k, v in J.items()})
+    out["quiet"] = {k: f.result() for k, f in Q.items()}
     for k in ("vf", "pre"):
         if k in F:
             out[k] = F[k].result()
