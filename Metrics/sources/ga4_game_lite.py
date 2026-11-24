@@ -286,6 +286,17 @@ def fetch(keys_dir, today):
     out["remind"] = remind(newer, max(today - dt.timedelta(days=6), START), today)
     # Guy, Nov 16: the same tiles for the newest versions only (1.3.11+), from the first one's release day to today
     # Guy, Nov 19: and for the versions before 1.3.11, over the same number of days just before 1.3.11 came out (each 1.3.11+ tile compares to it)
+    def day1_l10(fil, since, until):   # Guy, Nov 24: "add the level 10 card": new players whose next level was 10+ by the end of their first day; complete days only
+        c = min(until, today - dt.timedelta(days=1))
+        if c < since:
+            return None
+        ds = [(since + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((c - since).days + 1)]
+        ask = lambda *x: sum(int(n) for (d, d2), (n,) in _run(s, {"dateRanges": [{"startDate": since.isoformat(), "endDate": c.isoformat()}], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}], "metrics": [{"name": "activeUsers"}],
+              "dimensionFilter": {"andGroup": {"expressions": [fil, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": ds}}}, *x]}}, "limit": 10000}) if d == d2)
+        hi = [str(x) for x in lvs if x >= 10]
+        return [ask({"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": hi}}}) if hi else 0, ask(), since.isoformat(), c.isoformat()]
+    out["l10"] = day1_l10(newer, START, today)
+
     def block(vf, since, until, label, new=False):
         vfil = {"andGroup": {"expressions": [newer, {"filter": {"fieldName": "appVersion", "inListFilter": {"values": vf}}}]}}   # newer already drops pre-release test days
         if new:   # Guy, Nov 22: Players filter "New" = players whose first day falls in this view's days
@@ -335,6 +346,7 @@ def fetch(keys_dir, today):
                 row = B["lv"].setdefault(n, {})
                 row[kind[3:]], row[kind[3:] + "s"] = int(u), int(c)
         B["remind"] = remind(vfil, since, until)
+        B["l10"] = day1_l10(vfil, since, until)
         # Guy, Nov 19: Day-1 return = new players (first day on these versions) who played again the very next day; complete days only
         c_end = min(until, today - dt.timedelta(days=2))
         if c_end >= since:

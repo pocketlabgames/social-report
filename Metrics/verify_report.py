@@ -268,6 +268,23 @@ def _check_game(C, page, keys, today, G, on_sale):
                     back += min(n0, next_day(day, vs, 7, (today - day).days))   # Guy, Nov 24: returners tied to their start version
             C.same(f"{name} Day-7: new players", n1(tl("Day-7 return")[1], r"of ([\d,]+) new"), base, 1)
             C.same(f"{name} Day-7: came back", n1(tl("Day-7 return")[1], r"^([\d,]+) of"), back, 1)
+        # Guy, Nov 24: "Reached level 10 on day one" card, own pull for every version view (all, before, each group, and the New players views)
+        for _k, _b in [("all", {**G, "vers": want}), ("pre", G.get("pre")), ("vf", G.get("vf"))] + list((G.get("vx") or {}).items()):
+            if not _b:
+                continue
+            _x = page.find(f"id='gst-{_k}'"); _y = page.find("<div class='gst'", _x + 10); _t = parse(page[_x:_y if _y > _x else _x + 6000]).get("Reached level 10 on day one")
+            C.true(f"Level 10 card in {_k}", _x >= 0 and bool(_t), "missing")
+            _d = _b.get("l10")
+            if not _t or not _d:
+                continue
+            _a, _c = dt.date.fromisoformat(_d[2]), dt.date.fromisoformat(_d[3])
+            C.true(f"Level 10 card {_k}: complete days only", _c < today, f"runs to {_c}")
+            _fd = among("firstSessionDate", [(_a + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((_c - _a).days + 1)])
+            _sum = lambda *f: sum(int(r[1][0]) for r in run((_a, _c), ["firstSessionDate", "date"], flt=AND(released_only(_a, _c, _b["vers"]), _fd, *f)) if r[0][0] == r[0][1])
+            _n, _r10 = _sum(), _sum({"filter": {"fieldName": "customUser:max_level", "stringFilter": {"matchType": "FULL_REGEXP", "value": "[1-9][0-9]+"}}})
+            C.same(f"Level 10 card {_k}: new players", n1(_t[1], r"of ([\d,]+) new"), _n, 1)
+            C.same(f"Level 10 card {_k}: reached level 10", n1(_t[1], r"^([\d,]+) of"), _r10, 1)
+            C.true(f"Level 10 card {_k}: percent", _t[0] == (f"{_d[0] / _d[1] * 100:.0f}%" if _d[1] else "—"), _t[0])
         C.true("1.3.11 to 1.3.17 label (only the newest option has a +)", VB.get("label") == "1.3.11 to 1.3.17", VB.get("label"))
         d1_check("1.3.11 to 1.3.17", VB, vtile)
         d7_check("1.3.11 to 1.3.17", VB, vtile)
@@ -353,7 +370,7 @@ def _check_game(C, page, keys, today, G, on_sale):
         C.same("Day-7 return: new players (all versions)", n1(_t7[1], r"of ([\d,]+) new"), _b7, max(2, wobble(_b7)))
         C.same("Day-7 return: came back (all versions)", n1(_t7[1], r"^([\d,]+) of"), _k7, 1)
         _o7 = [m.group(1) for m in re.finditer(r"<div class='gt'><b>.*?</b><span>(.*?)</span>", page[a0:v0] if a0 >= 0 and v0 > a0 else page)]
-        C.true("Game stats order: Day-1, Day-7, Win rate, Typical furthest level", _o7[1:5] == ["Day-1 return", "Day-7 return", "Win rate", "Typical furthest level"], f"order is {_o7[:6]}")
+        C.true("Game stats order: Day-1, Day-7, Win rate, Typical furthest level, Reached level 10", _o7[1:6] == ["Day-1 return", "Day-7 return", "Win rate", "Typical furthest level", "Reached level 10 on day one"], f"order is {_o7[:6]}")
     except Exception as _e7:
         C.fails.append(f"Day-7 check could not run: {type(_e7).__name__}: {_e7}"[:240])
     # Guy, Nov 21: Reminders on = new players (first opened in the last 7 days) with quiet (soft_provisional) or full reminders (soft_authorized / remind_allow)

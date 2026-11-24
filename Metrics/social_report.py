@@ -1326,6 +1326,14 @@ def game_section():
         span = a.strftime('%b %-d') + ("" if a == b else "–" + b.strftime('%-d' if a.month == b.month else '%b %-d'))
         return (f"{d[0] / d[1] * 100:.0f}%", "Day-1 return", f"{d[0]:,} of {d[1]:,} new players came back the next day · started {span}")
 
+    def l10tile(B):   # Guy, Nov 24: "don't replace average level. add the level 10 card to the section near it"
+        d = B.get("l10")
+        if not d or not d[1]:
+            return ("—", "Reached level 10 on day one", "no complete day yet")
+        a, b = dt.date.fromisoformat(d[2]), dt.date.fromisoformat(d[3])
+        span = a.strftime('%b %-d') + ("" if a == b else "–" + b.strftime('%-d' if a.month == b.month else '%b %-d'))
+        return (f"{d[0] / d[1] * 100:.0f}%", "Reached level 10 on day one", f"{d[0]:,} of {d[1]:,} new players · started {span}")
+
     def rmtile(R, when):   # Guy, Nov 21: "add quiet reminders opt-in rate"
         if not R:
             return ("—", "Reminders on", "Firebase reminder data not loaded")
@@ -1366,6 +1374,7 @@ def game_section():
                 d7tile(B, newest),
                 (f"{oc2.get('win', 0) / on2 * 100:.0f}%" if on2 else "—", "Win rate", f"{oc2.get('win', 0):,} wins of {on2:,} level attempts" + (f", {when}" if newest else "") + (f" · {sk2:,} skip{'' if sk2 == 1 else 's'} left out" if sk2 else "") if on2 else "no win/loss data yet"),
                 (f"{half2}" if mp2 else "—", "Typical furthest level", f"half of {pl(mp2)} reached level {half2}+ · top player: {lv2[-1]:,}, " + (when if newest else "since Nov 1") if mp2 else "no level data yet"),   # Guy, Nov 8: middle player, not the average
+                l10tile(B),
                 (per2(ads2), "Ad views per player", (" · ".join(f"{v:,} {'between levels' if k == 'interstitial' else k}" for k, v in sorted(kd2.items())) or f"{ads2:,} ads") + f" {'' if newest else 'in '}{when}" + ("" if newest else f" · per player on 1.3.1+ ({P2:,})") + few(P2)),   # Guy, Nov 22 audit: the tile above says 260 players; this divides by the 235 on 1.3.1+ (ads are only counted from 1.3.1)
                 (f"{mw2:,}", "+Moves videos watched", f"{mw2:,} of {mo2:,} offers{f' ({mw2 / mo2 * 100:.0f}%)' if mo2 else ''} · {pl(mwp2)} · out of moves popup, {when}"),   # Guy, Nov 9: +5 moves per video
                 (f"{sup2:,}", "Super Stir / Solve uses", f"{W2.get('super_stir', 0):,} Super Stir · {W2.get('super_solve', 0):,} Super Solve, by {pl(W2.get('super_users', 0))} on {('versions before ' + B['label'][7:]) if B.get('label', '').startswith('Before ') else B['label'] if newest else '1.3.1+'} · free tutorial ones left out"),
