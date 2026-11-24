@@ -207,13 +207,18 @@
 "pv_search": 15
 },
 "2026-11-22": {
-"dl_ads": 93,
-"dl_browse": 2,
-"dl_search": 27,
+"dl_ads": 186,
+"dl_browse": 4,
+"dl_search": 54,
 "imp_search": 5453,
 "pv_ads": 3495,
 "pv_browse": 118,
 "pv_other": 1647,
 "pv_search": 28
+},
+"2026-11-23": {
+"dl_ads": 11,
+"dl_browse": 2,
+"dl_search": 8
 }
 }
