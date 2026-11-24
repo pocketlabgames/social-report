@@ -54,6 +54,43 @@ def _run(s, body):
     return [([d["value"] for d in row.get("dimensionValues", [])], [float(m["value"]) for m in row["metricValues"]]) for row in r.json().get("rows", [])]
 
 
+def _ff(x):
+    """A Data API filter as a funnel filter (same fields, "filter" is called "funnelFieldFilter" there)."""
+    if isinstance(x, dict):
+        return {("funnelFieldFilter" if k == "filter" else k): _ff(v) for k, v in x.items()}
+    return [_ff(v) for v in x] if isinstance(x, list) else x
+
+
+_BACK = {}
+
+
+def _back(s, days, flt):
+    """Guy, Nov 24: new players of each first day (YYYYMMDD) who played the next day, tied to the version they STARTED on (funnel: step 1 = first
+    day on these versions, step 2 = next day). Before, anyone with that first day who came back on these or later versions was counted, so players
+    who started on 1.3.18/19 were added to "1.3.11 to 1.3.17" (29 shown, really 16)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def ask(d):
+        n = (dt.datetime.strptime(d, "%Y%m%d") + dt.timedelta(days=1)).date()
+        on = lambda f, v: {"filter": {"fieldName": f, "stringFilter": {"value": v}}}
+        step1 = {"andGroup": {"expressions": [flt, on("firstSessionDate", d), on("date", d), NO_CT]}}
+        body = {"dateRanges": [{"startDate": f"{d[:4]}-{d[4:6]}-{d[6:]}", "endDate": n.isoformat()}],
+                "funnel": {"steps": [{"name": "start", "filterExpression": _ff(step1)}, {"name": "back", "filterExpression": _ff(on("date", n.strftime("%Y%m%d")))}]}}
+        key = json.dumps(body, sort_keys=True)
+        if key not in _BACK:
+            for wait in (2, 5, 10, 0):
+                r = s.post(f"https://analyticsdata.googleapis.com/v1alpha/properties/{PROPERTY}:runFunnelReport", json=body, timeout=60)
+                if r.ok or r.status_code not in (429, 500, 503) or not wait:
+                    break
+                time.sleep(wait)
+            if not r.ok:
+                raise RuntimeError(f"GA4 funnel {r.status_code}: {r.text[:200]}")
+            _BACK[key] = {row["dimensionValues"][0]["value"][:1]: int(row["metricValues"][0]["value"]) for row in r.json().get("funnelTable", {}).get("rows", [])}.get("2", 0)
+        return _BACK[key]
+    with ThreadPoolExecutor(8) as ex:
+        return dict(zip(days, ex.map(ask, days)))
+
+
 # Guy, Nov 22: "remove tutorial uses from the super stir/solve card". From 1.3.19 every new player gets a free Super Stir
 # on level 4 and a free Super Solve on level 5 as part of the tutorial (kind "free", level param = that level); those are left out.
 TUT_VERS = r"1\.3\.(19|[2-9][0-9])|1\.([4-9]|[1-9][0-9])\..*|([2-9]|[1-9][0-9])\..*"
@@ -281,20 +318,16 @@ def fetch(keys_dir, today):
         c_end = min(until, today - dt.timedelta(days=2))
         if c_end >= since:
             cd = lambda a, b: [(a + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((b - a).days + 1)]
-            later = [v for v in vers if _ver(v) >= min(map(_ver, vf))]   # the return day may be on an update
             base = {d: int(n) for (d, d2), (n,) in _run(s, {"dateRanges": [{"startDate": since.isoformat(), "endDate": c_end.isoformat()}], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}], "metrics": [{"name": "activeUsers"}],
                     "dimensionFilter": {"andGroup": {"expressions": [vfil, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": cd(since, c_end)}}}]}}, "limit": 10000}) if d == d2}
-            nxt = lambda d: (dt.date(int(d[:4]), int(d[4:6]), int(d[6:])) + dt.timedelta(days=1)).strftime("%Y%m%d")
-            back = {d: int(n) for (d, d2), (n,) in _run(s, {"dateRanges": [{"startDate": (since + dt.timedelta(days=1)).isoformat(), "endDate": (c_end + dt.timedelta(days=1)).isoformat()}], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}], "metrics": [{"name": "activeUsers"}],
-                    "dimensionFilter": {"andGroup": {"expressions": [{"filter": {"fieldName": "appVersion", "inListFilter": {"values": later}}}, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": cd(since, c_end)}}}]}}, "limit": 10000}) if d2 == nxt(d)}
+            back = {d: min(n, base[d]) for d, n in _back(s, list(base), vfil).items()}   # Guy, Nov 24: only players who started on these versions
             B["d1"] = [sum(back.get(d, 0) for d in base), sum(base.values()), since.isoformat(), c_end.isoformat()]
             # Guy, Nov 22: "Day-1 return by version" chart: the same players split by Google Ads (firstUserMedium cpc) vs everyone else
             B["d1src"] = {}
             for med, mf in (("ads", {"filter": {"fieldName": "firstUserMedium", "stringFilter": {"value": "cpc"}}}), ("other", {"notExpression": {"filter": {"fieldName": "firstUserMedium", "stringFilter": {"value": "cpc"}}}})):
                 b2 = {d: int(n) for (d, d2), (n,) in _run(s, {"dateRanges": [{"startDate": since.isoformat(), "endDate": c_end.isoformat()}], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}], "metrics": [{"name": "activeUsers"}],
                       "dimensionFilter": {"andGroup": {"expressions": [vfil, mf, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": cd(since, c_end)}}}]}}, "limit": 10000}) if d == d2}
-                k2 = {d: int(n) for (d, d2), (n,) in _run(s, {"dateRanges": [{"startDate": (since + dt.timedelta(days=1)).isoformat(), "endDate": (c_end + dt.timedelta(days=1)).isoformat()}], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}], "metrics": [{"name": "activeUsers"}],
-                      "dimensionFilter": {"andGroup": {"expressions": [{"filter": {"fieldName": "appVersion", "inListFilter": {"values": later}}}, mf, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": cd(since, c_end)}}}]}}, "limit": 10000}) if d2 == nxt(d)}
+                k2 = {d: min(n, b2[d]) for d, n in _back(s, list(b2), {"andGroup": {"expressions": [vfil, mf]}}).items()}
                 B["d1src"][med] = [sum(k2.get(d, 0) for d in b2), sum(b2.values())]
         # Guy, Nov 21: "add d-7 after d-1 card". Day-7 return = new players (first day on these versions) who played again on day 7 OR LATER
         # (same rule as the all-versions Day-7, Guy Nov 8); only first days with a complete day 7 (first day <= today - 8)

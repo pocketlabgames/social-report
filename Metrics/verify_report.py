@@ -228,12 +228,20 @@ def _check_game(C, page, keys, today, G, on_sale):
             _src = int(sum(r.tx for r in _rc[0].itertuples() if r.date >= VB["since"]))
             C.same("1.3.11+ purchases (RevenueCat, real App Store)", n1(vtile("Purchases")[0], r"([\d,]+)"), _src, 0)
         # Guy, Nov 19: Day-1 return tiles and the Before 1.3.11 set (own pulls, not the report's numbers)
+        def next_day(day, vs):   # own copy: players whose first day was on these released versions (funnel step 1) and who played the next day (step 2)
+            f = lambda x: {("funnelFieldFilter" if k == "filter" else k): f(v) for k, v in x.items()} if isinstance(x, dict) else [f(v) for v in x] if isinstance(x, list) else x
+            k1, n1d = day.strftime("%Y%m%d"), day + dt.timedelta(days=1)
+            body = {"dateRanges": [{"startDate": day.isoformat(), "endDate": n1d.isoformat()}], "funnel": {"steps": [
+                {"name": "start", "filterExpression": f(AND(released_only(day, day, vs), has("firstSessionDate", k1), has("date", k1), NO_CT))},
+                {"name": "back", "filterExpression": f(has("date", n1d.strftime("%Y%m%d")))}]}}
+            r = s.post(f"https://analyticsdata.googleapis.com/v1alpha/properties/{PROPERTY}:runFunnelReport", json=body, timeout=60)
+            r.raise_for_status()
+            return sum(int(x["metricValues"][0]["value"]) for x in r.json().get("funnelTable", {}).get("rows", []) if x["dimensionValues"][0]["value"].startswith("2"))
         def d1_check(name, B, tl):
             d = B.get("d1")
             if not d:
                 return
             vs = [v for v in want if ((_ver(v) < (1, 3, 11)) if B["label"].startswith("Before") else ((1, 3, 11) <= _ver(v) <= (1, 3, 17)))]   # Guy, Nov 22: "1.3.11 to 1.3.17"
-            later = [v for v in want if _ver(v) >= min(map(_ver, vs))]
             a, b = dt.date.fromisoformat(d[2]), dt.date.fromisoformat(d[3])
             base = back = 0
             for i in range((b - a).days + 1):
@@ -241,7 +249,7 @@ def _check_game(C, page, keys, today, G, on_sale):
                 n0 = one((day, day), flt=AND(released_only(day, day, vs), has("firstSessionDate", key)))
                 base += n0
                 if n0:
-                    back += one((day + dt.timedelta(days=1),) * 2, flt=AND(among("appVersion", later), has("firstSessionDate", key)))
+                    back += min(n0, next_day(day, vs))   # Guy, Nov 24: returners tied to their start version
             C.same(f"{name} Day-1: new players", n1(tl("Day-1 return")[1], r"of ([\d,]+) new"), base, 0)
             C.same(f"{name} Day-1: came back", n1(tl("Day-1 return")[1], r"^([\d,]+) of"), back, 0)
         def d7_check(name, B, tl):   # Guy, Nov 21: Day-7 return tile (came back on day 7 or later), own pulls
