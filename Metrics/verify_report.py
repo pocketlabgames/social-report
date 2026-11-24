@@ -273,8 +273,21 @@ def _check_game(C, page, keys, today, G, on_sale):
         C.true("Quiet start card on the page", bool(_qh), "missing")
         _qn = [(m[1], re.findall(r"<td[^>]*>(.*?)</td>", m[2])) for m in re.finditer(r"<tr[^>]*><td><b>(.*?)</b><small>.*?</small></td>(.*?)</tr>", _qh)]
         _qd = dict(_qn); _qsum = 0
-        for _k, _lab, _a, _c, _in in (("before", "Before", dt.date(2026, 11, 21), dt.date(2026, 11, 23), lambda x: (1, 3, 20) <= x < (1, 4, 0)), ("after", "After", dt.date(2026, 11, 25), today - dt.timedelta(days=1), lambda x: (1, 3, 20) <= x < (1, 4, 0)), ("after140", "After, 1.4.0+", dt.date(2026, 11, 25), today - dt.timedelta(days=1), lambda x: x >= (1, 4, 0))):
+        for _k, _lab, _a, _c, _in in (("before", "Before", dt.date(2026, 11, 21), dt.date(2026, 11, 23), lambda x: (1, 3, 20) <= x < (1, 4, 0)), ("after", "After", dt.date(2026, 11, 25), today, lambda x: (1, 3, 20) <= x < (1, 4, 0)), ("after140", "After, 1.4.0+", dt.date(2026, 11, 25), today, lambda x: x >= (1, 4, 0))):
             _vs = [v for v in want if _in(_ver(v))]
+            _n24, _w24 = 0, {}
+            if _k == "after":   # Nov 24 from 10:13 AM ET = 11:13 on Google's UTC-4 clock (Guy: "why isn't it showing the 3 new players")
+                _f24 = AND(among("appVersion", _vs), has("firstSessionDate", "20261124"))
+                _n24 = sum(int(r[1][0]) for r in run((dt.date(2026, 11, 24), dt.date(2026, 11, 24)), ["dateHourMinute"], ["totalUsers"], AND(_f24, has("eventName", "first_open"))) if r[0][0] >= "202611241113")
+                C.true("Quiet start After: Nov 24 players are on the card", n1((_qd.get("After") or ["", ""])[0] or "0", r"([\d,]+)") >= _n24 - 1, f"{_n24} first opens since 10:13 AM, card {(_qd.get('After') or ['?'])[0]}")
+                for _l in ("1", "2", "3", "7"):   # nobody who started before 10:13 AM: wins after it by players who first opened after it can't exceed those counts
+                    _w24[_l] = sum(int(r[1][0]) for r in run((dt.date(2026, 11, 24), dt.date(2026, 11, 24)), ["dateHourMinute"], ["totalUsers"], AND(_f24, has("eventName", "lv_win_" + _l))) if r[0][0] >= "202611241113")
+            if _k == "after" and _c < _a:
+                _cl = _qd.get(_lab) or []
+                if len(_cl) == 7 and _n24:
+                    C.same("Quiet start After: new players (Nov 24)", n1(_cl[0], r"([\d,]+)"), _n24, 1)
+                    for _i, _l in ((1, "1"), (2, "2"), (3, "3"), (4, "7")):
+                        C.true(f"Quiet start After: won level {_l} (Nov 24) not above Google's count", (n1(_cl[_i], r"<small>([\d,]+) of") or 0) <= _w24[_l] + 1, f"card {_cl[_i]}, Google {_w24[_l]}")
             if _c < _a or not _vs:
                 continue
             _rel = [v for v in _vs if rel[v] <= _c]
@@ -284,7 +297,8 @@ def _check_game(C, page, keys, today, G, on_sale):
             _nn = sum(int(r[1][0]) for r in run((_a, _c), ["firstSessionDate", "date"], flt=_fl) if r[0][0] == r[0][1]); _qsum += _nn
             if not _nn:
                 continue
-            _ev = {}
+            _nn += _n24
+            _ev = dict(_w24)
             for r in run((_a, _c), ["firstSessionDate", "date", "eventName"], ["totalUsers"], AND(_fl, among("eventName", ["lv_win_1", "lv_win_2", "lv_win_3", "lv_win_7"]))):
                 if r[0][0] == r[0][1]:
                     _ev[r[0][2][7:]] = _ev.get(r[0][2][7:], 0) + int(r[1][0])
@@ -293,8 +307,8 @@ def _check_game(C, page, keys, today, G, on_sale):
             if len(_cl) == 7:
                 C.same(f"Quiet start {_lab}: new players", n1(_cl[0], r"([\d,]+)"), _nn, 1)
                 for _i, _l in ((1, "1"), (2, "2"), (3, "3"), (4, "7")):
-                    C.same(f"Quiet start {_lab}: won level {_l}", n1(_cl[_i], r"<small>([\d,]+) of"), _ev.get(_l, 0), 1) if "%" in _cl[_i] else C.true(f"Quiet start {_lab}: won level {_l} empty", not _ev.get("1"), _cl[_i])
-                C.same(f"Quiet start {_lab}: level 7 is a share of level 1 winners", n1(_cl[4], r"of ([\d,]+)<") or 0, _ev.get("1", 0), 1)
+                    C.same(f"Quiet start {_lab}: won level {_l}", n1(_cl[_i], r"<small>([\d,]+) of"), _ev.get(_l, 0), 3 if _k == "after" else 1) if "%" in _cl[_i] else C.true(f"Quiet start {_lab}: won level {_l} empty", not _ev.get("1"), _cl[_i])
+                C.same(f"Quiet start {_lab}: level 7 is a share of level 1 winners", n1(_cl[4], r"of ([\d,]+)<") or 0, _ev.get("1", 0), 3 if _k == "after" else 1)
                 _nb = sum(min(one((_d0, _d0), flt=AND(released_only(_d0, _d0, _rel), has("firstSessionDate", _d0.strftime("%Y%m%d")))), next_day(_d0, _rel)) for _d0 in (_a + dt.timedelta(days=i) for i in range((min(_c, today - dt.timedelta(days=2)) - _a).days + 1)) if any(rel[v] <= _d0 for v in _rel)) if _k == "before" else None   # the later rows use the same code path; before is fixed and cheap to recount
                 if _nb is not None:
                     C.same(f"Quiet start {_lab}: came back next day", n1(_cl[6], r"<small>([\d,]+) of"), _nb, 1)

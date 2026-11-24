@@ -26,7 +26,7 @@ RELEASED = {"1.3.1": START, "1.3.2": dt.date(2026, 11, 4), "1.3.3": dt.date(2026
 VF = (1, 3, 11)   # Guy, Nov 16: Game stats filter "1.3.11+"
 VF_TO = (1, 3, 17)   # Guy, Nov 22: "1.3.11 to 1.3.17" (only the newest option keeps the +)
 VX = [((1, 3, 18), (1, 3, 23), "1.3.18 to 1.3.23"), ((1, 4, 0), None, None)]   # Guy, Nov 24: 1.3.18 to 1.3.23 grouped, new 1.4.0+ (was 1.3.18/19 and 1.3.20+, Nov 22); only an open-ended option has a +; each option shows once that version is on the App Store (vers stops at the live version), until then "vxnext" lists its label for the Day-1 chart
-QS_FROM = dt.date(2026, 11, 25)   # Guy, Nov 24: "track the quiet start update made today" (live config, done Nov 24 10:13 AM ET; that day is in neither group)
+QS_FROM = dt.date(2026, 11, 25)   # Guy, Nov 24: "track the quiet start update made today" (live config, done Nov 24 10:13 AM ET). "why isn't it showing the 3 new players": Nov 24 counts from 10:13 AM (Google's clock here is UTC-4, so hour 11+; nobody first opened 11:00-11:12), today so far included
 QS_BEFORE = (dt.date(2026, 11, 21), dt.date(2026, 11, 23))   # before = new players on 1.3.20+ on these first days
 COMPARE = (1, 3, 20)   # Guy, Nov 21: "Did 1.3.20+ help?" vs 1.3.11+ (1.3.11 to 1.3.19); Nov 20 was 1.3.18; was 1.3.11 vs before.
 BASE = (1, 3, 11)   # reference line: new players who started on BASE..COMPARE-1, from BASE's release to the day before COMPARE's
@@ -392,26 +392,52 @@ def fetch(keys_dir, today):
             k = "v" + "_".join(map(str, X))
             J[k] = (xv, min(rel(v) for v in xv), today, L or ".".join(map(str, X)) + "+")
             R[k] = [".".join(map(str, X)), ".".join(map(str, H)) if H else None]
-    def quiet(vs, a, b):   # one row of the Quiet start card: new players' first day (complete days), and the next day
+    def quiet(vs, a, b):   # one row of the Quiet start card: new players' first day (today so far included), and the next day (complete days only)
         ds = [(a + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((b - a).days + 1)]
         if not vs or not ds:
             return {"n": 0}
         fil = {"andGroup": {"expressions": [newer, {"filter": {"fieldName": "appVersion", "inListFilter": {"values": vs}}}]}}
         E = ["lv_win_1", "lv_win_2", "lv_win_3", "lv_win_7"]
-        r = _run(s, {"dateRanges": [{"startDate": a.isoformat(), "endDate": b.isoformat()}], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}, {"name": "eventName"}], "metrics": [{"name": "totalUsers"}], "limit": 10000,
-                     "dimensionFilter": {"andGroup": {"expressions": [fil, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": ds}}}, {"filter": {"fieldName": "eventName", "inListFilter": {"values": E}}}]}}})
-        l10 = day1_l10(fil, a, b)
-        base = {d: int(n) for (d, d2), (n,) in _run(s, {"dateRanges": [{"startDate": a.isoformat(), "endDate": b.isoformat()}], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}], "metrics": [{"name": "activeUsers"}], "limit": 10000,
-                "dimensionFilter": {"andGroup": {"expressions": [fil, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": ds}}}]}}}) if d == d2}
+        ask = lambda dims, m, *x: _run(s, {"dateRanges": [{"startDate": a.isoformat(), "endDate": b.isoformat()}], "dimensions": [{"name": d} for d in dims], "metrics": [{"name": m}], "limit": 10000,
+                     "dimensionFilter": {"andGroup": {"expressions": [fil, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": ds}}}, *x]}}})
+        r = ask(["firstSessionDate", "date", "eventName"], "totalUsers", {"filter": {"fieldName": "eventName", "inListFilter": {"values": E}}})
+        base = {d: int(n) for (d, d2), (n,) in ask(["firstSessionDate", "date"], "activeUsers") if d == d2}
+        l10 = sum(int(n) for (d, d2), (n,) in ask(["firstSessionDate", "date"], "activeUsers", {"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in lvs if x >= 10]}}}) if d == d2)
         nx = [d for d in base if d <= (today - dt.timedelta(days=2)).strftime("%Y%m%d")]
         bk = _back(s, nx, fil)
-        return {"n": l10[1], "l10": l10[0], "w": {e[7:]: sum(int(n) for (d, d2, x), (n,) in r if d == d2 and x == e) for e in E},
+        return {"n": sum(base.values()), "l10": l10, "w": {e[7:]: sum(int(n) for (d, d2, x), (n,) in r if d == d2 and x == e) for e in E},
                 "back": [sum(min(bk[d], base[d]) for d in nx), sum(base[d] for d in nx)], "a": a.isoformat(), "b": b.isoformat()}
+
+    def quiet24(vs):   # Nov 24 from 10:13 AM: the players whose first open was in those hours (funnel step 1), then what they did
+        on = lambda f, v: {"filter": {"fieldName": f, "stringFilter": {"value": v}}}
+        st = {"andGroup": {"expressions": [on("eventName", "first_open"), on("date", "20261124"), {"filter": {"fieldName": "dateHour", "inListFilter": {"values": [f"20261124{h:02d}" for h in range(11, 24)]}}},
+                                           {"filter": {"fieldName": "appVersion", "inListFilter": {"values": vs}}}, NO_CT]}}
+        def two(step2, end="2026-11-24"):
+            body = {"dateRanges": [{"startDate": "2026-11-24", "endDate": end}], "funnel": {"steps": [{"name": "new", "filterExpression": _ff(st)}, {"name": "did", "filterExpression": _ff(step2)}]}}
+            for wait in (2, 5, 10, 0):
+                r = _post(s, f"https://analyticsdata.googleapis.com/v1alpha/properties/{PROPERTY}:runFunnelReport", json=body, timeout=60)
+                if r.ok or r.status_code not in (429, 500, 503) or not wait:
+                    break
+                time.sleep(wait)
+            if not r.ok:
+                raise RuntimeError(f"GA4 funnel {r.status_code}: {r.text[:200]}")
+            q = {x["dimensionValues"][0]["value"][:1]: int(x["metricValues"][0]["value"]) for x in r.json().get("funnelTable", {}).get("rows", [])}
+            return q.get("1", 0), q.get("2", 0)
+        W = {k: two({"andGroup": {"expressions": [on("eventName", "lv_win_" + k), on("date", "20261124")]}}) for k in ("1", "2", "3", "7")}
+        n = W["1"][0]
+        l10 = two({"andGroup": {"expressions": [{"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in lvs if x >= 10]}}}, on("date", "20261124")]}})[1]
+        bk = [two(on("date", "20261125"), "2026-11-25")[1], n] if today >= dt.date(2026, 11, 26) else [0, 0]
+        return {"n": n, "l10": l10, "w": {k: v[1] for k, v in W.items()}, "back": bk}
+
+    def quiet_after(vs):
+        A, B1 = quiet24([v for v in vs if _ver(v) <= (1, 3, 23)]), quiet(vs, QS_FROM, today)
+        if not B1.get("n"):
+            return A
+        return {"n": A["n"] + B1["n"], "l10": A["l10"] + B1["l10"], "w": {k: A["w"][k] + B1["w"][k] for k in A["w"]}, "back": [A["back"][i] + B1["back"][i] for i in (0, 1)]}
     with ThreadPoolExecutor(12) as ex:
-        yday = today - dt.timedelta(days=1)
         Q = {"before": ex.submit(quiet, [v for v in vers if (1, 3, 20) <= _ver(v) < (1, 4, 0)], *QS_BEFORE),
-             "after": ex.submit(quiet, [v for v in vers if (1, 3, 20) <= _ver(v) < (1, 4, 0)], QS_FROM, yday),
-             "after140": ex.submit(quiet, [v for v in vers if _ver(v) >= (1, 4, 0)], QS_FROM, yday)}
+             "after": ex.submit(quiet_after, [v for v in vers if (1, 3, 20) <= _ver(v) < (1, 4, 0)]),
+             "after140": ex.submit(quiet, [v for v in vers if _ver(v) >= (1, 4, 0)], QS_FROM, today)}
         F = {k: ex.submit(block, *v) for k, v in J.items()}
         # Guy, Nov 22: "Players (all, new)" filter: the same tile sets for new players only (first day in each view's days)
         N = {"all": ex.submit(block, vers, max(today - dt.timedelta(days=6), START), today, "All versions", True)}
