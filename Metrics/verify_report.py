@@ -271,6 +271,7 @@ def _check_game(C, page, keys, today, G, on_sale):
         # Guy, Nov 24: Quiet start card, own pulls per row (first-day wins, level 10, next day)
         _qh = page[page.find("<div class='qs' id='quiet'>"):][:6000] if "<div class='qs' id='quiet'>" in page else ""
         C.true("Quiet start card on the page", bool(_qh), "missing")
+        C.true("Quiet start table has no background of its own", ".qs .qsw table{width:100%;border-collapse:collapse;background:none}" in page, "white box behind the table")   # Guy, Nov 24
         _qn = [(m[1], re.findall(r"<td[^>]*>(.*?)</td>", m[2])) for m in re.finditer(r"<tr[^>]*><td><b>(.*?)</b><small>.*?</small></td>(.*?)</tr>", _qh)]
         _qd = dict(_qn); _qsum = 0
         for _k, _lab, _a, _c, _in in (("before", "Before", dt.date(2026, 11, 21), dt.date(2026, 11, 23), lambda x: (1, 3, 20) <= x < (1, 4, 0)), ("after", "After", dt.date(2026, 11, 25), today, lambda x: (1, 3, 20) <= x < (1, 4, 0)), ("after140", "After, 1.4.0+", dt.date(2026, 11, 25), today, lambda x: x >= (1, 4, 0))):
@@ -284,6 +285,7 @@ def _check_game(C, page, keys, today, G, on_sale):
                     _w24[_l] = sum(int(r[1][0]) for r in run((dt.date(2026, 11, 24), dt.date(2026, 11, 24)), ["dateHourMinute"], ["totalUsers"], AND(_f24, has("eventName", "lv_win_" + _l))) if r[0][0] >= "202611241113")
             if _k == "after" and _c < _a:
                 _cl = _qd.get(_lab) or []
+                C.true("Quiet start After: every level column is out of all new players", len({n1(x, r"of ([\d,]+)<") for x in _cl[1:6] if "%" in x}) <= 1, str(_cl))   # Guy, Nov 24: level 7 was out of level 1 winners
                 if len(_cl) == 7 and _n24:
                     C.same("Quiet start After: new players (Nov 24)", n1(_cl[0], r"([\d,]+)"), _n24, 1)
                     for _i, _l in ((1, "1"), (2, "2"), (3, "3"), (4, "7")):
@@ -308,7 +310,7 @@ def _check_game(C, page, keys, today, G, on_sale):
                 C.same(f"Quiet start {_lab}: new players", n1(_cl[0], r"([\d,]+)"), _nn, 1)
                 for _i, _l in ((1, "1"), (2, "2"), (3, "3"), (4, "7")):
                     C.same(f"Quiet start {_lab}: won level {_l}", n1(_cl[_i], r"<small>([\d,]+) of"), _ev.get(_l, 0), 3 if _k == "after" else 1) if "%" in _cl[_i] else C.true(f"Quiet start {_lab}: won level {_l} empty", not _ev.get("1"), _cl[_i])
-                C.same(f"Quiet start {_lab}: level 7 is a share of level 1 winners", n1(_cl[4], r"of ([\d,]+)<") or 0, _ev.get("1", 0), 3 if _k == "after" else 1)
+                C.same(f"Quiet start {_lab}: level 7 is a share of all new players, like the other columns", n1(_cl[4], r"of ([\d,]+)<") or 0, n1(_cl[0], r"([\d,]+)"), 0)
                 _nb = sum(min(one((_d0, _d0), flt=AND(released_only(_d0, _d0, _rel), has("firstSessionDate", _d0.strftime("%Y%m%d")))), next_day(_d0, _rel)) for _d0 in (_a + dt.timedelta(days=i) for i in range((min(_c, today - dt.timedelta(days=2)) - _a).days + 1)) if any(rel[v] <= _d0 for v in _rel)) if _k == "before" else None   # the later rows use the same code path; before is fixed and cheap to recount
                 if _nb is not None:
                     C.same(f"Quiet start {_lab}: came back next day", n1(_cl[6], r"<small>([\d,]+) of"), _nb, 1)
