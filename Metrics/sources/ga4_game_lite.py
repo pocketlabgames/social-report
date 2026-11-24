@@ -64,18 +64,20 @@ def _ff(x):
 _BACK = {}
 
 
-def _back(s, days, flt):
+def _back(s, days, flt, until=None):
     """Guy, Nov 24: new players of each first day (YYYYMMDD) who played the next day, tied to the version they STARTED on (funnel: step 1 = first
     day on these versions, step 2 = next day). Before, anyone with that first day who came back on these or later versions was counted, so players
-    who started on 1.3.18/19 were added to "1.3.11 to 1.3.17" (29 shown, really 16)."""
+    who started on 1.3.18/19 were added to "1.3.11 to 1.3.17" (29 shown, really 16). With until = day 7 OR LATER, up to that day (Day-7 tiles)."""
     from concurrent.futures import ThreadPoolExecutor
 
     def ask(d):
-        n = (dt.datetime.strptime(d, "%Y%m%d") + dt.timedelta(days=1)).date()
+        d0 = dt.datetime.strptime(d, "%Y%m%d").date()
+        a, n = d0 + dt.timedelta(days=7 if until else 1), until or d0 + dt.timedelta(days=1)
+        ret = [(a + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((n - a).days + 1)]
         on = lambda f, v: {"filter": {"fieldName": f, "stringFilter": {"value": v}}}
         step1 = {"andGroup": {"expressions": [flt, on("firstSessionDate", d), on("date", d), NO_CT]}}
         body = {"dateRanges": [{"startDate": f"{d[:4]}-{d[4:6]}-{d[6:]}", "endDate": n.isoformat()}],
-                "funnel": {"steps": [{"name": "start", "filterExpression": _ff(step1)}, {"name": "back", "filterExpression": _ff(on("date", n.strftime("%Y%m%d")))}]}}
+                "funnel": {"steps": [{"name": "start", "filterExpression": _ff(step1)}, {"name": "back", "filterExpression": _ff({"filter": {"fieldName": "date", "inListFilter": {"values": ret}}})}]}}
         key = json.dumps(body, sort_keys=True)
         if key not in _BACK:
             for wait in (2, 5, 10, 0):
@@ -334,13 +336,11 @@ def fetch(keys_dir, today):
         c7 = min(until, today - dt.timedelta(days=8))
         if c7 >= since:
             cd7 = [(since + dt.timedelta(days=i)) for i in range((c7 - since).days + 1)]
-            later7 = [v for v in vers if _ver(v) >= min(map(_ver, vf))]
             base7 = {d: int(n) for (d, d2), (n,) in _run(s, {"dateRanges": [{"startDate": since.isoformat(), "endDate": c7.isoformat()}], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}], "metrics": [{"name": "activeUsers"}],
                      "dimensionFilter": {"andGroup": {"expressions": [vfil, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": [x.strftime("%Y%m%d") for x in cd7]}}}]}}, "limit": 10000}) if d == d2}
             days7 = [x for x in cd7 if base7.get(x.strftime("%Y%m%d"))]
-            rs7 = _many(s, [{"dateRanges": [{"startDate": (x + dt.timedelta(days=7)).isoformat(), "endDate": today.isoformat()}], "metrics": [{"name": "activeUsers"}],
-                             "dimensionFilter": {"andGroup": {"expressions": [{"filter": {"fieldName": "appVersion", "inListFilter": {"values": later7}}}, {"filter": {"fieldName": "firstSessionDate", "stringFilter": {"value": x.strftime("%Y%m%d")}}}]}}} for x in days7])
-            B["d7"] = [sum(min(int(r[0][1][0]) if r else 0, base7[x.strftime("%Y%m%d")]) for x, r in zip(days7, rs7)), sum(base7.values()), since.isoformat(), c7.isoformat()]
+            b7 = _back(s, [x.strftime("%Y%m%d") for x in days7], vfil, until=today)   # Guy, Nov 24: only players who started on these versions
+            B["d7"] = [sum(min(n, base7[d]) for d, n in b7.items()), sum(base7.values()), since.isoformat(), c7.isoformat()]
         return B
     vf = [v for v in vers if VF <= _ver(v) <= VF_TO]
     if vf:
