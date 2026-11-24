@@ -1433,6 +1433,8 @@ def game_section():
                         f"<div class='dvc' style='left:{min(lo, MX) / MX * 100:.1f}%;width:{(min(hi, MX) - min(lo, MX)) / MX * 100:.1f}%'></div></div>"
                         f"<span class='dvv'>{p:.0f}%<small>{kn[0]:,} of {kn[1]:,}{' · too early' if few else ''}</small></span></div>")
             out += "</div>"
+        for lab in G.get("vxnext") or []:   # Guy, Nov 24: "make a new section for 1.4.0"; empty rows until it is on the App Store
+            out += f"<div class='dvg'><div class='dvh'>{e(lab)}</div>" + "".join(f"<div class='dvr'><span class='dvl'>{LB[k]}</span><div class='dvt'><span class='dve'>not on the App Store yet</span></div><span class='dvv'>—</span></div>" for k in ("all", "ads", "other")) + "</div>"
         ax = "".join(f"<span style='left:{t / MX * 100:.0f}%'>{t}%</span>" for t in range(0, MX + 1, 10))
         return (f"<h3 class='sh3'>Day-1 return by version</h3><div class='dv'>{out}<div class='dvx'>{ax}</div>"
                 "<p class='dvk'>Black line = likely range; overlapping ranges = no real difference yet. Faded = under 100 players (too early). Same new players and days as each version's Day-1 tile.</p></div>")
