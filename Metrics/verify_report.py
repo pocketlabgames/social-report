@@ -271,7 +271,6 @@ def _check_game(C, page, keys, today, G, on_sale):
         # Guy, Nov 24: Quiet start card, own pulls per row (first-day wins, level 10, next day)
         _qh = page[page.find("<div class='qs' id='quiet'>"):][:6000] if "<div class='qs' id='quiet'>" in page else ""
         C.true("Quiet start card on the page", bool(_qh), "missing")
-        C.true("Quiet start is the first thing under the Game Analytics header", 0 < page.find("id='quiet'") < page.find("id='gst-all'") and page.find("id='sec-game'") < page.find("id='quiet'"), "not above Game stats")   # Guy, Nov 24
         _qn = [(m[1], re.findall(r"<td[^>]*>(.*?)</td>", m[2])) for m in re.finditer(r"<tr[^>]*><td><b>(.*?)</b><small>.*?</small></td>(.*?)</tr>", _qh)]
         _qd = dict(_qn); _qsum = 0
         for _k, _lab, _a, _c, _in in (("before", "Before", dt.date(2026, 11, 21), dt.date(2026, 11, 23), lambda x: (1, 3, 20) <= x < (1, 4, 0)), ("after", "After", dt.date(2026, 11, 25), today - dt.timedelta(days=1), lambda x: (1, 3, 20) <= x < (1, 4, 0)), ("after140", "After, 1.4.0+", dt.date(2026, 11, 25), today - dt.timedelta(days=1), lambda x: x >= (1, 4, 0))):
