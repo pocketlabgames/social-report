@@ -381,6 +381,11 @@ def _check_game(C, page, keys, today, G, on_sale):
         C.true("Day-1 by version chart on the page", _dv >= 0, "missing")
         for _lb in [x["label"] for x in (G.get("vx") or {}).values()] + list(G.get("vxnext") or []):   # Guy, Nov 24: "make a new section for 1.4.0" (also before it is live)
             C.true(f"Day-1 chart section {_lb}", page.count(f"<div class='dvh'>{html.escape(_lb)}</div>") == 1, "missing or twice")
+        for _k, _b in [("vf", G.get("vf")), ("pre", G.get("pre"))] + list((G.get("vx") or {}).items()) + [("new " + k, v) for k, v in (G.get("new") or {}).items()]:   # Guy, Nov 24: the faster step must keep each group's top player
+            if _b and _b.get("freach") and _b.get("reach"):
+                _need = max((int(x) for x, v in _b["freach"].items() if v), default=0); _top = max(map(int, _b["reach"]))
+                C.true(f"Top player in {_k} reaches at least the last level step with players", _top >= _need, f"top player {_top}, level {_need}+ has players")
+        C.true("Google Analytics questions per refresh under 1,000", 0 < (G.get("calls") or 0) < 1000, f"{G.get('calls')} questions (785 on Nov 24; was 1,085): the refresh is slowing down again")   # Guy, Nov 24: refresh took almost 10 min
         C.true("Live version is in one version group", any(G.get("live") in (x or {}).get("vers", []) for x in [G.get("pre"), G.get("vf")] + list((G.get("vx") or {}).values())), f"live {G.get('live')} is in no group")
         for BB in [G.get("pre"), G.get("vf")] + list((G.get("vx") or {}).values()):
             if not BB or not BB.get("d1"):

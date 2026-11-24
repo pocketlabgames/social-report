@@ -5,6 +5,7 @@ Key: Private Keys/ga4-token.json (same as ga4_lite). Property: beaker-lab (55807
 import datetime as dt
 import json
 import os
+import threading
 import time
 
 import jwt
@@ -42,10 +43,21 @@ def no_ct(body):
     return {**body, "dimensionFilter": {"andGroup": {"expressions": [f, NO_CT]}} if f else NO_CT}
 
 
+# Guy, Nov 24: refresh took almost 10 min (1,085 questions, one version group at a time). Now at most 8 at once over every group
+# (GA4 allows 10 per property) and each group asks only for the levels its tile needs. CALLS is checked in verify_report.py.
+_SEM, CALLS = threading.BoundedSemaphore(8), [0]
+
+
+def _post(s, *a, **k):
+    with _SEM:
+        CALLS[0] += 1
+        return s.post(*a, **k)
+
+
 def _run(s, body):
     body = no_ct(body)
     for wait in (2, 5, 10, 0):   # 429 / 5xx: wait and ask again (queries now run several at a time)
-        r = s.post(f"https://analyticsdata.googleapis.com/v1beta/properties/{PROPERTY}:runReport", json=body, timeout=60)
+        r = _post(s, f"https://analyticsdata.googleapis.com/v1beta/properties/{PROPERTY}:runReport", json=body, timeout=60)
         if r.ok or r.status_code not in (429, 500, 503) or not wait:
             break
         time.sleep(wait)
@@ -81,7 +93,7 @@ def _back(s, days, flt, until=None):
         key = json.dumps(body, sort_keys=True)
         if key not in _BACK:
             for wait in (2, 5, 10, 0):
-                r = s.post(f"https://analyticsdata.googleapis.com/v1alpha/properties/{PROPERTY}:runFunnelReport", json=body, timeout=60)
+                r = _post(s, f"https://analyticsdata.googleapis.com/v1alpha/properties/{PROPERTY}:runFunnelReport", json=body, timeout=60)
                 if r.ok or r.status_code not in (429, 500, 503) or not wait:
                     break
                 time.sleep(wait)
@@ -167,6 +179,7 @@ def fetch(keys_dir, today):
     rng = lambda days, end=0: {"startDate": max(today - dt.timedelta(days=days), START).isoformat(), "endDate": max(today - dt.timedelta(days=end), START).isoformat()}
     ev = lambda name: {"filter": {"fieldName": "eventName", "stringFilter": {"value": name}}}
     d14, d7, dall = rng(14), rng(6, 0), rng(9999)   # d7 = last 7 days incl. today (Guy, Nov 21: "All versions should include today too"); dall = everything since Nov 1
+    CALLS[0] = 0
     live, released = _live(keys_dir)
     first_day = lambda v: min((dt.date(int(d[:4]), int(d[4:6]), int(d[6:])) for (d,), (n,) in _run(s, {"dateRanges": [dall], "dimensions": [{"name": "date"}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": {"filter": {"fieldName": "appVersion", "stringFilter": {"value": v}}}}) if n >= 5), default=None)   # first day a version had 5+ players
     # Guy, Nov 21: 1.3.18+ moved from Nov 20 to Nov 21 once 1.3.19 shipped (a version no longer live fell back to its first 5-player day).
@@ -302,10 +315,16 @@ def fetch(keys_dir, today):
             r = _run(s, {"dateRanges": [dr], "metrics": [{"name": "eventCount"}, {"name": "totalUsers"}], "dimensionFilter": f})
             B["moves"][e] = [int(r[0][1][0]), int(r[0][1][1])] if r else [0, 0]
         vl = sorted(int(lv) for (lv,), _ in _run(s, {"dateRanges": [dr], "dimensions": [{"name": "customUser:max_level"}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": vfil, "limit": 1000}) if lv.isdigit())
-        rs = _many(s, [{"dateRanges": [dr], "metrics": [{"name": "activeUsers"}],
-                        "dimensionFilter": {"andGroup": {"expressions": [vfil, {"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in vl if x >= lv]}}}]}}} for lv in vl])
-        for lv, r in zip(vl, rs):
-            B["reach"][str(lv)] = int(r[0][1][0]) if r else 0
+        ask = lambda lv: int((_run(s, {"dateRanges": [dr], "metrics": [{"name": "activeUsers"}], "dimensionFilter": {"andGroup": {"expressions": [vfil, {"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in vl if x >= lv]}}}]}}}) or [([], [0])])[0][1][0])
+        if vl:
+            B["reach"][str(vl[0])] = top = ask(vl[0])
+            if len(vl) > 1:
+                B["reach"][str(vl[-1])] = ask(vl[-1])   # "top player" on the tile
+            lo, hi = 0, len(vl)   # middle player only (the tile shows nothing else): halve the range instead of asking every level
+            while hi - lo > 1:
+                m = (lo + hi) // 2; n = B["reach"][str(vl[m])] = ask(vl[m])
+                if n * 2 >= top: lo = m
+                else: hi = m
         B["freach"] = reached(vfil, dr, STEPS)   # Guy, Nov 16: "How far players get" for the newest versions (players who reached each step)
         B["factive"] = reached(vfil, {"startDate": max(until - dt.timedelta(days=QUIT_DAYS - 1), since).isoformat(), "endDate": until.isoformat()}, STEPS)   # still playing = played in the last QUIT_DAYS - 1 days
         B["lv"] = {}   # Guy, Nov 16: win rate per level for the newest versions too
@@ -342,30 +361,38 @@ def fetch(keys_dir, today):
             b7 = _back(s, [x.strftime("%Y%m%d") for x in days7], vfil, until=today)   # Guy, Nov 24: only players who started on these versions
             B["d7"] = [sum(min(n, base7[d]) for d, n in b7.items()), sum(base7.values()), since.isoformat(), c7.isoformat()]
         return B
+    from concurrent.futures import ThreadPoolExecutor
+    J, R = {}, {}   # every version group, asked side by side
     vf = [v for v in vers if VF <= _ver(v) <= VF_TO]
     if vf:
         since = min(rel(v) for v in vf)
-        out["vf"] = block(vf, since, today, ".".join(map(str, VF)) + " to " + ".".join(map(str, VF_TO)))
+        J["vf"] = (vf, since, today, ".".join(map(str, VF)) + " to " + ".".join(map(str, VF_TO)))
         pv = [v for v in vers if _ver(v) < VF]
         n = (today - since).days + 1
         p0, p1 = max(since - dt.timedelta(days=n), START), since - dt.timedelta(days=1)
         if pv and p1 >= p0:
-            out["pre"] = block(pv, p0, p1, "Before " + ".".join(map(str, VF)))
-    out["vx"] = {}
+            J["pre"] = (pv, p0, p1, "Before " + ".".join(map(str, VF)))
     for X, H, L in VX:
         xv = [v for v in vers if X <= _ver(v) <= (H or (999,))]
         if xv:
-            out["vx"]["v" + "_".join(map(str, X))] = block(xv, min(rel(v) for v in xv), today, L or ".".join(map(str, X)) + "+")
-            out["vx"]["v" + "_".join(map(str, X))]["range"] = [".".join(map(str, X)), ".".join(map(str, H)) if H else None]
+            k = "v" + "_".join(map(str, X))
+            J[k] = (xv, min(rel(v) for v in xv), today, L or ".".join(map(str, X)) + "+")
+            R[k] = [".".join(map(str, X)), ".".join(map(str, H)) if H else None]
+    with ThreadPoolExecutor(12) as ex:
+        F = {k: ex.submit(block, *v) for k, v in J.items()}
+        # Guy, Nov 22: "Players (all, new)" filter: the same tile sets for new players only (first day in each view's days)
+        N = {"all": ex.submit(block, vers, max(today - dt.timedelta(days=6), START), today, "All versions", True)}
+        N.update({k: ex.submit(block, *v, True) for k, v in J.items()})
+    for k in ("vf", "pre"):
+        if k in F:
+            out[k] = F[k].result()
+    out["vx"] = {k: {**F[k].result(), "range": R[k]} for k in R}
     out["vxnext"] = [L or ".".join(map(str, X)) + "+" for X, H, L in VX if X > live]   # Guy, Nov 24: groups not on the App Store yet (1.4.0+)
-    # Guy, Nov 22: "Players (all, new)" filter: the same tile sets for new players only (first day in each view's days)
-    out["new"] = {"all": block(vers, max(today - dt.timedelta(days=6), START), today, "All versions", True)}
-    for k, B0 in [("vf", out.get("vf")), ("pre", out.get("pre"))] + list(out["vx"].items()):
-        if B0:
-            out["new"][k] = block([v for v in vers if v in B0.get("vers", vers)], dt.date.fromisoformat(B0["since"]), dt.date.fromisoformat(B0["until"]), B0["label"], True)
+    out["new"] = {k: f.result() for k, f in N.items()}
     # active players on every app version (the game events above only come from 1.3.1+)
     span = lambda a: {"startDate": a, "endDate": today.isoformat()}
     total = lambda a: int(next(iter(_run(s, {"dateRanges": [span(a)], "metrics": [{"name": "activeUsers"}]})), ([], [0]))[1][0])
     out["all"] = {"today": total(today.isoformat()), "week": total((today - dt.timedelta(days=6)).isoformat()), "m30": total((today - dt.timedelta(days=29)).isoformat()), "ever": total("2026-01-01"),
                   "daily": {f"{d[:4]}-{d[4:6]}-{d[6:]}": int(n) for (d,), (n,) in _run(s, {"dateRanges": [dall], "dimensions": [{"name": "date"}], "metrics": [{"name": "activeUsers"}]})}}
+    out["calls"] = CALLS[0]
     return {"GA4 Game Lite": (pd.DataFrame([{"json": json.dumps(out)}]), None)}

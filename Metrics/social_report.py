@@ -110,6 +110,7 @@ def fetch():
                 print(f"TIMING {m.__name__.split('.')[-1]}: {time.time() - t0:.0f}s", flush=True)   # build log only (Guy, Nov 20: why runs take 5+ min)
                 return got, None
             except Exception as e:
+                print(f"RETRY {m.__name__.split('.')[-1]} try {attempt}: {type(e).__name__} after {time.time() - t0:.0f}s", flush=True)   # build log only
                 if attempt == 3:
                     msg = re.sub(r"(token|key|secret)=[^&\s'\"]+", r"\1=***", f"{type(e).__name__}: {e}", flags=re.I)   # never show keys
                     return {}, f"{m.__name__.split('.')[-1]} (3 tries): {msg}"[:200]
