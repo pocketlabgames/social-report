@@ -14,7 +14,9 @@ import os
 import re
 import time
 
-NO_CT = {"notExpression": {"filter": {"fieldName": "region", "stringFilter": {"value": "Connecticut"}}}}   # Guy, Nov 21: Connecticut = Guy testing, left out of game stats (own copy so the check stays independent)
+NO_CT = {"andGroup": {"expressions": [{"notExpression": {"filter": {"fieldName": "region", "stringFilter": {"value": "Connecticut"}}}},
+                                      {"notExpression": {"filter": {"fieldName": "deviceModel", "stringFilter": {"matchType": "BEGINS_WITH", "value": "iPhone99,"}}}},   # Guy, Nov 24 "remove test devices": Apple test devices (model not sold)
+                                      {"notExpression": {"filter": {"fieldName": "operatingSystemVersion", "stringFilter": {"matchType": "EXACT", "value": "27.1"}}}}]}}   # iOS 27.1: 0 App Store downloads ever (27.2 has 86), all US   # Guy, Nov 21: Connecticut = Guy testing, left out of game stats (own copy so the check stays independent)
 from concurrent.futures import ThreadPoolExecutor
 
 import jwt
