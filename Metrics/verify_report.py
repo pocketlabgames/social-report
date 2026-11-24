@@ -505,6 +505,15 @@ def _check_social_split(C, page):
         bad += X["dl_search"][i] != want
     C.same("Social (est.) days split wrong", bad, 0, 0)
 
+def _check_sources(C):
+    """Guy, Nov 24: Nov 22 counted twice in the download sources after the app was renamed. A day's downloads by source can differ a
+    little from Apple's sales report, never by half: days over 1.5x (10+ downloads) fail."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    src, ins = json.load(open(os.path.join(here, "sources-cache.json"))), json.load(open(os.path.join(here, "installs-cache.json")))
+    bad = [f"{d}: {n} by source, {ins[d]} downloads" for d, r in src.items()
+           for n in [sum(v for k, v in r.items() if k.startswith("dl_"))] if (ins.get(d) or 0) >= 10 and n > 1.5 * ins[d]]
+    C.same("Download source days counted twice " + "; ".join(bad), len(bad), 0, 0)
+
 def _check_search_chart(C, page):
     """Guy, Nov 17: App Store search chart: actual times shown match the saved search history, and the projected next Sunday
     is recomputed independently (same weekday last week x last week's growth, Mon-Sat and Sunday separately, clamped 1-3x)."""
@@ -551,7 +560,7 @@ def run(html_path, keys, G, snap, prev, stale, errors, plats, today=None):
     page = open(html_path, encoding="utf-8").read()
     C = Checks()
     for name, step in (("Views", lambda: _check_views(C, page, snap, prev, stale, errors, plats)), ("App Store, downloads and money", lambda: C.__setattr__("on_sale", _check_store(C, page, keys, today))),
-                       ("Game stats", lambda: _check_game(C, page, keys, today, G, C.on_sale)), ("Social (est.)", lambda: _check_social_split(C, page)), ("App Store search", lambda: _check_search_chart(C, page))):
+                       ("Game stats", lambda: _check_game(C, page, keys, today, G, C.on_sale)), ("Social (est.)", lambda: _check_social_split(C, page)), ("App Store search", lambda: _check_search_chart(C, page)), ("Download sources", lambda: _check_sources(C))):
         try:
             step()
         except Exception as e:

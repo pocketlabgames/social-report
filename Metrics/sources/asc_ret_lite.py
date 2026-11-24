@@ -74,7 +74,9 @@ def _frames(cl, today):
                     got[folder].append(pd.read_csv(path, sep="\t", dtype=str))
                     if folder == "ASC_Discovery":
                         files.append((inst["attributes"].get("processingDate") or "", got[folder][-1]))
-    out = {k: (pd.concat(v, ignore_index=True).drop_duplicates() if v else pd.DataFrame()) for k, v in got.items()}
+    # Guy, Nov 24: Apple's files repeat days; after the 1.3.22 rename the same rows came back under a new App Name, so they no longer
+    # looked identical and Nov 22 counted twice (244 downloads by source, really 122). The name is dropped before removing repeats.
+    out = {k: (pd.concat(v, ignore_index=True).drop(columns="App Name", errors="ignore").drop_duplicates() if v else pd.DataFrame()) for k, v in got.items()}
     out["ASC_Discovery_files"] = files
     return out
 
