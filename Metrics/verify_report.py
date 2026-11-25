@@ -271,6 +271,7 @@ def _check_game(C, page, keys, today, G, on_sale):
         # Guy, Nov 24: Quiet start card, own pulls per row (first-day wins, level 10, next day)
         _qh = page[page.find("<div class='qs' id='quiet'>"):][:6000] if "<div class='qs' id='quiet'>" in page else ""
         C.true("Quiet start card on the page", bool(_qh), "missing")
+        C.true("Quiet start has the After, 1.4.0+ row", "<b>After, 1.4.0+</b>" in _qh, "missing")   # Guy, Nov 25
         C.true("Quiet start table has no background of its own", ".qs .qsw table{width:100%;border-collapse:collapse;background:none}" in page, "white box behind the table")   # Guy, Nov 24
         _qn = [(m[1], re.findall(r"<td[^>]*>(.*?)</td>", m[2])) for m in re.finditer(r"<tr[^>]*><td><b>(.*?)</b><small>.*?</small></td>(.*?)</tr>", _qh)]
         _qd = dict(_qn); _qsum = 0
