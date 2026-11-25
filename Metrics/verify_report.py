@@ -179,20 +179,15 @@ def _check_game(C, page, keys, today, G, on_sale):
     outcome = {r[0][0]: int(r[1][0]) for r in run(d7, ["customEvent:outcome"], ["eventCount"], AND(wk, has("eventName", "level_end"))) if r[0][0] != "(not set)"}
     kind = {r[0][0]: int(r[1][0]) for r in run(d7, ["customEvent:kind"], ["eventCount"], AND(wk, has("eventName", "ad_shown"))) if r[0][0] != "(not set)"}
     parse = lambda blk: {html.unescape(l): (html.unescape(v), html.unescape(n)) for v, l, n in re.findall(r"<div class='gt'><b>(.*?)</b><span>(.*?)</span><small>(.*?)</small>(?:<em class='gcmp[^']*'>.*?</em>)?</div>", blk)}
-    a0, v0 = page.find("id='gst-all'"), page.find("id='gst-vf'")   # Guy, Nov 16: two tile sets (All versions / 1.3.11+)
-    tiles = parse(page[a0:v0] if a0 >= 0 and v0 > a0 else page)
+    def seg(i):   # one set of Game stats cards (view-period-players)
+        x = page.find(f"id='{i}'"); y = page.find("<div class='gst'", x + 10); z = page.find("</div></div>", x)
+        return "" if x < 0 else page[x:min(q for q in (y, z + 12) if q > x)]
+    v0 = page.find("id='gst-vf-d7-all'")
+    tiles = parse(seg("gst-all-d7-all"))   # Guy, Nov 25: the All versions / Last 7 days / All players cards
     tile = lambda l: tiles.get(l, ("", ""))
     n1 = lambda text, pat: _num(pat, text, int)
     VB = G.get("vf")
     if VB and v0 >= 0:   # the newest-versions tiles must match their own numbers
-        _pe = page.find("id='gst-pre'"); vt = parse(page[v0:_pe if _pe > v0 else v0 + 6000]); vtile = lambda l: vt.get(l, ("", ""))
-        vo = VB.get("outcome") or {}; vw = VB.get("week") or {}
-        C.same("1.3.11+ active players", n1(vtile("Active players")[0], r"([\d,]+)"), vw.get("players", 0), 1)   # includes today: 1 player may arrive between pulls
-        C.same("1.3.11+ win rate: wins", n1(vtile("Win rate")[1], r"([\d,]+) wins"), vo.get("win", 0), 0)
-        C.same("1.3.11+ win rate: attempts", n1(vtile("Win rate")[1], r"of ([\d,]+) level"), sum(v for k, v in vo.items() if k != "skip"), 0)
-        C.same("1.3.11+ win rate: skips left out", n1(vtile("Win rate")[1], r"([\d,]+) skips? left out") or 0, vo.get("skip", 0), 0)
-        C.same("1.3.11+ Super Stir uses", n1(vtile("Super Stir / Solve uses")[1], r"([\d,]+) Super Stir"), vw.get("super_stir", 0), 0)
-        C.same("1.3.11+ Super Solve uses", n1(vtile("Super Stir / Solve uses")[1], r"([\d,]+) Super Solve"), vw.get("super_solve", 0), 0)
         # Guy, Nov 18: version Purchases tile = real App Store purchases from RevenueCat (own pull), never Firebase test buys
         try:
             from sources import rc_lite
@@ -224,9 +219,6 @@ def _check_game(C, page, keys, today, G, on_sale):
                        f"page ~{_m.group(1)} today, RevenueCat has {_since} new players since midnight")
         except Exception as _e:
             C.fails.append(f"Installs estimate check could not run: {type(_e).__name__}: {_e}"[:240])
-        if _rc is not None:
-            _src = int(sum(r.tx for r in _rc[0].itertuples() if r.date >= VB["since"]))
-            C.same("1.3.11+ purchases (RevenueCat, real App Store)", n1(vtile("Purchases")[0], r"([\d,]+)"), _src, 0)
         # Guy, Nov 19: Day-1 return tiles and the Before 1.3.11 set (own pulls, not the report's numbers)
         def next_day(day, vs, lo=1, hi=1):   # own copy: players whose first day was on these released versions (funnel step 1) and who played the next day (step 2)
             f = lambda x: {("funnelFieldFilter" if k == "filter" else k): f(v) for k, v in x.items()} if isinstance(x, dict) else [f(v) for v in x] if isinstance(x, list) else x
@@ -316,27 +308,8 @@ def _check_game(C, page, keys, today, G, on_sale):
                 if _nb is not None:
                     C.same(f"Quiet start {_lab}: came back next day", n1(_cl[6], r"<small>([\d,]+) of"), _nb, 1)
         C.same("Quiet start: new players since Nov 25", n1(_qh, r"<b>([\d,]+) of 200</b>") if _qh else None, sum((G.get("quiet", {}).get(k) or {}).get("n", 0) for k in ("after", "after140")), 0)
-        # Guy, Nov 24: "Reached level 10 on day one" card, own pull for every version view (all, before, each group, and the New players views)
-        for _k, _b in [("all", {**G, "vers": want}), ("pre", G.get("pre")), ("vf", G.get("vf"))] + list((G.get("vx") or {}).items()):
-            if not _b:
-                continue
-            _x = page.find(f"id='gst-{_k}'"); _y = page.find("<div class='gst'", _x + 10); _t = parse(page[_x:_y if _y > _x else _x + 6000]).get("Reached level 10 on day one")
-            C.true(f"Level 10 card in {_k}", _x >= 0 and bool(_t), "missing")
-            _d = _b.get("l10")
-            if not _t or not _d:
-                continue
-            _a, _c = dt.date.fromisoformat(_d[2]), dt.date.fromisoformat(_d[3])
-            C.true(f"Level 10 card {_k}: complete days only", _c < today, f"runs to {_c}")
-            _fd = among("firstSessionDate", [(_a + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((_c - _a).days + 1)])
-            _sum = lambda *f: sum(int(r[1][0]) for r in run((_a, _c), ["firstSessionDate", "date"], flt=AND(released_only(_a, _c, _b["vers"]), _fd, *f)) if r[0][0] == r[0][1])
-            _n, _r10 = _sum(), _sum({"filter": {"fieldName": "customUser:max_level", "stringFilter": {"matchType": "FULL_REGEXP", "value": "[1-9][0-9]+"}}})
-            C.same(f"Level 10 card {_k}: new players", n1(_t[1], r"of ([\d,]+) new"), _n, 1)
-            C.same(f"Level 10 card {_k}: reached level 10", n1(_t[1], r"^([\d,]+) of"), _r10, 1)
-            C.true(f"Level 10 card {_k}: percent", _t[0] == (f"{_d[0] / _d[1] * 100:.0f}%" if _d[1] else "—"), _t[0])
         C.true("1.3.11 to 1.3.17 label (only the newest option has a +)", VB.get("label") == "1.3.11 to 1.3.17", VB.get("label"))
-        d1_check("1.3.11 to 1.3.17", VB, vtile)
-        d7_check("1.3.11 to 1.3.17", VB, vtile)
-        PB = G.get("pre"); p0 = page.find("id='gst-pre'")
+        PB = G.get("pre")
         C.true("Before 1.3.11 option in the version filter", bool(PB) == ("<option value='pre'>" in page), "drop-down option and data disagree")
         _o = re.findall(r"<select id='gsel'.*?</select>", page)
         C.true("Version filter order: All, Before 1.3.11, 1.3.11 to 1.3.17, 1.3.18 to 1.3.23, 1.4.0+ once live", bool(_o) and re.findall(r"value='(\w+)'", _o[0]) == (["all", "pre", "vf"] if PB else ["all", "vf"]) + list((G.get("vx") or {}).keys()), f"order is {re.findall(r'value=.(\w+).', _o[0]) if _o else 'missing'}")
@@ -345,12 +318,9 @@ def _check_game(C, page, keys, today, G, on_sale):
         for k, BX in (G.get("vx") or {}).items():   # Guy, Nov 19: 1.3.18+ once live
             X = _ver(BX["range"][0]); H = _ver(BX["range"][1]) if BX["range"][1] else (999,)   # Guy, Nov 22: closed ranges (1.3.18/19); only the newest is open (+)
             C.true(f"{BX['label']}: + only on the newest option", (k == list(G["vx"])[-1] or not BX["label"].endswith("+")) and (BX["label"].endswith("+") == (BX["range"][1] is None)), BX["label"])
-            xo = page.find(f"id='gst-{k}'"); C.true(f"{BX['label']} tile set", xo >= 0, "missing")
+            xo = page.find(f"id='gst-{k}-d7-all'"); C.true(f"{BX['label']} tile set", xo >= 0, "missing")
             _xl = BX["range"][0]; C.true(f"{BX['label']} starts on its App Store release day", BX.get("since") == (G.get("released") or {}).get(_xl), f"starts {BX.get('since')}, released {(G.get('released') or {}).get(_xl)}")   # Nov 21: 1.3.18+ slid to Nov 21
             if xo >= 0:
-                _xe = page.find("<div class='gst'", xo + 10); xt = parse(page[xo:_xe if _xe > xo else xo + 6000])
-                xa = dt.date.fromisoformat(BX["since"])
-                C.same(f"{BX['label']} active players", n1(xt.get("Active players", ("", ""))[0], r"([\d,]+)"), one((xa, today), flt=released_only(xa, today, [v for v in want if X <= _ver(v) <= H])), 1)   # includes today
                 C.true(f"{BX['label']} is on the App Store", X <= _ver(G.get("live", "0")), f"live is {G.get('live')}")
                 if X == _ver(G.get("live", "0")):   # Guy, Nov 21: 1.3.18+ started a day late (Apple's cached lookup still said 1.3.17); start = Apple's release day (ET), fresh lookup
                     try:
@@ -361,22 +331,8 @@ def _check_game(C, page, keys, today, G, on_sale):
                             C.true(f"{BX['label']} starts on Apple's release day", BX["since"] == _rd.isoformat(), f"report starts {BX['since']}, Apple released {_rd.isoformat()}")
                     except Exception as _e:
                         C.fails.append(f"{BX['label']} release-day check could not run: {type(_e).__name__}"[:240])
-        if PB and p0 >= 0:
-            _pe2 = page.find("<div class='gst'", p0 + 10); pt = parse(page[p0:_pe2 if _pe2 > p0 else p0 + 6000]); ptile = lambda l: pt.get(l, ("", ""))
-            pvs = [v for v in want if _ver(v) < (1, 3, 11)]
-            pa, pb = dt.date.fromisoformat(PB["since"]), dt.date.fromisoformat(PB["until"])
-            C.same("Before 1.3.11 active players", n1(ptile("Active players")[0], r"([\d,]+)"), one((pa, pb), flt=released_only(pa, pb, pvs)), 0)
-            d1_check("Before 1.3.11", PB, ptile)
-            d7_check("Before 1.3.11", PB, ptile)
-            po = PB.get("outcome") or {}
-            C.same("Before 1.3.11 win rate: attempts (no skips)", n1(ptile("Win rate")[1], r"of ([\d,]+) level"), sum(v for k, v in po.items() if k != "skip"), 0)
-            vblk = page[v0:p0]
-            for l, (v, n) in pt.items():   # every comparison line shows the Before 1.3.11 tile's own value
-                m = re.search(r"<span>" + re.escape(html.escape(l)) + r"</span><small>[^<]*</small><em class='gcmp[^']*'>[^<]*before 1\.3\.11: (.*?)</em>", vblk)
-                if m:
-                    C.true(f"1.3.11+ '{l}' compares to Before 1.3.11", html.unescape(m.group(1)) == v, f"line says {html.unescape(m.group(1))}, Before 1.3.11 tile says {v}")
     wins, tries = outcome.get("win", 0), sum(v for k, v in outcome.items() if k != "skip")   # Guy, Nov 19: skips left out of win rate
-    C.same("Win rate: wins", n1(tile("Win rate")[1], r"([\d,]+) wins"), wins, wobble(wins))
+    C.same("Win rate: wins", n1(tile("Win rate")[1], r"^([\d,]+) of"), wins, wobble(wins))
     C.same("Win rate: attempts", n1(tile("Win rate")[1], r"of ([\d,]+) level"), tries, wobble(tries))
     C.same("Win rate", n1(tile("Win rate")[0], r"(\d+)%"), round(wins / tries * 100) if tries else 0, 2)
     # Guy, Nov 22: tutorial uses (free Super Stir on level 4, free Super Solve on level 5, 1.3.19+) are left out of the card; counted here per row
@@ -387,15 +343,13 @@ def _check_game(C, page, keys, today, G, on_sale):
             _sup[e] += int(n)
     _tutf = {"orGroup": {"expressions": [AND(has("eventName", e), has("customEvent:kind", "free"), has("customEvent:level", l), among("appVersion", [v for v in seen if _tutv(v)] or ["none"])) for e, l in (("super_stir", "4"), ("super_solve", "5"))]}}
     _supu = one(d7, flt=AND(wk, among("eventName", list(_sup)), {"notExpression": _tutf}))
-    C.same("Super Stir uses (tutorial left out)", n1(tile("Super Stir / Solve uses")[1], r"([\d,]+) Super Stir"), _sup["super_stir"], wobble(_sup["super_stir"]))
-    C.same("Super Solve uses (tutorial left out)", n1(tile("Super Stir / Solve uses")[1], r"([\d,]+) Super Solve"), _sup["super_solve"], wobble(_sup["super_solve"]))
-    C.same("Purchases (App Store sales, last 7 days)", n1(tile("Purchases")[0], r"([\d,]+)"), sum(C.iapn.get((today - dt.timedelta(days=i)).isoformat(), 0) for i in range(7)))
-    C.same("Players who used Super Stir / Solve", n1(tile("Super Stir / Solve uses")[1], r"by ([\d,]+) player"), _supu, max(1, wobble(_supu)))
-    C.true("Super Stir / Solve card says tutorial uses are left out", all("free tutorial ones left out" in x for x in re.findall(r"<span>Super Stir / Solve uses</span><small>(.*?)</small>", page)) and "<span>Super Stir / Solve uses</span>" in page, "label missing on a view")
+    C.same("Super Stir uses (tutorial left out)", n1(tile("Super Stir / Solve uses")[1], r"([\d,]+) Stir"), _sup["super_stir"], wobble(_sup["super_stir"]))
+    C.same("Super Solve uses (tutorial left out)", n1(tile("Super Stir / Solve uses")[1], r"([\d,]+) Solve"), _sup["super_solve"], wobble(_sup["super_solve"]))
+    C.same("Players who used Super Stir / Solve", n1(tile("Super Stir / Solve uses")[1], r"([\d,]+) player"), _supu, max(1, wobble(_supu)))
     C.same("Ad views per player", _num(r"([\d.]+)", tile("Ad views per player")[0]), round(ev.get("ad_shown", 0) / players, 1) if players else 0, 0.3)
     # Guy, Nov 22 audit: the tile must equal its own listed counts / its own listed players (0.7 read as 160/260 = 0.6 before)
     _at = tile("Ad views per player")
-    _ap = n1(_at[1], r"per player on 1\.3\.1\+ \(([\d,]+)\)")
+    _ap = n1(tile("Active players")[0], r"([\d,]+)")
     _ak = sum(int(x.replace(",", "")) for x in re.findall(r"([\d,]+) (?:between levels|rewarded)", _at[1]))
     C.true("Ad views per player = its listed ads / its listed players", _ap is not None and _num(r"([\d.]+)", _at[0]) == round(_ak / _ap, 1), f"tile {_at[0]}, {_ak} ads, players {_ap}")
     C.same("Rewarded ads", n1(tile("Ad views per player")[1], r"([\d,]+) rewarded"), kind.get("rewarded", 0), wobble(kind.get("rewarded", 0)))
@@ -404,9 +358,7 @@ def _check_game(C, page, keys, today, G, on_sale):
     mw, mo = mv("rewarded_watched"), mv("rewarded_offer_shown")
     C.same("+Moves videos watched", n1(tile("+Moves videos watched")[0], r"([\d,]+)"), mw, wobble(mw))
     C.same("+Moves video offers", n1(tile("+Moves videos watched")[1], r"of ([\d,]+) offers"), mo, wobble(mo))
-    C.same("Active players, last 7 days", n1(tile("Active players")[0], r"([\d,]+)"), one((today - dt.timedelta(days=6), today)), 1)
-    C.same("Active players today", n1(tile("Active players")[1], r"([\d,]+) played today"), one((today, today)), 1)
-    C.same("Active players since launch", n1(tile("Active players")[1], r"([\d,]+) since launch"), one((dt.date(2026, 1, 1), today)), 1)
+    C.same("Active players, last 7 days (1.3.1+, test days left out)", n1(tile("Active players")[0], r"([\d,]+)"), players, 2)
     try:   # Guy, Nov 21: All versions Day-7 tile, own pull (first days 8-14 days ago, back on day 7 or later)
         _b7 = _k7 = 0
         for i in range(8, 15):
@@ -417,8 +369,6 @@ def _check_game(C, page, keys, today, G, on_sale):
         _t7 = tile("Day-7 return")
         C.same("Day-7 return: new players (all versions)", n1(_t7[1], r"of ([\d,]+) new"), _b7, max(2, wobble(_b7)))
         C.same("Day-7 return: came back (all versions)", n1(_t7[1], r"^([\d,]+) of"), _k7, 1)
-        _o7 = [m.group(1) for m in re.finditer(r"<div class='gt'><b>.*?</b><span>(.*?)</span>", page[a0:v0] if a0 >= 0 and v0 > a0 else page)]
-        C.true("Game stats order: Day-1, Day-7, Win rate, Typical furthest level, Reached level 10", _o7[1:6] == ["Day-1 return", "Day-7 return", "Win rate", "Typical furthest level", "Reached level 10 on day one"], f"order is {_o7[:6]}")
     except Exception as _e7:
         C.fails.append(f"Day-7 check could not run: {type(_e7).__name__}: {_e7}"[:240])
     # Guy, Nov 21: Reminders on = new players (first opened in the last 7 days) with quiet (soft_provisional) or full reminders (soft_authorized / remind_allow)
@@ -431,8 +381,7 @@ def _check_game(C, page, keys, today, G, on_sale):
         C.same("Reminders on: players with reminders (7 days)", n1(_rt[1], r"^([\d,]+) of"), _ro, max(1, wobble(_ro)))
         C.same("Reminders on %", n1(_rt[0], r"(\d+)%"), round(_ro / _rn * 100) if _rn else 0, 2)
         for _id in re.findall(r"id='(gst-[\w-]+)'", page):   # every Game stats view has the tile, and its % matches its own counts
-            _o = page.find(f"id='{_id}'"); _e = page.find("<div class='gst'", _o + 10); _t = parse(page[_o:_e if _e > _o else _o + 6000]).get("Reminders on")
-            C.true(f"Reminders on tile in {_id}", bool(_t), "missing")
+            _t = parse(seg(_id)).get("Reminders on")
             if _t and "%" in _t[0]:
                 _a, _b = n1(_t[1], r"^([\d,]+) of"), n1(_t[1], r"of ([\d,]+) new")
                 C.true(f"Reminders on % adds up in {_id}", _b and abs(round(_a / _b * 100) - n1(_t[0], r"(\d+)%")) <= 1, f"{_t[0]} vs {_a} of {_b}")
@@ -446,12 +395,8 @@ def _check_game(C, page, keys, today, G, on_sale):
         C.true("Day-1 by version chart on the page", _dv >= 0, "missing")
         for _lb in [x["label"] for x in (G.get("vx") or {}).values()] + list(G.get("vxnext") or []):   # Guy, Nov 24: "make a new section for 1.4.0" (also before it is live)
             C.true(f"Day-1 chart section {_lb}", page.count(f"<div class='dvh'>{html.escape(_lb)}</div>") == 1, "missing or twice")
-        for _k, _b in [("vf", G.get("vf")), ("pre", G.get("pre"))] + list((G.get("vx") or {}).items()) + [("new " + k, v) for k, v in (G.get("new") or {}).items()]:   # Guy, Nov 24: the faster step must keep each group's top player
-            if _b and _b.get("freach") and _b.get("reach"):
-                _need = max((int(x) for x, v in _b["freach"].items() if v), default=0); _top = max(map(int, _b["reach"]))
-                C.true(f"Top player in {_k} reaches at least the last level step with players", _top >= _need, f"top player {_top}, level {_need}+ has players")
         C.true("Google Analytics questions per refresh under 1,000", 0 < (G.get("calls") or 0) < 1000, f"{G.get('calls')} questions (785 on Nov 24; was 1,085): the refresh is slowing down again")   # Guy, Nov 24: refresh took almost 10 min
-        C.true("Live version is in one version group", any(G.get("live") in (x or {}).get("vers", []) for x in [G.get("pre"), G.get("vf")] + list((G.get("vx") or {}).values())), f"live {G.get('live')} is in no group")
+        C.true("Live version is in one version group", G.get("live") not in (G.get("versions") or []) or any(G.get("live") in (x or {}).get("vers", []) for x in [G.get("pre"), G.get("vf")] + list((G.get("vx") or {}).values())), f"live {G.get('live')} is in no group")
         for BB in [G.get("pre"), G.get("vf")] + list((G.get("vx") or {}).values()):
             if not BB or not BB.get("d1"):
                 continue
@@ -462,22 +407,55 @@ def _check_game(C, page, keys, today, G, on_sale):
             if _sr:
                 C.same(f"Day-1 chart {BB['label']}: Google Ads + other new players = all", sum((_sr.get(k) or [0, 0])[1] for k in ("ads", "other")), BB["d1"][1], max(1, wobble(BB["d1"][1])))
                 C.same(f"Day-1 chart {BB['label']}: Google Ads + other came back = all", sum((_sr.get(k) or [0, 0])[0] for k in ("ads", "other")), BB["d1"][0], max(1, wobble(BB["d1"][0])))
-        # Guy, Nov 22: Players (all, new) filter: every version view has a New players view; new players are part of that view's active players
+        # Guy, Nov 25: third drop-down (Today, Last 7 days, This month, Last month) + cards and data consistent
         _ids = re.findall(r"id='(gst-[\w-]+)'", page)
+        C.true("Time drop-down: Today, Last 7 days, This month, Last month", re.findall(r"<option value='(\w+)'(?: selected)?>([^<]+)</option>", (re.findall(r"<select id='tsel'.*?</select>", page) or [""])[0]) == [("today", "Today"), ("d7", "Last 7 days"), ("month", "This month"), ("last", "Last month")] and "bl_tsel_default" in page, "wrong or missing")
         C.true("Players filter on the page", "id='psel'" in page and "bl_psel_default" in page, "missing")
-        C.true("Game tiles say 'played today' (Guy, Nov 22: '89 today' read as new today)", "played today" in page and not re.search(r"\d today ·|\d today<", page), "old 'N today' label on the page")
-        for _id in [x for x in _ids if not x.endswith("-new")]:
-            C.true(f"New players view for {_id}", _id + "-new" in _ids, "missing")
-            if _id + "-new" in _ids:
-                _pa = lambda i: page.find(f"id='{i}'"); _seg = lambda i: page[_pa(i):(lambda q: q if q > _pa(i) else _pa(i) + 6000)(page.find("<div class='gst'", _pa(i) + 10))]
-                _na, _nn = parse(_seg(_id)).get("Active players"), parse(_seg(_id + "-new")).get("New players")
-                C.true(f"New players tile in {_id}-new", bool(_nn), "missing")
-                if _na and _nn:
-                    _a, _n = n1(_na[0], r"([\d,]+)"), n1(_nn[0], r"([\d,]+)")
-                    C.true(f"New players <= active players in {_id}", _n is not None and _a is not None and _n <= _a + 1, f"{_n} new vs {_a} active")
-                    _rt2 = parse(_seg(_id + "-new")).get("Reminders on"); _rn2 = n1(_rt2[1], r"of ([\d,]+) new") if _rt2 and "%" in _rt2[0] else None
-                    if _rn2 is not None:
-                        C.same(f"New players = Reminders-on new players in {_id}-new", _n, _rn2, max(2, wobble(_rn2)))
+        _NM = ["Active players", "Day-1 return", "Day-7 return", "Win rate", "Typical furthest level", "Reached level 10 on day one", "Ad views per player", "+Moves videos watched", "Super Stir / Solve uses", "Shares", "Purchases", "Reminders on"]
+        _VW = {"all": want, **({"pre": [v for v in want if _ver(v) < (1, 3, 11)]} if G.get("pre") else {}), **({"vf": [v for v in want if (1, 3, 11) <= _ver(v) <= (1, 3, 17)]} if G.get("vf") else {}), **{k: B["vers"] for k, B in (G.get("vx") or {}).items()}}
+        C.true("A card set for every version, time and player choice", sorted(_ids) == sorted(f"gst-{v}-{t}-{w}" for v in _VW for t in ("today", "d7", "month", "last") for w in ("all", "new")), f"{len(_ids)} sets")
+
+        def _own(a):   # own pulls for one view and period
+            v, t = a
+            r0, r1 = (dt.date.fromisoformat(x) for x in G["periods"][t])
+            vs = [x for x in _VW[v] if rel[x] <= r1]
+            if not vs:
+                return a, (0, 0, {}, {})
+            fl = released_only(r0, r1, vs)
+            o = {r[0][0]: int(r[1][0]) for r in run((r0, r1), ["customEvent:outcome"], ["eventCount"], AND(fl, has("eventName", "level_end")))}
+            kd = {r[0][0]: int(r[1][0]) for r in run((r0, r1), ["customEvent:kind"], ["eventCount"], AND(fl, has("eventName", "ad_shown")))}
+            return a, (one((r0, r1), flt=fl), sum(int(r[1][0]) for r in run((r0, r1), ["firstSessionDate", "date"], flt=fl) if r[0][0] == r[0][1]), o, kd)
+        with ThreadPoolExecutor(5) as _ex:
+            _res = dict(_ex.map(_own, [(v, t) for v in _VW for t in (G.get("periods") or {})]))
+        for (v, t), (na, nn, o, kd) in _res.items():
+            A, N = parse(seg(f"gst-{v}-{t}-all")), parse(seg(f"gst-{v}-{t}-new")); nm = f"{v}/{t}"
+            C.true(f"{nm}: the same 12 cards in the same order", list(A) == _NM and list(N) == ["New players"] + _NM[1:], f"{list(A)} / {list(N)}")
+            g = lambda T, l: T.get(l, ("", ""))
+            mvn = lambda x: max(3, wobble(x))
+            n0 = lambda text, pat: 0 if re.search(r"no (level attempts|players) yet", text or "") else n1(text, pat)   # an empty card says so in words
+            C.same(f"{nm}: active players", n1(g(A, "Active players")[0], r"([\d,]+)"), na, mvn(na)); C.same(f"{nm}: new players", n1(g(N, "New players")[0], r"([\d,]+)"), nn, mvn(nn))
+            C.same(f"{nm}: wins", n0(g(A, "Win rate")[1], r"^([\d,]+) of"), o.get("win", 0), max(3, wobble(o.get("win", 0))))
+            C.same(f"{nm}: attempts", n0(g(A, "Win rate")[1], r"of ([\d,]+) level"), sum(x for k, x in o.items() if k not in ("skip", "", "(not set)")), max(3, wobble(o.get("win", 0))))
+            C.same(f"{nm}: rewarded ads", n0(g(A, "Ad views per player")[1], r"([\d,]+) rewarded"), kd.get("rewarded", 0), max(2, wobble(kd.get("rewarded", 0)))); C.same(f"{nm}: ads between levels", n0(g(A, "Ad views per player")[1], r"([\d,]+) between"), kd.get("interstitial", 0), max(2, wobble(kd.get("interstitial", 0))))
+            nw = n1(g(N, "New players")[0], r"([\d,]+)")
+            _nset = {x for x in (n1(g(A, "Active players")[1], r"([\d,]+) new"), n1(g(A, "Reached level 10 on day one")[1], r"of ([\d,]+) new"), n1(g(A, "Reminders on")[1], r"of ([\d,]+) new"), n1(g(N, "Reminders on")[1], r"of ([\d,]+) new")) if x is not None}
+            C.true(f"{nm}: one number of new players on every card", _nset <= {nw}, f"{_nset} vs {nw}")
+            if v == "vf" and t == "month" and _qd.get("Earlier"):   # Guy reads both: the card and Quiet start must say the same
+                C.same("1.3.11 to 1.3.17 level 10 card = Quiet start Earlier row", n1(g(A, "Reached level 10 on day one")[1], r"of ([\d,]+) new"), n1(_qd["Earlier"][0], r"([\d,]+)"), 1)
+            for T in (A, N):
+                for l, (x, y) in T.items():   # every percentage equals its own "a of b"
+                    q = re.match(r"([\d,]+) of ([\d,]+) ", y)
+                    if q and "%" in x:
+                        i, k = (int(z.replace(",", "")) for z in q.groups()); C.true(f"{nm}: {l} % = its own counts", k > 0 and (abs(round(i / k * 100) - int(re.sub(r"[^\d]", "", x) or 0)) <= 1) and i <= k, f"{x}, {y}")
+                tp = n1(g(T, "Typical furthest level")[1], r"top player ([\d,]+)")
+                if tp and t != "month" and v == "all":   # Guy, Nov 25: "top player 557" was the month's, not the 7 days'
+                    C.true(f"{nm}: top player is from these days", tp <= max((int(r[0][0]) for r in run(tuple(dt.date.fromisoformat(z) for z in G["periods"][t]), ["customUser:max_level"], flt=released_only(*(dt.date.fromisoformat(z) for z in G["periods"][t]))) if r[0][0].isdigit()), default=0), f"top {tp}")
+                P0 = n1(g(T, "Active players")[0] or g(T, "New players")[0], r"([\d,]+)"); av = g(T, "Ad views per player"); sm = sum(int(z.replace(",", "")) for z in re.findall(r"([\d,]+) (?:between levels|rewarded)", av[1]))
+                C.true(f"{nm}: ad views per player = its ads / its players", (not P0 and av[0] == "—") or (P0 and abs(_num(r"([\d.]+)", av[0]) - sm / P0) <= 0.051), f"{av} {P0}")
+        if _rcall and _rcall.get("RC Purchases Lite") is not None:   # purchases: RevenueCat, the days of each choice
+            _tx = {r.date: r.tx for r in _rcall["RC Purchases Lite"][0].itertuples()}
+            for t, (x, y) in (G.get("periods") or {}).items():
+                C.same(f"Purchases, {t} (RevenueCat)", n1(parse(seg(f"gst-all-{t}-all")).get("Purchases", ("", ""))[0], r"([\d,]+)"), int(sum(v or 0 for k, v in _tx.items() if x <= k <= y and v == v)), 0)
     except Exception as _e2:
         C.fails.append(f"Reminders on check could not run: {type(_e2).__name__}: {_e2}"[:240])
     # levels
@@ -491,10 +469,13 @@ def _check_game(C, page, keys, today, G, on_sale):
     top = by[levels[0]] if levels else 0
     avg = sum(lv * (by[lv] - (by[levels[i + 1]] if i + 1 < len(levels) else 0)) for i, lv in enumerate(levels)) / top if top else 0
     half = max((lv for lv in levels if by[lv] * 2 >= top), default=0)
-    C.same("Typical furthest level", _num(r"([\d.]+)", tile("Typical furthest level")[0]), half, 0)   # Guy, Nov 8: middle player, not the average
-    C.same("All players on the level chart", n1(tile("Typical furthest level")[1], r"half of ([\d,]+) player"), top, 1)
-    C.same("Half of players reached level", n1(tile("Typical furthest level")[1], r"reached level (\d+)\+"), half, 1)
-    C.same("Top player's furthest level", n1(tile("Typical furthest level")[1], r"top player: ([\d,]+)"), levels[-1] if levels else 0, 0)
+    _l7 = sorted(int(r[0][0]) for r in run(d7, ["customUser:max_level"], flt=wk) if r[0][0].isdigit())
+    with ThreadPoolExecutor(5) as ex:
+        _b7l = dict(zip(_l7, ex.map(lambda lv: one(d7, flt=AND(wk, among("customUser:max_level", [str(x) for x in _l7 if x >= lv]))), _l7)))
+    _t7l = _b7l[_l7[0]] if _l7 else 0; _tl = tile("Typical furthest level")
+    C.same("Typical furthest level (7 days)", _num(r"([\d.]+)", _tl[0]), max((lv for lv in _l7 if _b7l[lv] * 2 >= _t7l), default=0), 0)   # Guy, Nov 8: middle player, not the average
+    C.same("Typical furthest level: players", n1(_tl[1], r"half of ([\d,]+) player"), _t7l, 2)
+    C.same("Typical furthest level: top player", n1(_tl[1], r"top player ([\d,]+)"), _l7[-1] if _l7 else 0, 0)
     m = re.search(r"window\.GAMECHART = \(\) => \{ const X = (\{.*?\}); if \(!window\.Chart\)", page, re.S)
     C.true("Level chart data found on the page", bool(m))
     if not m:

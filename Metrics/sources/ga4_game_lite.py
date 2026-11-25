@@ -278,67 +278,106 @@ def fetch(keys_dir, today):
     # Guy, Nov 21: "add quiet reminders opt-in rate". New players (first opened in the window, on these versions) who get reminders:
     # soft_provisional = Apple's quiet trial (game save 290+, 1.3.19+), soft_authorized / remind_allow = full permission; off = soft_denied / remind_off
     R_ON, R_OFF = ["soft_provisional", "soft_authorized", "remind_allow"], ["soft_denied", "remind_off"]
-    def remind(fil, since, until):
-        days = [(since + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((until - since).days + 1)]
-        co = {"andGroup": {"expressions": [fil, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": days}}}]}}
-        n1 = lambda dr, f: int(next(iter(_run(s, {"dateRanges": [dr], "metrics": [{"name": "totalUsers"}], "dimensionFilter": f})), ([], [0]))[1][0])
-        win, upto = {"startDate": since.isoformat(), "endDate": until.isoformat()}, {"startDate": since.isoformat(), "endDate": today.isoformat()}
-        evs = lambda names: {"andGroup": {"expressions": [co, {"filter": {"fieldName": "eventName", "inListFilter": {"values": names}}}]}}
-        by = {e: int(u) for (e,), (u,) in _run(s, {"dateRanges": [upto], "dimensions": [{"name": "eventName"}], "metrics": [{"name": "totalUsers"}], "dimensionFilter": evs(R_ON + R_OFF)})}
-        return {"new": n1(win, co), "on": n1(upto, evs(R_ON)), "off": n1(upto, evs(R_OFF)), "quiet": by.get("soft_provisional", 0), "yes": by.get("remind_allow", 0) + by.get("soft_authorized", 0)}
-    out["remind"] = remind(newer, max(today - dt.timedelta(days=6), START), today)
     # Guy, Nov 16: the same tiles for the newest versions only (1.3.11+), from the first one's release day to today
     # Guy, Nov 19: and for the versions before 1.3.11, over the same number of days just before 1.3.11 came out (each 1.3.11+ tile compares to it)
-    def day1_l10(fil, since, until):   # Guy, Nov 24: "add the level 10 card": new players whose next level was 10+ by the end of their first day; complete days only
-        c = min(until, today - dt.timedelta(days=1))
-        if c < since:
-            return None
-        ds = [(since + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((c - since).days + 1)]
-        ask = lambda *x: sum(int(n) for (d, d2), (n,) in _run(s, {"dateRanges": [{"startDate": since.isoformat(), "endDate": c.isoformat()}], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}], "metrics": [{"name": "activeUsers"}],
-              "dimensionFilter": {"andGroup": {"expressions": [fil, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": ds}}}, *x]}}, "limit": 10000}) if d == d2)
-        hi = [str(x) for x in lvs if x >= 10]
-        return [ask({"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": hi}}}) if hi else 0, ask(), since.isoformat(), c.isoformat()]
-    out["l10"] = day1_l10(newer, START, today)
+    # Guy, Nov 25: "add another drop down: Today, last 7 days, this month, last month" + "clean up the section to make the cards and data consistent":
+    # every card of a view counts the same players over the same days. One question answers all four periods (GA4 takes 4 date ranges) and both player
+    # filters (the first-day dimension: each player has exactly one first day, so the days add up to the players).
+    m0 = today.replace(day=1); m1 = (m0 - dt.timedelta(days=1)).replace(day=1)
+    PER = [(k, max(a, START), b) for k, a, b in (("today", today, today), ("d7", today - dt.timedelta(days=6), today), ("month", m0, today), ("last", m1, m0 - dt.timedelta(days=1))) if b >= START]
+    out["periods"] = {k: [a.isoformat(), b.isoformat()] for k, a, b in PER}
+    key = lambda d: d.strftime("%Y%m%d")
+    span = lambda a, b: [a + dt.timedelta(days=i) for i in range((b - a).days + 1)] if b >= a else []
+    FDS = {k: {key(d) for d in span(a, b)} for k, a, b in PER}
+    AND = lambda *x: {"andGroup": {"expressions": [y for y in x if y]}}
+    INN = lambda f, v: {"filter": {"fieldName": f, "inListFilter": {"values": list(v)}}}
 
-    def block(vf, since, until, label, new=False):
-        vfil = {"andGroup": {"expressions": [newer, {"filter": {"fieldName": "appVersion", "inListFilter": {"values": vf}}}]}}   # newer already drops pre-release test days
-        if new:   # Guy, Nov 22: Players filter "New" = players whose first day falls in this view's days
-            vfil = {"andGroup": {"expressions": [vfil, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": [(since + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((until - since).days + 1)]}}}]}}
-        dr = {"startDate": since.isoformat(), "endDate": until.isoformat()}
-        one2 = lambda name: {"andGroup": {"expressions": [ev(name), vfil]}}
-        B = {"label": label, "vers": vf, "since": since.isoformat(), "until": until.isoformat(), "week": {}, "outcome": {}, "kind": {}, "shares": {"by": {}}, "moves": {}, "reach": {}}
-        r = _run(s, {"dateRanges": [dr], "metrics": [{"name": "activeUsers"}], "dimensionFilter": vfil})
-        B["week"]["players"] = int(r[0][1][0]) if r else 0
-        r = _run(s, {"dateRanges": [{"startDate": today.isoformat(), "endDate": today.isoformat()}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": vfil})
-        B["today"] = int(r[0][1][0]) if r else 0
-        for (e,), (n,) in _run(s, {"dateRanges": [dr], "dimensions": [{"name": "eventName"}], "metrics": [{"name": "eventCount"}], "dimensionFilter": {"andGroup": {"expressions": [{"filter": {"fieldName": "eventName", "inListFilter": {"values": EVENTS}}}, vfil]}}}):
-            B["week"][e] = int(n)
-        B["week"].update(_supers(s, dr, vfil))   # Guy, Nov 22: tutorial uses left out
-        for (o,), (n,) in _run(s, {"dateRanges": [dr], "dimensions": [{"name": "customEvent:outcome"}], "metrics": [{"name": "eventCount"}], "dimensionFilter": one2("level_end")}):
-            if o not in ("(not set)", ""):
-                B["outcome"][o] = int(n)
-        for (k,), (n,) in _run(s, {"dateRanges": [dr], "dimensions": [{"name": "customEvent:kind"}], "metrics": [{"name": "eventCount"}], "dimensionFilter": one2("ad_shown")}):
-            if k not in ("(not set)", ""):
-                B["kind"][k] = int(n)
-        for (k,), (c, u) in _run(s, {"dateRanges": [dr], "dimensions": [{"name": "customEvent:kind"}], "metrics": [{"name": "eventCount"}, {"name": "totalUsers"}], "dimensionFilter": one2("share_done")}):
-            B["shares"]["by"][k] = int(c)
-        r = _run(s, {"dateRanges": [dr], "metrics": [{"name": "eventCount"}, {"name": "totalUsers"}], "dimensionFilter": one2("share_done")})
-        B["shares"]["n"], B["shares"]["players"] = (int(r[0][1][0]), int(r[0][1][1])) if r else (0, 0)
-        for e in ("rewarded_offer_shown", "rewarded_watched"):
-            f = {"andGroup": {"expressions": [one2(e), {"filter": {"fieldName": "customEvent:placement", "stringFilter": {"value": "out_of_moves"}}}]}}
-            r = _run(s, {"dateRanges": [dr], "metrics": [{"name": "eventCount"}, {"name": "totalUsers"}], "dimensionFilter": f})
-            B["moves"][e] = [int(r[0][1][0]), int(r[0][1][1])] if r else [0, 0]
-        vl = sorted(int(lv) for (lv,), _ in _run(s, {"dateRanges": [dr], "dimensions": [{"name": "customUser:max_level"}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": vfil, "limit": 1000}) if lv.isdigit())
-        ask = lambda lv: int((_run(s, {"dateRanges": [dr], "metrics": [{"name": "activeUsers"}], "dimensionFilter": {"andGroup": {"expressions": [vfil, {"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in vl if x >= lv]}}}]}}}) or [([], [0])])[0][1][0])
-        if vl:
-            B["reach"][str(vl[0])] = top = ask(vl[0])
-            if len(vl) > 1:
-                B["reach"][str(vl[-1])] = ask(vl[-1])   # "top player" on the tile
-            lo, hi = 0, len(vl)   # middle player only (the tile shows nothing else): halve the range instead of asking every level
+    def tiles(vs, allv, since=START, until=today):   # since / until = the version group's own days: new players of a group started on it (players who updated into it are not new)
+        FD = {k: {d for d in v if key(since) <= d <= key(until)} for k, v in FDS.items()}
+        fil = AND(newer, INN("appVersion", vs))
+        rgs = [{"startDate": a.isoformat(), "endDate": b.isoformat(), "name": k} for k, a, b in PER]
+
+        def q(dims, mets, *f):   # rows as (first day, other dims..., period), values
+            return [(r[0], r[1]) if len(rgs) > 1 else (r[0] + [PER[0][0]], r[1]) for r in _run(s, {"dateRanges": rgs, "dimensions": [{"name": d} for d in ["firstSessionDate"] + dims], "metrics": [{"name": m} for m in mets], "dimensionFilter": AND(fil, *f), "limit": 100000})]
+
+        def add(rows, pick=lambda d: "n", i=0):   # {(period, who): {name: total}}
+            o = {}
+            for d, v in rows:
+                for who in ("all",) + (("new",) if d[0] in FD[d[-1]] else ()):
+                    x = o.setdefault((d[-1], who), {}); k = pick(d); x[k] = x.get(k, 0) + int(v[i])
+            return o
+        players = add(q([], ["activeUsers"]))
+        outc = add(q(["customEvent:outcome"], ["eventCount"], ev("level_end")), lambda d: d[1])
+        kind = add(q(["customEvent:kind"], ["eventCount"], ev("ad_shown")), lambda d: d[1])
+        sf = AND(INN("eventName", SUPERS), {"notExpression": _tut()})
+        sup, supu = add(q(["eventName"], ["eventCount"], sf), lambda d: d[1]), add(q([], ["activeUsers"], sf))
+        mvr = q(["eventName"], ["eventCount", "totalUsers"], INN("eventName", ["rewarded_offer_shown", "rewarded_watched"]), {"filter": {"fieldName": "customEvent:placement", "stringFilter": {"value": "out_of_moves"}}})
+        mv, mvu = add(mvr, lambda d: d[1]), add(mvr, lambda d: d[1], 1)
+        sh, shu = add(q(["customEvent:kind"], ["eventCount"], ev("share_done")), lambda d: d[1]), add(q([], ["totalUsers"], ev("share_done")))
+        # furthest level of the middle player
+        lvr = [(d, v) for d, v in q(["customUser:max_level"], ["activeUsers"]) if d[1].isdigit() and v[0]]   # GA4 lists every level in every period, with 0 players
+        lvl = {}
+        for d, v in lvr:
+            for who in ("all",) + (("new",) if d[0] in FD[d[-1]] else ()):
+                lvl.setdefault((d[-1], who), set()).add(int(d[1]))
+        every, cache = sorted({x for v in lvl.values() for x in v}), {}
+
+        def reach(lv):
+            if lv not in cache:
+                cache[lv] = add(q([], ["activeUsers"], INN("customUser:max_level", [str(x) for x in every if x >= lv])))
+            return cache[lv]
+        half = {}
+        for sr, ls in lvl.items():
+            v = sorted(ls); top = reach(v[0]).get(sr, {}).get("n", 0); lo, hi = 0, len(v)
             while hi - lo > 1:
-                m = (lo + hi) // 2; n = B["reach"][str(vl[m])] = ask(vl[m])
-                if n * 2 >= top: lo = m
+                m = (lo + hi) // 2
+                if reach(v[m]).get(sr, {}).get("n", 0) * 2 >= top: lo = m
                 else: hi = m
+            half[sr] = [v[lo], top, v[-1]]
+        # first days: level 10 on day one, next day, day 7 or later
+        first = min(a for _, a, _ in PER); whole = {"startDate": first.isoformat(), "endDate": today.isoformat()}
+        first14 = max(START, min(first, today - dt.timedelta(days=14))); fw = {"startDate": first14.isoformat(), "endDate": today.isoformat()}
+        two = lambda *f: {(d, d2): int(n) for (d, d2), (n,) in _run(s, {"dateRanges": [fw], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": AND(fil, INN("firstSessionDate", [key(d) for d in span(first14, today)]), *f), "limit": 100000})}
+        pair = two(); hi10 = two(INN("customUser:max_level", [str(x) for x in lvs if x >= 10] or ["x"]))
+        base = {d: n for (d, d2), n in pair.items() if d == d2}
+        W1 = {"today": span(max(START, today - dt.timedelta(days=1)), today - dt.timedelta(days=1)), "d7": span(max(START, today - dt.timedelta(days=8)), today - dt.timedelta(days=2))}
+        W7 = {"today": [], "d7": span(max(START, today - dt.timedelta(days=14)), today - dt.timedelta(days=8))}
+        for k, a, b in PER:
+            if k in ("month", "last"):
+                W1[k], W7[k] = span(a, min(b, today - dt.timedelta(days=2))), span(a, min(b, today - dt.timedelta(days=8)))
+        W1, W7 = ({k: [d for d in w if since <= d <= until] for k, w in W.items()} for W in (W1, W7))
+        n1 = sorted({key(d) for w in W1.values() for d in w if base.get(key(d))}); n7 = sorted({key(d) for w in W7.values() for d in w if base.get(key(d))})
+        D = lambda k: dt.datetime.strptime(k, "%Y%m%d").date()
+        if allv:
+            b1 = {d: pair.get((d, key(D(d) + dt.timedelta(days=1))), 0) for d in n1}
+            b7 = {}
+            for i in range(0, len(n7), 4):
+                ch = n7[i:i + 4]
+                for r in _run(s, {"dateRanges": [{"startDate": (D(x) + dt.timedelta(days=7)).isoformat(), "endDate": today.isoformat(), "name": "r" + x} for x in ch], "dimensions": [{"name": "firstSessionDate"}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": AND(fil, INN("firstSessionDate", ch)), "limit": 1000}):
+                    if len(ch) == 1 or r[0][1] == "r" + r[0][0]:
+                        b7[r[0][0]] = int(r[1][0])
+        else:   # tied to the version they started on
+            b1, b7 = _back(s, n1, fil), _back(s, n7, fil, until=today)
+        ret = lambda w, bk: [sum(min(bk.get(key(d), 0), base.get(key(d), 0)) for d in w), sum(base.get(key(d), 0) for d in w)] + ([w[0].isoformat(), w[-1].isoformat()] if w else [None, None])
+        # reminders: new players of the period (counted up to today)
+        rq = lambda names, dims=(): _run(s, {"dateRanges": [whole], "dimensions": [{"name": "firstSessionDate"}] + [{"name": d} for d in dims], "metrics": [{"name": "totalUsers"}], "dimensionFilter": AND(fil, INN("eventName", names)), "limit": 100000})
+        ron, roff = {d[0]: int(v[0]) for d, v in rq(R_ON)}, {d[0]: int(v[0]) for d, v in rq(R_OFF)}
+        NEWN = {k: sum(base.get(d, 0) for d in FD[k]) for k, _, _ in PER}   # new players = first day on these versions, one number on every card
+        S = {}
+        for k, a, b in PER:
+            for who in ("all", "new"):
+                g = lambda o: o.get((k, who), {})
+                S[k + "|" + who] = {"players": g(players).get("n", 0) if who == "all" else NEWN[k], "other": NEWN[k] if who == "all" else players.get((k, "all"), {}).get("n", 0), "outcome": {x: n for x, n in g(outc).items() if x not in ("", "(not set)")},
+                                    "kind": {x: n for x, n in g(kind).items() if x not in ("", "(not set)")}, "stir": g(sup).get("super_stir", 0), "solve": g(sup).get("super_solve", 0), "superu": g(supu).get("n", 0),
+                                    "offers": g(mv).get("rewarded_offer_shown", 0), "watched": g(mv).get("rewarded_watched", 0), "watchu": g(mvu).get("rewarded_watched", 0), "shares": sum(g(sh).values()), "shareu": g(shu).get("n", 0),
+                                    "half": half.get((k, who)), "l10": [sum(hi10.get((d, d), 0) for d in FD[k]), NEWN[k]], "d1": ret(W1[k], b1), "d7": ret(W7[k], b7),
+                                    "remind": [min(NEWN[k], sum(ron.get(d, 0) for d in FD[k])), NEWN[k], sum(roff.get(d, 0) for d in FD[k])]}
+        return S
+
+    def block(vf, since, until, label):
+        vfil = {"andGroup": {"expressions": [newer, {"filter": {"fieldName": "appVersion", "inListFilter": {"values": vf}}}]}}   # newer already drops pre-release test days
+        dr = {"startDate": since.isoformat(), "endDate": until.isoformat()}
+        B = {"label": label, "vers": vf, "since": since.isoformat(), "until": until.isoformat()}   # Guy, Nov 25: the cards have their own counts (tiles, below); blocks feed the charts
         B["freach"] = reached(vfil, dr, STEPS)   # Guy, Nov 16: "How far players get" for the newest versions (players who reached each step)
         B["factive"] = reached(vfil, {"startDate": max(until - dt.timedelta(days=QUIT_DAYS - 1), since).isoformat(), "endDate": until.isoformat()}, STEPS)   # still playing = played in the last QUIT_DAYS - 1 days
         B["lv"] = {}   # Guy, Nov 16: win rate per level for the newest versions too
@@ -348,8 +387,6 @@ def fetch(keys_dir, today):
             if kind in ("lv_start", "lv_win") and n.isdigit():
                 row = B["lv"].setdefault(n, {})
                 row[kind[3:]], row[kind[3:] + "s"] = int(u), int(c)
-        B["remind"] = remind(vfil, since, until)
-        B["l10"] = day1_l10(vfil, since, until)
         # Guy, Nov 19: Day-1 return = new players (first day on these versions) who played again the very next day; complete days only
         c_end = min(until, today - dt.timedelta(days=2))
         if c_end >= since:
@@ -365,16 +402,6 @@ def fetch(keys_dir, today):
                       "dimensionFilter": {"andGroup": {"expressions": [vfil, mf, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": cd(since, c_end)}}}]}}, "limit": 10000}) if d == d2}
                 k2 = {d: min(n, b2[d]) for d, n in _back(s, list(b2), {"andGroup": {"expressions": [vfil, mf]}}).items()}
                 B["d1src"][med] = [sum(k2.get(d, 0) for d in b2), sum(b2.values())]
-        # Guy, Nov 21: "add d-7 after d-1 card". Day-7 return = new players (first day on these versions) who played again on day 7 OR LATER
-        # (same rule as the all-versions Day-7, Guy Nov 8); only first days with a complete day 7 (first day <= today - 8)
-        c7 = min(until, today - dt.timedelta(days=8))
-        if c7 >= since:
-            cd7 = [(since + dt.timedelta(days=i)) for i in range((c7 - since).days + 1)]
-            base7 = {d: int(n) for (d, d2), (n,) in _run(s, {"dateRanges": [{"startDate": since.isoformat(), "endDate": c7.isoformat()}], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}], "metrics": [{"name": "activeUsers"}],
-                     "dimensionFilter": {"andGroup": {"expressions": [vfil, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": [x.strftime("%Y%m%d") for x in cd7]}}}]}}, "limit": 10000}) if d == d2}
-            days7 = [x for x in cd7 if base7.get(x.strftime("%Y%m%d"))]
-            b7 = _back(s, [x.strftime("%Y%m%d") for x in days7], vfil, until=today)   # Guy, Nov 24: only players who started on these versions
-            B["d7"] = [sum(min(n, base7[d]) for d, n in b7.items()), sum(base7.values()), since.isoformat(), c7.isoformat()]
         return B
     from concurrent.futures import ThreadPoolExecutor
     J, R = {}, {}   # every version group, asked side by side
@@ -441,19 +468,18 @@ def fetch(keys_dir, today):
              "after": ex.submit(quiet_after, [v for v in vers if (1, 3, 20) <= _ver(v) < (1, 4, 0)]),
              "after140": ex.submit(quiet, [v for v in vers if _ver(v) >= (1, 4, 0)], QS_FROM, today)}
         F = {k: ex.submit(block, *v) for k, v in J.items()}
-        # Guy, Nov 22: "Players (all, new)" filter: the same tile sets for new players only (first day in each view's days)
-        N = {"all": ex.submit(block, vers, max(today - dt.timedelta(days=6), START), today, "All versions", True)}
-        N.update({k: ex.submit(block, *v, True) for k, v in J.items()})
+        TL = {"all": ex.submit(tiles, vers, True)}
+        TL.update({k: ex.submit(tiles, v[0], False, START if k == "pre" else v[1], v[2]) for k, v in J.items()})
     out["quiet"] = {k: f.result() for k, f in Q.items()}
     for k in ("vf", "pre"):
         if k in F:
             out[k] = F[k].result()
     out["vx"] = {k: {**F[k].result(), "range": R[k]} for k in R}
     out["vxnext"] = [L or ".".join(map(str, X)) + "+" for X, H, L in VX if X > live]   # Guy, Nov 24: groups not on the App Store yet (1.4.0+)
-    out["new"] = {k: f.result() for k, f in N.items()}
+    out["tiles"] = {k: f.result() for k, f in TL.items()}
     # active players on every app version (the game events above only come from 1.3.1+)
-    span = lambda a: {"startDate": a, "endDate": today.isoformat()}
-    total = lambda a: int(next(iter(_run(s, {"dateRanges": [span(a)], "metrics": [{"name": "activeUsers"}]})), ([], [0]))[1][0])
+    spanx = lambda a: {"startDate": a, "endDate": today.isoformat()}
+    total = lambda a: int(next(iter(_run(s, {"dateRanges": [spanx(a)], "metrics": [{"name": "activeUsers"}]})), ([], [0]))[1][0])
     out["all"] = {"today": total(today.isoformat()), "week": total((today - dt.timedelta(days=6)).isoformat()), "m30": total((today - dt.timedelta(days=29)).isoformat()), "ever": total("2026-01-01"),
                   "daily": {f"{d[:4]}-{d[4:6]}-{d[6:]}": int(n) for (d,), (n,) in _run(s, {"dateRanges": [dall], "dimensions": [{"name": "date"}], "metrics": [{"name": "activeUsers"}]})}}
     out["calls"] = CALLS[0]

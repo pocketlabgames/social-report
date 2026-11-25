@@ -1057,14 +1057,15 @@ PIN_JS = """<script>(() => { const c = document.querySelector('.day'), M = match
 
 
 GSEL_JS = """<script>(() => { const S = [...document.querySelectorAll('.gsel')]; if (!S.length) return;   // Guy, Nov 16: one version filter; changing either dropdown updates both
- const P = document.getElementById('psel'), pv = () => P ? P.value : 'all';   // Guy, Nov 22: Players (all, new) filter for the Game stats tiles
- const go = val => { S.forEach(x => x.value = val); const id = 'gst-' + val + (pv() === 'new' && document.getElementById('gst-' + val + '-new') ? '-new' : ''); document.querySelectorAll('.gst').forEach(x => x.hidden = x.id !== id); if (window.LVDRAW) LVDRAW(val); if (window.FUNDRAW) FUNDRAW(val); };
- const K = 'bl_gsel_default', KP = 'bl_psel_default', lab = v => { const o = [...S[0].options].find(o => o.value === v); return o ? o.text : ''; };   // Guy, Nov 20: "Set as default" button; saved in this browser by label (keys can change between builds). Nov 22: it saves both dropdowns
- let d = '', dp = ''; try { d = localStorage.getItem(K) || ''; dp = localStorage.getItem(KP) || ''; } catch (e) {}
- const b = document.getElementById('gdef'), mark = () => { if (b) { const on = (lab(S[0].value) === d || (!d && S[0].value === 'all')) && pv() === (dp || 'all'); b.textContent = on ? 'Default ✓' : 'Set as default'; b.disabled = on; } };
- if (b) b.addEventListener('click', () => { d = lab(S[0].value); dp = pv(); try { localStorage.setItem(K, d); localStorage.setItem(KP, dp); } catch (e) {} mark(); });
+ const P = document.getElementById('psel'), T = document.getElementById('tsel'), pv = () => P ? P.value : 'all', tv = () => T ? T.value : 'd7';   // Guy, Nov 22: Players (all, new); Nov 25: Time (today, last 7 days, this month, last month)
+ const go = val => { S.forEach(x => x.value = val); const id = 'gst-' + val + '-' + tv() + '-' + pv(); document.querySelectorAll('.gst').forEach(x => x.hidden = x.id !== id); if (window.LVDRAW) LVDRAW(val); if (window.FUNDRAW) FUNDRAW(val); };
+ const K = 'bl_gsel_default', KP = 'bl_psel_default', KT = 'bl_tsel_default', lab = v => { const o = [...S[0].options].find(o => o.value === v); return o ? o.text : ''; };   // Guy, Nov 20: "Set as default" saves every drop-down (versions by label: keys can change between builds)
+ let d = '', dp = '', dt = ''; try { d = localStorage.getItem(K) || ''; dp = localStorage.getItem(KP) || ''; dt = localStorage.getItem(KT) || ''; } catch (e) {}
+ const b = document.getElementById('gdef'), mark = () => { if (b) { const on = (lab(S[0].value) === d || (!d && S[0].value === 'all')) && pv() === (dp || 'all') && tv() === (dt || 'd7'); b.textContent = on ? 'Default ✓' : 'Set as default'; b.disabled = on; } };
+ if (b) b.addEventListener('click', () => { d = lab(S[0].value); dp = pv(); dt = tv(); try { localStorage.setItem(K, d); localStorage.setItem(KP, dp); localStorage.setItem(KT, dt); } catch (e) {} mark(); });
  S.forEach(x => x.addEventListener('change', () => { go(x.value); mark(); }));
- if (P) { if (dp === 'new') P.value = 'new'; P.addEventListener('change', () => { go(S[0].value); mark(); }); }
+ if (P && dp === 'new') P.value = 'new'; if (T && dt && [...T.options].some(o => o.value === dt)) T.value = dt;
+ [P, T].forEach(x => x && x.addEventListener('change', () => { go(S[0].value); mark(); }));
  const o = d && [...S[0].options].find(o => o.text === d); go(o ? o.value : 'all'); mark(); })();</script>"""   # opens on the saved default, else All versions
 
 
@@ -1316,110 +1317,45 @@ def game_section():
     buy = sum((MONEY.get((dt.date.today() - dt.timedelta(days=i)).isoformat()) or {}).get("n") or 0 for i in range(7))   # Guy, Nov 7: real sales from Apple only, not Firebase (App Review test buys showed as purchases)
     e = html.escape
 
-    def d1tile(B, newest):   # Guy, Nov 19: Day-1 return in Game stats (exact next day, complete days only)
-        if not newest:
-            return (f"{RET['d1']:.0f}%", "Day-1 return", f"{round(RET['d1'] * (RET.get('d1_n') or 0) / 100):,} of {int(RET.get('d1_n') or 0):,} new players came back the next day · last 7 complete days") if RET.get("d1") is not None else ("—", "Day-1 return", "Firebase retention not loaded")
-        d = B.get("d1")
-        if not d or not d[1]:
-            return ("—", "Day-1 return", "no complete day yet")
-        a, b = dt.date.fromisoformat(d[2]), dt.date.fromisoformat(d[3])
-        span = a.strftime('%b %-d') + ("" if a == b else "–" + b.strftime('%-d' if a.month == b.month else '%b %-d'))
-        return (f"{d[0] / d[1] * 100:.0f}%", "Day-1 return", f"{d[0]:,} of {d[1]:,} new players came back the next day · started {span}")
+    PERS = [("today", "Today"), ("d7", "Last 7 days"), ("month", "This month"), ("last", "Last month")]   # Guy, Nov 25: third drop-down
+    RGS = G.get("periods") or {}
 
-    def l10tile(B):   # Guy, Nov 24: "don't replace average level. add the level 10 card to the section near it"
-        d = B.get("l10")
-        if not d or not d[1]:
-            return ("—", "Reached level 10 on day one", "no complete day yet")
-        a, b = dt.date.fromisoformat(d[2]), dt.date.fromisoformat(d[3])
-        span = a.strftime('%b %-d') + ("" if a == b else "–" + b.strftime('%-d' if a.month == b.month else '%b %-d'))
-        return (f"{d[0] / d[1] * 100:.0f}%", "Reached level 10 on day one", f"{d[0]:,} of {d[1]:,} new players · started {span}")
-
-    def rmtile(R, when):   # Guy, Nov 21: "add quiet reminders opt-in rate"
-        if not R:
-            return ("—", "Reminders on", "Firebase reminder data not loaded")
-        if not R.get("new"):
-            return ("—", "Reminders on", f"no new players, {when}")
-        return (f"{R['on'] / R['new'] * 100:.0f}%", "Reminders on", f"{R['on']:,} of {R['new']:,} new players · {R['quiet']:,} quiet (1.3.19+) · {R['yes']:,} said yes" + (f" · {R['off']:,} turned off" if R.get('off') else "") + f", {when}")
-
-    def d7tile(B, newest):   # Guy, Nov 21: "add d-7 after d-1 card" (came back on day 7 or later, complete day 7 only)
-        if not newest:
-            return (f"{RET['d7']:.0f}%", "Day-7 return", f"{round(RET['d7'] * (RET.get('d7_n') or 0) / 100):,} of {int(RET.get('d7_n') or 0):,} new players came back on day 7 or later · first days 8-14 days ago") if RET.get("d7") is not None else ("—", "Day-7 return", "Firebase retention not loaded")
-        d = B.get("d7")
-        if not d or not d[1]:
-            return ("—", "Day-7 return", "no player has reached day 7 yet")
-        a, b = dt.date.fromisoformat(d[2]), dt.date.fromisoformat(d[3])
-        span = a.strftime('%b %-d') + ("" if a == b else "–" + b.strftime('%-d' if a.month == b.month else '%b %-d'))
-        return (f"{d[0] / d[1] * 100:.0f}%", "Day-7 return", f"{d[0]:,} of {d[1]:,} new players came back on day 7 or later · started {span}")
-
-    def mk_tiles(B, newest=False):   # Guy, Nov 16: one tile set per filter (all versions / newest versions)
-        W2, P2 = B.get("week", {}), B.get("week", {}).get("players", 0)
-        per2 = lambda n: f"{n / P2:.1f}" if P2 else "—"
-        rc2 = {int(k): v for k, v in (B.get("reach") or {}).items()}
-        lv2 = sorted(rc2); mp2 = rc2[lv2[0]] if lv2 else 0
-        half2 = max((k for k in lv2 if rc2[k] * 2 >= mp2), default=0)
-        oc2 = B.get("outcome") or {}; on2 = sum(v for k, v in oc2.items() if k != "skip"); sk2 = oc2.get("skip", 0);   # Guy, Nov 19: skips left out of win rate (test phones skipped 113 levels on 1.3.15)
-        kd2 = B.get("kind") or {}
-        MV2 = B.get("moves") or {}
-        mo2, mw2, mwp2 = (MV2.get("rewarded_offer_shown") or [0, 0])[0], (MV2.get("rewarded_watched") or [0, 0])[0], (MV2.get("rewarded_watched") or [0, 0])[1]
-        SH2 = B.get("shares") or {}
-        ads2, sup2 = W2.get("ad_shown", 0), W2.get("super_stir", 0) + W2.get("super_solve", 0)
-        md2 = lambda d: dt.date.fromisoformat(d).strftime('%b %-d')
-        pre = newest and B.get("until", today.isoformat()) < today.isoformat()   # Guy, Nov 19: Before 1.3.11 = a closed range of days
-        when = (f"{md2(B['since'])}–{dt.date.fromisoformat(B['until']).strftime('%-d' if B['until'][:7] == B['since'][:7] else '%b %-d')}" if pre else f"since {md2(B['since'])}") if newest else "7 days"
-        rcb = sum(v for k, v in RCTX.items() if newest and B["since"] <= k <= B.get("until", "9999"))   # Guy, Nov 18: Firebase purchase_ok counted test buys (14 on Nov 18, 0 real)
+    def mk_tiles(view, per, who):   # Guy, Nov 25: "clean up the section to make the cards and data consistent": 12 cards, each = number, name, one short line; every card covers the same players and the same days
+        B = ((G.get("tiles") or {}).get(view) or {}).get(per + "|" + who) or {}
         pl = lambda n: f"{n:,} player{'' if n == 1 else 's'}"
-        return [(f"{P2:,}" if newest else f"{A.get('week', 0):,}", "Active players",
-                 (f"{B['label']}, {when}" if pre else f"{B['label']} {when} · {B.get('today', 0):,} played today") if newest else f"last 7 days, all versions · {A.get('today', 0):,} played today · {A.get('ever', 0):,} since launch"),
-                d1tile(B, newest),
-                d7tile(B, newest),
-                (f"{oc2.get('win', 0) / on2 * 100:.0f}%" if on2 else "—", "Win rate", f"{oc2.get('win', 0):,} wins of {on2:,} level attempts" + (f", {when}" if newest else "") + (f" · {sk2:,} skip{'' if sk2 == 1 else 's'} left out" if sk2 else "") if on2 else "no win/loss data yet"),
-                (f"{half2}" if mp2 else "—", "Typical furthest level", f"half of {pl(mp2)} reached level {half2}+ · top player: {lv2[-1]:,}, " + (when if newest else "since Nov 1") if mp2 else "no level data yet"),   # Guy, Nov 8: middle player, not the average
-                l10tile(B),
-                (per2(ads2), "Ad views per player", (" · ".join(f"{v:,} {'between levels' if k == 'interstitial' else k}" for k, v in sorted(kd2.items())) or f"{ads2:,} ads") + f" {'' if newest else 'in '}{when}" + ("" if newest else f" · per player on 1.3.1+ ({P2:,})") + few(P2)),   # Guy, Nov 22 audit: the tile above says 260 players; this divides by the 235 on 1.3.1+ (ads are only counted from 1.3.1)
-                (f"{mw2:,}", "+Moves videos watched", f"{mw2:,} of {mo2:,} offers{f' ({mw2 / mo2 * 100:.0f}%)' if mo2 else ''} · {pl(mwp2)} · out of moves popup, {when}"),   # Guy, Nov 9: +5 moves per video
-                (f"{sup2:,}", "Super Stir / Solve uses", f"{W2.get('super_stir', 0):,} Super Stir · {W2.get('super_solve', 0):,} Super Solve, by {pl(W2.get('super_users', 0))} on {('versions before ' + B['label'][7:]) if B.get('label', '').startswith('Before ') else B['label'] if newest else '1.3.1+'} · free tutorial ones left out"),
-                (f"{SH2.get('n', 0):,}" if SH2.get('n') else "—", "Shares", (f"{pl(SH2.get('players', 0))} · " + " · ".join(f"{v:,} {SHN.get(k, k)[:-1] if v == 1 and SHN.get(k, k).endswith('s') else SHN.get(k, k)}" for k, v in sorted((SH2.get('by') or {}).items(), key=lambda x: -x[1])) + f" · {when}") if SH2.get('n') else (f"finished shares, {when}" if newest else "finished shares, 7 days · counted from the next app update (save 205)")),
-                (((f"{rcb:,}", "Purchases", f"real App Store purchases, {when} (RevenueCat; test buys left out)") if RCTX else ("—", "Purchases", "RevenueCat not loaded")) if newest else (f"{buy:,}", "Purchases", "App Store sales, last 7 days")),
-                rmtile(B.get("remind"), when)]
-    grid = lambda T: "".join(f"<div class='gt'><b>{e(x[0])}</b><span>{e(x[1])}</span><small>{e(x[2])}</small>{x[3] if len(x) > 3 else ''}</div>" for x in T)
+        pct = lambda a, b: f"{a / b * 100:.0f}%" if b else "—"
+        n = B.get("players", 0); nw = n if who == "new" else B.get("other", 0)
+        mdx = lambda d: dt.date.fromisoformat(d).strftime('%b %-d')
+
+        def ret(k, name):
+            v = B.get(k) or [0, 0, None, None]
+            if view == "all" and per == "d7" and RET.get(k) is not None:   # the same number as the D-1 badge and the Retention card
+                v = [round(RET[k] * (RET.get(k + "_n") or 0) / 100), int(RET.get(k + "_n") or 0)] + v[2:]
+            if not v[1]:
+                return ("—", name, "no new players to count yet")
+            a, b = v[2], v[3]
+            sp = mdx(a) + ("" if a == b else "–" + dt.date.fromisoformat(b).strftime('%-d' if a[:7] == b[:7] else '%b %-d'))
+            return (pct(v[0], v[1]), name, f"{v[0]:,} of {v[1]:,} new players · started {sp}")
+        oc = B.get("outcome") or {}; tries = sum(x for k, x in oc.items() if k != "skip")
+        kd = B.get("kind") or {}; ads = sum(kd.values())
+        hf = B.get("half"); l10 = B.get("l10") or [0, 0]; rm = B.get("remind") or [0, 0, 0]; r = RGS.get(per)
+        buy = sum(v for k, v in RCTX.items() if r and r[0] <= k <= r[1])
+        return [(f"{n:,}", "New players" if who == "new" else "Active players", f"of {B.get('other', 0):,} active players" if who == "new" else f"{nw:,} new"),
+                ret("d1", "Day-1 return"), ret("d7", "Day-7 return"),
+                (pct(oc.get("win", 0), tries), "Win rate", f"{oc.get('win', 0):,} of {tries:,} level attempts" if tries else "no level attempts yet"),
+                (f"{hf[0]}" if hf else "—", "Typical furthest level", f"half of {pl(hf[1])} · top player {hf[2]:,}" if hf else "no players yet"),
+                (pct(*l10), "Reached level 10 on day one", f"{l10[0]:,} of {l10[1]:,} new players" if l10[1] else "no new players yet"),
+                (f"{ads / n:.1f}" if n else "—", "Ad views per player", f"{kd.get('interstitial', 0):,} between levels · {kd.get('rewarded', 0):,} rewarded" if n else "no players yet"),
+                (f"{B.get('watched', 0):,}", "+Moves videos watched", f"of {B.get('offers', 0):,} offers · {pl(B.get('watchu', 0))}"),
+                (f"{B.get('stir', 0) + B.get('solve', 0):,}", "Super Stir / Solve uses", f"{B.get('stir', 0):,} Stir · {B.get('solve', 0):,} Solve · {pl(B.get('superu', 0))}"),
+                (f"{B.get('shares', 0):,}", "Shares", f"by {pl(B.get('shareu', 0))}"),
+                (f"{buy:,}" if RCTX else "—", "Purchases", "all versions and players" if RCTX else "RevenueCat not loaded"),
+                (pct(rm[0], rm[1]), "Reminders on", f"{rm[0]:,} of {rm[1]:,} new players · {rm[2]:,} turned off" if rm[1] else "no new players yet")]
+    grid = lambda T: "".join(f"<div class='gt'><b>{e(x[0])}</b><span>{e(x[1])}</span><small>{e(x[2])}</small></div>" for x in T)
     VB, PB = G.get("vf"), G.get("pre")
-    tiles_html = f"<div class='gst' id='gst-all'>{grid(mk_tiles(G))}</div>"
-    if VB:
-        VT = mk_tiles(VB, True)
-        if PB:   # Guy, Nov 19: each 1.3.11+ tile compares to the versions before 1.3.11 (same number of days just before Nov 15)
-            PT = {x[1]: x[0] for x in mk_tiles(PB, True)}
-            num = lambda s: float(re.sub(r"[^\d.]", "", s)) if re.search(r"\d", s or "") else None
-            def cmpx(v, l):
-                p = PT.get(l)
-                if p is None or num(p) is None or num(v) is None:
-                    return ""
-                a, b = num(v), num(p)
-                k, ar = ("up", "▲") if a > b else ("down", "▼") if a < b else ("same", "=")
-                return f"<em class='gcmp {k}'>{ar} before 1.3.11: {e(p)}</em>"
-            VT = [(v, l, n, cmpx(v, l)) for v, l, n in VT]
-        tiles_html += f"<div class='gst' id='gst-vf' hidden>{grid(VT)}</div>"
-    if PB:
-        tiles_html += f"<div class='gst' id='gst-pre' hidden>{grid(mk_tiles(PB, True))}</div>"
     XB = G.get("vx") or {}   # Guy, Nov 19: 1.3.18+, once it is on the App Store
-    for k, BX in XB.items():
-        tiles_html += f"<div class='gst' id='gst-{k}' hidden>{grid(mk_tiles(BX, True))}</div>"
-    NB = G.get("new") or {}   # Guy, Nov 22: "Add a second drop down to the game stats sections for Players (all, new)"
-    if VB and NB:
-        newt = lambda BB: [(x[0], "New players") + x[2:] if x[1] == "Active players" else x for x in mk_tiles(BB, True)]
-        NV = {k: newt(BB) for k, BB in NB.items()}
-        if NB.get("pre") and "vf" in NV:   # same before-1.3.11 comparison, new players on both sides
-            PTn = {x[1]: x[0] for x in NV["pre"]}
-            numn = lambda s: float(re.sub(r"[^\d.]", "", s)) if re.search(r"\d", s or "") else None
-            def cmpn(v, l):
-                p = PTn.get(l)
-                if p is None or numn(p) is None or numn(v) is None:
-                    return ""
-                a, b = numn(v), numn(p)
-                k, ar = ("up", "▲") if a > b else ("down", "▼") if a < b else ("same", "=")
-                return f"<em class='gcmp {k}'>{ar} before 1.3.11: {e(p)}</em>"
-            NV["vf"] = [(v, l, n, cmpn(v, l)) for v, l, n in NV["vf"]]
-        for k, T in NV.items():
-            tiles_html += f"<div class='gst' id='gst-{k}-new' hidden>{grid(T)}</div>"
+    VIEWS = ["all"] + (["pre"] if PB else []) + (["vf"] if VB else []) + list(XB)
+    tiles_html = "".join(f"<div class='gst' id='gst-{v}-{t}-{w}'{'' if (v, t, w) == ('all', 'd7', 'all') else ' hidden'}>" + (grid(mk_tiles(v, t, w)) if t in RGS else "<p class='sub gempty'>Game stats start Nov 1, 2026.</p>") + "</div>" for v in VIEWS for t, _ in PERS for w in ("all", "new"))
     def d1v_chart():   # Guy, Nov 22: "Day-1 return by version" (one bar per version group, Google Ads players vs everyone else, likely range; test days left out like the tiles)
         def wil(k, n):
             z = 1.96; p = k / n; d = 1 + z * z / n; c = (p + z * z / (2 * n)) / d; h = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / d
@@ -1519,9 +1455,10 @@ def game_section():
                 f"<div class='chart' style='height:280px'><canvas id='d1tc' data-last='{roll[-1]}' data-lo='{roll[lo]}' role='img' aria-label='Day-1 return by start day: 7-day line, each day, new players'></canvas></div>"
                 f"<p class='sub' style='margin:4px 0 14px'>Low {roll[lo]:.1f}% (start days {data['first'][lo]}-{D(ks[lo]).strftime('%-m/%-d')}) · now {roll[-1]:.1f}% ({'+' if roll[-1] >= roll[lo] else ''}{roll[-1] - roll[lo]:.1f} pts). Start day = the day a player first opened the game; days still in progress left out.</p>{js}")
     d1t_html = d1t_chart()
-    psel_html = " <select id='psel' class='psel' aria-label='Players'><option value='all'>All players</option><option value='new'>New players</option></select>" if VB and NB else ""
+    psel_html = " <select id='psel' class='psel' aria-label='Players'><option value='all'>All players</option><option value='new'>New players</option></select>"
+    tsel_html = " <select id='tsel' class='psel' aria-label='Time'>" + "".join(f"<option value='{k}'{' selected' if k == 'd7' else ''}>{v}</option>" for k, v in PERS) + "</select>"   # Guy, Nov 25
     gsel = lambda i: (f" <select id='{i}' class='gsel' aria-label='App versions'><option value='all'>All versions</option>" + (f"<option value='pre'>{e(PB['label'])}</option>" if PB else "") + f"<option value='vf'>{e(VB['label'])}</option>" + "".join(f"<option value='{k}'>{e(BX['label'])}</option>" for k, BX in XB.items()) + "</select>") if VB else ""   # Guy, Nov 16: one filter, shown on the tiles and the win rate chart
-    gsel_html = gsel("gsel") + psel_html + (" <button id='gdef' type='button' class='gdef'>Set as default</button>" if VB else "")
+    gsel_html = gsel("gsel") + psel_html + tsel_html + (" <button id='gdef' type='button' class='gdef'>Set as default</button>" if VB else "")
     top = lv[-1] if lv else 0
     steps = [s for s in list(range(1, 11)) + [11, 16, 21, 26, 31] if s <= top]   # Guy, Nov 6: early levels one by one, then steps of 5, then 31+
     reach = [reached(s) for s in steps]
@@ -1641,8 +1578,9 @@ def game_section():
     stale_note = f"<p class='sub' style='color:#C0392B'>Google Analytics didn't answer this run; showing the last numbers from {e(GAME['_stale'])}.</p>" if GAME.get("_stale") else ""
     return (f"<style>.sh3{{font-size:18px;margin:22px 0 4px}} .gst{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:4px 0 18px}} "
             f".gt{{border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:1px}} .gt b{{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}} "
+            f".gctl{{display:inline-flex;flex-wrap:wrap;gap:8px;align-items:center;vertical-align:middle}} .gctl>*{{margin:0!important}} @media(max-width:640px){{.gctl{{display:flex;margin-top:8px}}}}"
             f".gdef{{font:inherit;font-size:14px;padding:5px 12px;margin-left:6px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;vertical-align:middle}} .gdef:disabled{{color:var(--muted);cursor:default}} .gcard{{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:0 0 14px}} @media (max-width:700px){{.gcard{{padding:14px 12px}}}} .gcard .gt{{background:var(--bg);border-color:transparent}} .gst[hidden]{{display:none}} .dv{{margin:4px 0 18px}} .dvg{{margin:10px 0 4px}} .dvh{{font-weight:600;font-size:14px;margin-bottom:3px}} .dvr{{display:grid;grid-template-columns:120px 1fr 84px;align-items:center;gap:8px;margin:3px 0}} @media (max-width:700px){{.dvr{{grid-template-columns:92px 1fr 74px}}}} .dvl{{font-size:12px;color:var(--ink2)}} .dvt{{position:relative;height:16px;background:var(--bg);border-radius:4px}} .dvb{{height:100%;border-radius:4px}} .dvb.few{{opacity:.35}} .dvc{{position:absolute;top:7px;height:2px;background:var(--ink)}} .dvc:before,.dvc:after{{content:'';position:absolute;top:-4px;width:2px;height:10px;background:var(--ink)}} .dvc:before{{left:0}} .dvc:after{{right:0}} .dvv{{font-weight:600;font-size:14px;line-height:1.1}} .dvv small{{display:block;font-weight:400;font-size:10px;color:var(--muted)}} .dve{{position:absolute;left:6px;top:1px;font-size:11px;color:var(--muted)}} .dvx{{position:relative;height:14px;margin:6px 92px 0 128px;font-size:10px;color:var(--muted)}} @media (max-width:700px){{.dvx{{margin:6px 82px 0 100px}}}} .dvx span{{position:absolute;transform:translateX(-50%)}} .dvk{{font-size:11px;color:var(--muted);margin:10px 0 0}} .gsel,.psel{{margin-left:8px;font:inherit;font-size:14px;padding:4px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}} .gt span{{font-size:13px;color:var(--ink2)}} .gt small{{font-size:11px;color:var(--muted);line-height:1.3}} .gcmp{{font-style:normal;font-size:11px;font-weight:600;margin-top:3px}} .gcmp.up{{color:#1a8f4a}} .gcmp.down{{color:#c0392b}} .gcmp.same{{color:var(--muted)}} :root{{--gleft:#c9c7bd}} @media (prefers-color-scheme:dark){{:root{{--gleft:#55544f}}}} .gk{{font-size:12px;color:var(--muted);margin-right:12px;white-space:normal}} .gk i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}} @media (max-width:700px){{.gst{{grid-template-columns:1fr 1fr}} .gt b{{font-size:18px}}}}</style>"
-            f"<h2 class='sh' id='sec-game'>Game Analytics</h2><section class='gcard'>{stale_note}<p class='sub' style='margin-top:0'>From Firebase (Google Analytics).{gsel_html}</p><h3 class='sh3'>Game stats</h3>{tiles_html}{quiet_html}{d1v_html}{d1t_html}"   # Guy, Nov 16: one header, one note, one filter for all game charts; no descriptions under chart titles
+            f"<h2 class='sh' id='sec-game'>Game Analytics</h2><section class='gcard'>{stale_note}<p class='sub' style='margin-top:0'>From Firebase (Google Analytics). <span class='gctl'>{gsel_html}</span></p><h3 class='sh3'>Game stats</h3>{tiles_html}{quiet_html}{d1v_html}{d1t_html}"   # Guy, Nov 16: one header, one note, one filter for all game charts; no descriptions under chart titles
             f"<h3 class='sh3'>How far players get</h3>{legend}{funnel}{compare}{rewarded}{winrate}"
             f"<h3 class='sh3'>Players per day</h3>"
             f"<div class='chart' style='height:260px'><canvas id='gday' role='img' aria-label='Active players per day on all versions'></canvas></div>{RNG('rngg')}</section>{js}{GSEL_JS if VB else ''}")
