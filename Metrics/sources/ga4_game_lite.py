@@ -27,6 +27,7 @@ VF = (1, 3, 11)   # Guy, Nov 16: Game stats filter "1.3.11+"
 VF_TO = (1, 3, 17)   # Guy, Nov 22: "1.3.11 to 1.3.17" (only the newest option keeps the +)
 VX = [((1, 3, 18), (1, 3, 23), "1.3.18 to 1.3.23"), ((1, 4, 0), None, None)]   # Guy, Nov 24: 1.3.18 to 1.3.23 grouped, new 1.4.0+ (was 1.3.18/19 and 1.3.20+, Nov 22); only an open-ended option has a +; each option shows once that version is on the App Store (vers stops at the live version), until then "vxnext" lists its label for the Day-1 chart
 QS_FROM = dt.date(2026, 11, 25)   # Guy, Nov 24: "track the quiet start update made today" (live config, done Nov 24 10:13 AM ET). "why isn't it showing the 3 new players": Nov 24 counts from 10:13 AM (Google's clock here is UTC-4, so hour 11+; nobody first opened 11:00-11:12), today so far included
+QS_OLDER = (dt.date(2026, 11, 15), dt.date(2026, 11, 23))   # Guy, Nov 25: "add the version before" = 1.3.11 to 1.3.17, the same first days as its tiles
 QS_BEFORE = (dt.date(2026, 11, 21), dt.date(2026, 11, 23))   # before = new players on 1.3.20+ on these first days
 COMPARE = (1, 3, 20)   # Guy, Nov 21: "Did 1.3.20+ help?" vs 1.3.11+ (1.3.11 to 1.3.19); Nov 20 was 1.3.18; was 1.3.11 vs before.
 BASE = (1, 3, 11)   # reference line: new players who started on BASE..COMPARE-1, from BASE's release to the day before COMPARE's
@@ -435,7 +436,8 @@ def fetch(keys_dir, today):
             return A
         return {"n": A["n"] + B1["n"], "l10": A["l10"] + B1["l10"], "w": {k: A["w"][k] + B1["w"][k] for k in A["w"]}, "back": [A["back"][i] + B1["back"][i] for i in (0, 1)]}
     with ThreadPoolExecutor(12) as ex:
-        Q = {"before": ex.submit(quiet, [v for v in vers if (1, 3, 20) <= _ver(v) < (1, 4, 0)], *QS_BEFORE),
+        Q = {"older": ex.submit(quiet, [v for v in vers if (1, 3, 11) <= _ver(v) <= (1, 3, 17)], *QS_OLDER),
+             "before": ex.submit(quiet, [v for v in vers if (1, 3, 20) <= _ver(v) < (1, 4, 0)], *QS_BEFORE),
              "after": ex.submit(quiet_after, [v for v in vers if (1, 3, 20) <= _ver(v) < (1, 4, 0)]),
              "after140": ex.submit(quiet, [v for v in vers if _ver(v) >= (1, 4, 0)], QS_FROM, today)}
         F = {k: ex.submit(block, *v) for k, v in J.items()}

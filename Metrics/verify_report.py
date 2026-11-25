@@ -274,7 +274,7 @@ def _check_game(C, page, keys, today, G, on_sale):
         C.true("Quiet start table has no background of its own", ".qs .qsw table{width:100%;border-collapse:collapse;background:none}" in page, "white box behind the table")   # Guy, Nov 24
         _qn = [(m[1], re.findall(r"<td[^>]*>(.*?)</td>", m[2])) for m in re.finditer(r"<tr[^>]*><td><b>(.*?)</b><small>.*?</small></td>(.*?)</tr>", _qh)]
         _qd = dict(_qn); _qsum = 0
-        for _k, _lab, _a, _c, _in in (("before", "Before", dt.date(2026, 11, 21), dt.date(2026, 11, 23), lambda x: (1, 3, 20) <= x < (1, 4, 0)), ("after", "After", dt.date(2026, 11, 25), today, lambda x: (1, 3, 20) <= x < (1, 4, 0)), ("after140", "After, 1.4.0+", dt.date(2026, 11, 25), today, lambda x: x >= (1, 4, 0))):
+        for _k, _lab, _a, _c, _in in (("older", "Earlier", dt.date(2026, 11, 15), dt.date(2026, 11, 23), lambda x: (1, 3, 11) <= x <= (1, 3, 17)), ("before", "Before", dt.date(2026, 11, 21), dt.date(2026, 11, 23), lambda x: (1, 3, 20) <= x < (1, 4, 0)), ("after", "After", dt.date(2026, 11, 25), today, lambda x: (1, 3, 20) <= x < (1, 4, 0)), ("after140", "After, 1.4.0+", dt.date(2026, 11, 25), today, lambda x: x >= (1, 4, 0))):
             _vs = [v for v in want if _in(_ver(v))]
             _n24, _w24 = 0, {}
             if _k == "after":   # Nov 24 from 10:13 AM ET = 11:13 on Google's UTC-4 clock (Guy: "why isn't it showing the 3 new players")
