@@ -409,11 +409,11 @@ def _check_game(C, page, keys, today, G, on_sale):
                 C.same(f"Day-1 chart {BB['label']}: Google Ads + other came back = all", sum((_sr.get(k) or [0, 0])[0] for k in ("ads", "other")), BB["d1"][0], max(1, wobble(BB["d1"][0])))
         # Guy, Nov 25: third drop-down (Today, Last 7 days, This month, Last month) + cards and data consistent
         _ids = re.findall(r"id='(gst-[\w-]+)'", page)
-        C.true("Time drop-down: Today, Last 7 days, This month, Last month", re.findall(r"<option value='(\w+)'(?: selected)?>([^<]+)</option>", (re.findall(r"<select id='tsel'.*?</select>", page) or [""])[0]) == [("today", "Today"), ("d7", "Last 7 days"), ("month", "This month"), ("last", "Last month")] and "bl_tsel_default" in page, "wrong or missing")
+        C.true("Time drop-down: Today, Yesterday, Last 7 days, This month, Last month", re.findall(r"<option value='(\w+)'(?: selected)?>([^<]+)</option>", (re.findall(r"<select id='tsel'.*?</select>", page) or [""])[0]) == [("today", "Today"), ("yest", "Yesterday"), ("d7", "Last 7 days"), ("month", "This month"), ("last", "Last month")] and "bl_tsel_default" in page, "wrong or missing")
         C.true("Players filter on the page", "id='psel'" in page and "bl_psel_default" in page, "missing")
         _NM = ["Active players", "Day-1 return", "Day-7 return", "Win rate", "Typical furthest level", "Reached level 10 on day one", "Ad views per player", "+Moves videos watched", "Super Stir / Solve uses", "Shares", "Purchases", "Reminders on"]
         _VW = {"all": want, **({"pre": [v for v in want if _ver(v) < (1, 3, 11)]} if G.get("pre") else {}), **({"vf": [v for v in want if (1, 3, 11) <= _ver(v) <= (1, 3, 17)]} if G.get("vf") else {}), **{k: B["vers"] for k, B in (G.get("vx") or {}).items()}}
-        C.true("A card set for every version, time and player choice", sorted(_ids) == sorted(f"gst-{v}-{t}-{w}" for v in _VW for t in ("today", "d7", "month", "last") for w in ("all", "new")), f"{len(_ids)} sets")
+        C.true("A card set for every version, time and player choice", sorted(_ids) == sorted(f"gst-{v}-{t}-{w}" for v in _VW for t in ("today", "yest", "d7", "month", "last") for w in ("all", "new")), f"{len(_ids)} sets")
 
         def _own(a):   # own pulls for one view and period
             v, t = a

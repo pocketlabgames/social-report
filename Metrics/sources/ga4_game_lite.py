@@ -281,10 +281,10 @@ def fetch(keys_dir, today):
     # Guy, Nov 16: the same tiles for the newest versions only (1.3.11+), from the first one's release day to today
     # Guy, Nov 19: and for the versions before 1.3.11, over the same number of days just before 1.3.11 came out (each 1.3.11+ tile compares to it)
     # Guy, Nov 25: "add another drop down: Today, last 7 days, this month, last month" + "clean up the section to make the cards and data consistent":
-    # every card of a view counts the same players over the same days. One question answers all four periods (GA4 takes 4 date ranges) and both player
+    # every card of a view counts the same players over the same days. One question answers up to four periods (GA4 takes 4 date ranges) and both player
     # filters (the first-day dimension: each player has exactly one first day, so the days add up to the players).
     m0 = today.replace(day=1); m1 = (m0 - dt.timedelta(days=1)).replace(day=1)
-    PER = [(k, max(a, START), b) for k, a, b in (("today", today, today), ("d7", today - dt.timedelta(days=6), today), ("month", m0, today), ("last", m1, m0 - dt.timedelta(days=1))) if b >= START]
+    PER = [(k, max(a, START), b) for k, a, b in (("today", today, today), ("yest", today - dt.timedelta(days=1), today - dt.timedelta(days=1)), ("d7", today - dt.timedelta(days=6), today), ("month", m0, today), ("last", m1, m0 - dt.timedelta(days=1))) if b >= START]
     out["periods"] = {k: [a.isoformat(), b.isoformat()] for k, a, b in PER}
     key = lambda d: d.strftime("%Y%m%d")
     span = lambda a, b: [a + dt.timedelta(days=i) for i in range((b - a).days + 1)] if b >= a else []
@@ -298,7 +298,7 @@ def fetch(keys_dir, today):
         rgs = [{"startDate": a.isoformat(), "endDate": b.isoformat(), "name": k} for k, a, b in PER]
 
         def q(dims, mets, *f):   # rows as (first day, other dims..., period), values
-            return [(r[0], r[1]) if len(rgs) > 1 else (r[0] + [PER[0][0]], r[1]) for r in _run(s, {"dateRanges": rgs, "dimensions": [{"name": d} for d in ["firstSessionDate"] + dims], "metrics": [{"name": m} for m in mets], "dimensionFilter": AND(fil, *f), "limit": 100000})]
+            return [(r[0], r[1]) if len(ch) > 1 else (r[0] + [ch[0]["name"]], r[1]) for ch in (rgs[i:i + 4] for i in range(0, len(rgs), 4)) for r in _run(s, {"dateRanges": ch, "dimensions": [{"name": d} for d in ["firstSessionDate"] + dims], "metrics": [{"name": m} for m in mets], "dimensionFilter": AND(fil, *f), "limit": 100000})]
 
         def add(rows, pick=lambda d: "n", i=0):   # {(period, who): {name: total}}
             o = {}
@@ -340,8 +340,8 @@ def fetch(keys_dir, today):
         two = lambda *f: {(d, d2): int(n) for (d, d2), (n,) in _run(s, {"dateRanges": [fw], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": AND(fil, INN("firstSessionDate", [key(d) for d in span(first14, today)]), *f), "limit": 100000})}
         pair = two(); hi10 = two(INN("customUser:max_level", [str(x) for x in lvs if x >= 10] or ["x"]))
         base = {d: n for (d, d2), n in pair.items() if d == d2}
-        W1 = {"today": span(max(START, today - dt.timedelta(days=1)), today - dt.timedelta(days=1)), "d7": span(max(START, today - dt.timedelta(days=8)), today - dt.timedelta(days=2))}
-        W7 = {"today": [], "d7": span(max(START, today - dt.timedelta(days=14)), today - dt.timedelta(days=8))}
+        W1 = {"today": span(max(START, today - dt.timedelta(days=1)), today - dt.timedelta(days=1)), "yest": span(max(START, today - dt.timedelta(days=2)), today - dt.timedelta(days=2)), "d7": span(max(START, today - dt.timedelta(days=8)), today - dt.timedelta(days=2))}
+        W7 = {"today": [], "yest": span(max(START, today - dt.timedelta(days=8)), today - dt.timedelta(days=8)), "d7": span(max(START, today - dt.timedelta(days=14)), today - dt.timedelta(days=8))}
         for k, a, b in PER:
             if k in ("month", "last"):
                 W1[k], W7[k] = span(a, min(b, today - dt.timedelta(days=2))), span(a, min(b, today - dt.timedelta(days=8)))

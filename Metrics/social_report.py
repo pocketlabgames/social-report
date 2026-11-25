@@ -1317,7 +1317,7 @@ def game_section():
     buy = sum((MONEY.get((dt.date.today() - dt.timedelta(days=i)).isoformat()) or {}).get("n") or 0 for i in range(7))   # Guy, Nov 7: real sales from Apple only, not Firebase (App Review test buys showed as purchases)
     e = html.escape
 
-    PERS = [("today", "Today"), ("d7", "Last 7 days"), ("month", "This month"), ("last", "Last month")]   # Guy, Nov 25: third drop-down
+    PERS = [("today", "Today"), ("yest", "Yesterday"), ("d7", "Last 7 days"), ("month", "This month"), ("last", "Last month")]   # Guy, Nov 25: third drop-down
     RGS = G.get("periods") or {}
 
     def mk_tiles(view, per, who):   # Guy, Nov 25: "clean up the section to make the cards and data consistent": 12 cards, each = number, name, one short line; every card covers the same players and the same days
