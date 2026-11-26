@@ -1727,6 +1727,29 @@ CMAP_JS = """
 """
 
 
+def rmap_html():
+    """Guy, Nov 26: ratings by country, only countries with ratings (click the US ratings tile)."""
+    try:
+        by = json.loads(REVIEWS.get("by") or "{}")
+    except ValueError:
+        by = {}
+    if not REVIEWS.get("app_id"):
+        return ""
+    n = sum(v[0] for v in by.values()); avg = sum(v[0] * v[1] for v in by.values()) / n if n else None
+    flag = lambda c: "".join(chr(0x1F1E6 + ord(x) - 65) for x in c) if len(c) == 2 and c.isalpha() else ""
+    rows = "".join(f"<tr data-c='{c}'><td class='cmnf'>{flag(c)}</td><td class='cmnm rcn'>{c}</td><td class='cmnn'>{v[0]:,}<small>{v[1]:.1f}★</small></td></tr>" for c, v in sorted(by.items(), key=lambda x: (-x[1][0], x[0])))
+    body = f"<table class='cmnt' id='rmt'>{rows}</table>" if rows else "<p class='cmne'>No ratings yet.</p>"
+    return (f"<style>{CMAP_CSS} .rclick{{cursor:pointer}} .rclick:hover{{text-decoration:underline dotted;text-underline-offset:3px}}</style>"
+            f"<div class='cmo' id='rmap' hidden><div class='cmc' style='max-width:520px'><button class='cmx' id='rmx' aria-label='Close'>×</button>"
+            f"<div class='cmh'><h2>Ratings by country</h2><small>{n:,} ratings{f' · {avg:.1f}★' if avg is not None else ''} · {len(by):,} {'country' if len(by) == 1 else 'countries'}</small></div>{body}</div></div>"
+            """<script>(() => { const ov = document.getElementById('rmap'); if (!ov) return; let dn = null; try { dn = new Intl.DisplayNames([navigator.language || 'en'], {type: 'region'}); } catch (e) {}
+  ov.querySelectorAll('.rcn').forEach(td => { try { td.textContent = (dn && dn.of(td.textContent)) || td.textContent; } catch (e) {} });
+  const close = () => { ov.hidden = true; document.body.style.overflow = ''; };
+  document.getElementById('rmx').onclick = close; ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  addEventListener('keydown', e => { if (e.key === 'Escape' && !ov.hidden) close(); });
+  document.querySelectorAll('.rclick').forEach(el => el.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); ov.hidden = false; document.body.style.overflow = 'hidden'; })); })();</script>""")
+
+
 def cmap_html():
     """Overlay + data + script for the countries map (empty without country data)."""
     if not COUNTRIES:
@@ -1938,7 +1961,8 @@ def write_html(stamp, rows, rd, snap, prev, labels, series, source, errors, hist
         if REVIEWS.get("app_id"):   # Guy, Oct 30: App Store star ratings (every country with a download) + written reviews; no link
             avg = f" · {REVIEWS['avg']:.1f}★" if REVIEWS.get("avg") is not None else ""
             tip = f"Star ratings by country: {REVIEWS.get('top') or 'none yet'}. Written reviews: {int(REVIEWS.get('reviews') or 0):,}. Ratings refresh once a day."
-            right += f"<div class='dayt' title='{html.escape(tip)}'>{int(REVIEWS['n']):,}{avg} <small>Ratings</small></div>"
+            un, ua = int(REVIEWS.get("us_n") or 0), REVIEWS.get("us_avg")   # Guy, Nov 26: "only display US ratings in the top card. Clicking it shows a list of ratings by country but only for countries with ratings"
+            right += f"<div class='dayt rclick' title='{html.escape(tip)} Click for ratings by country.'>{un:,}{f' · {ua:.1f}★' if ua is not None and un else ''} {lab('US ratings', 'US Ratings')}</div>"
         if RET.get("d1") is not None:   # Guy, Oct 26: Firebase next-day return of new players (last 7 complete days)
             tip = f"Day-1: {RET['d1']:.0f}% of {int(RET.get('d1_n') or 0):,} new players came back the next day" + (f" · Day-7+: {RET['d7']:.0f}%" if RET.get("d7") is not None else "") + " (Firebase, last 7 complete days)"
             right += f"<div class='dayt' title='{tip}'>{RET['d1']:.0f}% {lab('day-1 retention', 'D-1')}</div>"
@@ -2376,7 +2400,7 @@ if (window.SRCCHART) SRCCHART();
 if (window.D1TCHART) D1TCHART();   // Guy, Nov 23: Day-1 return chart
 if (window.SRCHCHART) SRCHCHART();   // Guy, Nov 17: App Store search chart
 if (window.GAMECHART) GAMECHART();   // Guy, Nov 2: Firebase game stats charts   // Guy, Oct 29: App Store sources chart
-</script>{cmap_html()}{earn_html(money_daily)}</body></html>"""
+</script>{cmap_html()}{rmap_html()}{earn_html(money_daily)}</body></html>"""
     open(OUT_HTML, "w").write(doc)
     return {"stamp": stamp, "table": {"cols": cols, "rows": trows}, "legend": legend,
             "data": {"labels": labels, "series": {NAME[p]: series[p] for p in PLAT}}}

@@ -56,5 +56,7 @@ def fetch(keys_dir, today):
     n = sum(v[0] for v in by.values())
     row = {"app_id": str(cl.c["app_id"]), "reviews": len(revs), "n": n,
            "avg": sum(v[0] * v[1] for v in by.values()) / n if n else None,
+           "by": json.dumps({c: v for c, v in by.items() if v[0]}, sort_keys=True),   # Guy, Nov 26: countries with ratings, for the ratings list
+           "us_n": (by.get("US") or [0, None])[0], "us_avg": (by.get("US") or [0, None])[1] if (by.get("US") or [0])[0] else None,
            "top": ", ".join(f"{c} {v[0]:,}" for c, v in sorted(by.items(), key=lambda x: -x[1][0]) if v[0])[:300]}
     return {"ASC Reviews Lite": (pd.DataFrame([row]), [])}
