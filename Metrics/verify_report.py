@@ -264,17 +264,17 @@ def _check_game(C, page, keys, today, G, on_sale):
         # Guy, Nov 24: Quiet start card, own pulls per row (first-day wins, level 10, next day)
         _qh = page[page.find("<div class='qs' id='quiet'>"):][:6000] if "<div class='qs' id='quiet'>" in page else ""
         C.true("Quiet start card on the page", bool(_qh), "missing")
-        C.true("Quiet start has the After, 1.4.0 to 1.4.2 and After, 1.5.0+ rows", "<b>After, 1.4.0 to 1.4.2</b>" in _qh and "<b>After, 1.5.0+</b>" in _qh, "missing")   # Guy, Nov 25
+        C.true("Quiet start rows are named by version (1.4.0 to 1.4.2, 1.5.0+; no Before/After)", "<b>1.4.0 to 1.4.2</b>" in _qh and "<b>1.5.0+</b>" in _qh and not re.search(r"<b>(Earlier|Before|After)", _qh), "missing")   # Guy, Nov 25
         C.true("Quiet start table has no background of its own", ".qs .qsw table{width:100%;border-collapse:collapse;background:none}" in page, "white box behind the table")   # Guy, Nov 24
         _qn = [(m[1], re.findall(r"<td[^>]*>(.*?)</td>", m[2])) for m in re.finditer(r"<tr[^>]*><td><b>(.*?)</b><small>.*?</small></td>(.*?)</tr>", _qh)]
         _qd = dict(_qn); _qsum = 0
-        for _k, _lab, _a, _c, _in in (("older", "Earlier", dt.date(2026, 11, 15), dt.date(2026, 11, 23), lambda x: (1, 3, 11) <= x <= (1, 3, 17)), ("before", "Before", dt.date(2026, 11, 21), dt.date(2026, 11, 23), lambda x: (1, 3, 20) <= x < (1, 4, 0)), ("after", "After", dt.date(2026, 11, 25), today, lambda x: (1, 3, 20) <= x < (1, 4, 0)), ("after140", "After, 1.4.0 to 1.4.2", dt.date(2026, 11, 25), today, lambda x: (1, 4, 0) <= x < (1, 5, 0)), ("after150", "After, 1.5.0+", dt.date(2026, 11, 25), today, lambda x: x >= (1, 5, 0))):
+        for _k, _lab, _a, _c, _in in (("older", "1.3.11 to 1.3.17", dt.date(2026, 11, 15), dt.date(2026, 11, 23), lambda x: (1, 3, 11) <= x <= (1, 3, 17)), ("before", "1.3.20 to 1.3.22", dt.date(2026, 11, 21), dt.date(2026, 11, 23), lambda x: (1, 3, 20) <= x < (1, 4, 0)), ("after", "1.3.20 to 1.3.23", dt.date(2026, 11, 25), today, lambda x: (1, 3, 20) <= x < (1, 4, 0)), ("after140", "1.4.0 to 1.4.2", dt.date(2026, 11, 25), today, lambda x: (1, 4, 0) <= x < (1, 5, 0)), ("after150", "1.5.0+", dt.date(2026, 11, 25), today, lambda x: x >= (1, 5, 0))):
             _vs = [v for v in want if _in(_ver(v))]
             _n24, _w24 = 0, {}
             if _k == "after":   # Nov 24 from 10:13 AM ET = 11:13 on Google's UTC-4 clock (Guy: "why isn't it showing the 3 new players")
                 _f24 = AND(among("appVersion", _vs), has("firstSessionDate", "20261124"))
                 _n24 = sum(int(r[1][0]) for r in run((dt.date(2026, 11, 24), dt.date(2026, 11, 24)), ["dateHourMinute"], ["totalUsers"], AND(_f24, has("eventName", "first_open"))) if r[0][0] >= "202611241113")
-                C.true("Quiet start After: Nov 24 players are on the card", n1((_qd.get("After") or ["", ""])[0] or "0", r"([\d,]+)") >= _n24 - 1, f"{_n24} first opens since 10:13 AM, card {(_qd.get('After') or ['?'])[0]}")
+                C.true("Quiet start After: Nov 24 players are on the card", n1((_qd.get("1.3.20 to 1.3.23") or ["", ""])[0] or "0", r"([\d,]+)") >= _n24 - 1, f"{_n24} first opens since 10:13 AM, card {(_qd.get('1.3.20 to 1.3.23') or ['?'])[0]}")
                 for _l in ("1", "2", "3", "7"):   # nobody who started before 10:13 AM: wins after it by players who first opened after it can't exceed those counts
                     _w24[_l] = sum(int(r[1][0]) for r in run((dt.date(2026, 11, 24), dt.date(2026, 11, 24)), ["dateHourMinute"], ["totalUsers"], AND(_f24, has("eventName", "lv_win_" + _l))) if r[0][0] >= "202611241113")
             if _k == "after" and _c < _a:
@@ -441,8 +441,8 @@ def _check_game(C, page, keys, today, G, on_sale):
             nw = n1(g(N, "New players")[0], r"([\d,]+)")
             _nset = {x for x in (n1(g(A, "Active players")[1], r"([\d,]+) new"), n1(g(A, "Reached level 10 on day one")[1], r"of ([\d,]+) new"), n1(g(A, "Reminders on")[1], r"of ([\d,]+) new"), n1(g(N, "Reminders on")[1], r"of ([\d,]+) new")) if x is not None}
             C.true(f"{nm}: one number of new players on every card", _nset <= {nw}, f"{_nset} vs {nw}")
-            if v == "vf" and t == "month" and _qd.get("Earlier"):   # Guy reads both: the card and Quiet start must say the same
-                C.same("1.3.11 to 1.3.17 level 10 card = Quiet start Earlier row", n1(g(A, "Reached level 10 on day one")[1], r"of ([\d,]+) new"), n1(_qd["Earlier"][0], r"([\d,]+)"), 1)
+            if v == "vf" and t == "month" and _qd.get("1.3.11 to 1.3.17"):   # Guy reads both: the card and Quiet start must say the same
+                C.same("1.3.11 to 1.3.17 level 10 card = Quiet start Earlier row", n1(g(A, "Reached level 10 on day one")[1], r"of ([\d,]+) new"), n1(_qd["1.3.11 to 1.3.17"][0], r"([\d,]+)"), 1)
             for T in (A, N):
                 for l, (x, y) in T.items():   # every percentage equals its own "a of b"
                     q = re.match(r"([\d,]+) of ([\d,]+) ", y)
