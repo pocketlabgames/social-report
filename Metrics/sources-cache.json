@@ -1,14 +1,5 @@
 {
-"2026-11-01": {
-"imp_search": 1039,
-"pv_ads": 51,
-"pv_browse": 5,
-"pv_other": 40,
-"pv_search": 10
-},
 "2026-11-02": {
-"dl_ads": 6,
-"dl_search": 5,
 "imp_search": 933,
 "pv_ads": 70,
 "pv_browse": 3,
@@ -19,9 +10,9 @@
 "dl_ads": 13,
 "dl_search": 2,
 "imp_search": 305,
-"pv_ads": 324,
+"pv_ads": 322,
 "pv_browse": 22,
-"pv_other": 178,
+"pv_other": 176,
 "pv_search": 7
 },
 "2026-11-04": {
