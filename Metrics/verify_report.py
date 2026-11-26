@@ -636,7 +636,8 @@ def run(html_path, keys, G, snap, prev, stale, errors, plats, today=None):
             C.same("US ratings (most common of 5 Apple lookups)", us, want_n, 0)
             tile = re.search(r"class='dayt rclick'[^>]*>([\d,]+)", page)   # Guy, Nov 26: the top card shows US ratings only
             C.same("Top card = US ratings", int(tile.group(1).replace(",", "")) if tile else None, want_n, 0)
-            rows = re.findall(r"<tr data-c='(\w+)'><td class='cmnf'>[^<]*</td><td class='cmnm rcn'>\w+</td><td class='cmnn'>([\d,]+)<small>", page)
+            rows = re.findall(r"<tr data-c='(\w+)'><td class='cmnf'>[^<]*</td><td class='cmnm rcn'>\w+</td><td class='rsc'>.*?</td><td class='cmnn'>([\d,]+)</td>", page)
+            C.true("Ratings list has rows", bool(rows), "no rows found")
             C.true("Ratings list: only countries with ratings, US row = US count", all(int(x.replace(",", "")) > 0 for _, x in rows) and dict(rows).get("US", "0").replace(",", "") == str(want_n), f"{rows}")
     except Exception as e:
         C.fails.append(f"Ratings check could not run: {type(e).__name__}"[:240])

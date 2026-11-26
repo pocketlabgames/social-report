@@ -1737,11 +1737,12 @@ def rmap_html():
         return ""
     n = sum(v[0] for v in by.values()); avg = sum(v[0] * v[1] for v in by.values()) / n if n else None
     flag = lambda c: "".join(chr(0x1F1E6 + ord(x) - 65) for x in c) if len(c) == 2 and c.isalpha() else ""
-    rows = "".join(f"<tr data-c='{c}'><td class='cmnf'>{flag(c)}</td><td class='cmnm rcn'>{c}</td><td class='cmnn'>{v[0]:,}<small>{v[1]:.1f}★</small></td></tr>" for c, v in sorted(by.items(), key=lambda x: (-x[1][0], x[0])))
+    stars = lambda a: f"<span class='rst' role='img' aria-label='{a:.1f} out of 5 stars'><span class='rsb'>★★★★★</span><span class='rsf' style='width:{max(0, min(100, a / 5 * 100)):.0f}%'>★★★★★</span></span>"   # Guy, Nov 26: "look more like ratings on the app store": 5 stars filled to the average, then the count
+    rows = "".join(f"<tr data-c='{c}'><td class='cmnf'>{flag(c)}</td><td class='cmnm rcn'>{c}</td><td class='rsc'>{stars(v[1])}</td><td class='cmnn'>{v[0]:,}</td></tr>" for c, v in sorted(by.items(), key=lambda x: (-x[1][0], x[0])))
     body = f"<table class='cmnt' id='rmt'>{rows}</table>" if rows else "<p class='cmne'>No ratings yet.</p>"
-    return (f"<style>{CMAP_CSS} .rclick{{cursor:pointer}} .rclick:hover{{text-decoration:underline dotted;text-underline-offset:3px}}</style>"
+    return (f"<style>{CMAP_CSS} .rclick{{cursor:pointer}} .rclick:hover{{text-decoration:underline dotted;text-underline-offset:3px}} .rsc{{text-align:right;white-space:nowrap;padding-right:2px!important}} .rst{{position:relative;display:inline-block;font-size:17px;letter-spacing:1px;line-height:1;vertical-align:middle}} .rsb{{color:var(--muted);opacity:.4}} .rsf{{position:absolute;left:0;top:0;overflow:hidden;white-space:nowrap;color:var(--ink)}} #rmt td.cmnn{{width:1%;padding-left:8px}} .rhd{{display:flex;align-items:center;gap:8px;margin-top:4px;color:var(--muted);font-size:13px}} .rhd b{{font-size:30px;color:var(--ink);font-weight:700}}</style>"
             f"<div class='cmo' id='rmap' hidden><div class='cmc' style='max-width:520px'><button class='cmx' id='rmx' aria-label='Close'>×</button>"
-            f"<div class='cmh'><h2>Ratings by country</h2><small>{n:,} ratings{f' · {avg:.1f}★' if avg is not None else ''} · {len(by):,} {'country' if len(by) == 1 else 'countries'}</small></div>{body}</div></div>"
+            f"<div class='cmh'><h2>Ratings by country</h2></div>" + (f"<div class='rhd'><b>{avg:.1f}</b>{stars(avg)}<span>{n:,} {'Rating' if n == 1 else 'Ratings'} · {len(by):,} {'country' if len(by) == 1 else 'countries'}</span></div>" if avg is not None else "") + f"{body}</div></div>"
             """<script>(() => { const ov = document.getElementById('rmap'); if (!ov) return; let dn = null; try { dn = new Intl.DisplayNames([navigator.language || 'en'], {type: 'region'}); } catch (e) {}
   ov.querySelectorAll('.rcn').forEach(td => { try { td.textContent = (dn && dn.of(td.textContent)) || td.textContent; } catch (e) {} });
   const close = () => { ov.hidden = true; document.body.style.overflow = ''; };
