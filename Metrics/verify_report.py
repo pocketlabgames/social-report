@@ -264,11 +264,11 @@ def _check_game(C, page, keys, today, G, on_sale):
         # Guy, Nov 24: Quiet start card, own pulls per row (first-day wins, level 10, next day)
         _qh = page[page.find("<div class='qs' id='quiet'>"):][:6000] if "<div class='qs' id='quiet'>" in page else ""
         C.true("Quiet start card on the page", bool(_qh), "missing")
-        C.true("Quiet start has the After, 1.4.0+ row", "<b>After, 1.4.0+</b>" in _qh, "missing")   # Guy, Nov 25
+        C.true("Quiet start has the After, 1.4.0 to 1.4.2 and After, 1.5.0+ rows", "<b>After, 1.4.0 to 1.4.2</b>" in _qh and "<b>After, 1.5.0+</b>" in _qh, "missing")   # Guy, Nov 25
         C.true("Quiet start table has no background of its own", ".qs .qsw table{width:100%;border-collapse:collapse;background:none}" in page, "white box behind the table")   # Guy, Nov 24
         _qn = [(m[1], re.findall(r"<td[^>]*>(.*?)</td>", m[2])) for m in re.finditer(r"<tr[^>]*><td><b>(.*?)</b><small>.*?</small></td>(.*?)</tr>", _qh)]
         _qd = dict(_qn); _qsum = 0
-        for _k, _lab, _a, _c, _in in (("older", "Earlier", dt.date(2026, 11, 15), dt.date(2026, 11, 23), lambda x: (1, 3, 11) <= x <= (1, 3, 17)), ("before", "Before", dt.date(2026, 11, 21), dt.date(2026, 11, 23), lambda x: (1, 3, 20) <= x < (1, 4, 0)), ("after", "After", dt.date(2026, 11, 25), today, lambda x: (1, 3, 20) <= x < (1, 4, 0)), ("after140", "After, 1.4.0+", dt.date(2026, 11, 25), today, lambda x: x >= (1, 4, 0))):
+        for _k, _lab, _a, _c, _in in (("older", "Earlier", dt.date(2026, 11, 15), dt.date(2026, 11, 23), lambda x: (1, 3, 11) <= x <= (1, 3, 17)), ("before", "Before", dt.date(2026, 11, 21), dt.date(2026, 11, 23), lambda x: (1, 3, 20) <= x < (1, 4, 0)), ("after", "After", dt.date(2026, 11, 25), today, lambda x: (1, 3, 20) <= x < (1, 4, 0)), ("after140", "After, 1.4.0 to 1.4.2", dt.date(2026, 11, 25), today, lambda x: (1, 4, 0) <= x < (1, 5, 0)), ("after150", "After, 1.5.0+", dt.date(2026, 11, 25), today, lambda x: x >= (1, 5, 0))):
             _vs = [v for v in want if _in(_ver(v))]
             _n24, _w24 = 0, {}
             if _k == "after":   # Nov 24 from 10:13 AM ET = 11:13 on Google's UTC-4 clock (Guy: "why isn't it showing the 3 new players")
@@ -308,7 +308,7 @@ def _check_game(C, page, keys, today, G, on_sale):
                 _nb = sum(min(one((_d0, _d0), flt=AND(released_only(_d0, _d0, _rel), has("firstSessionDate", _d0.strftime("%Y%m%d")))), next_day(_d0, _rel)) for _d0 in (_a + dt.timedelta(days=i) for i in range((min(_c, today - dt.timedelta(days=2)) - _a).days + 1)) if any(rel[v] <= _d0 for v in _rel)) if _k == "before" else None   # the later rows use the same code path; before is fixed and cheap to recount
                 if _nb is not None:
                     C.same(f"Quiet start {_lab}: came back next day", n1(_cl[6], r"<small>([\d,]+) of"), _nb, 1)
-        C.same("Quiet start: new players since Nov 25", n1(_qh, r"<b>([\d,]+) of 200</b>") if _qh else None, sum((G.get("quiet", {}).get(k) or {}).get("n", 0) for k in ("after", "after140")), 0)
+        C.same("Quiet start: new players since Nov 25", n1(_qh, r"<b>([\d,]+) of 200</b>") if _qh else None, sum((G.get("quiet", {}).get(k) or {}).get("n", 0) for k in ("after", "after140", "after150")), 0)
         C.true("1.3.11 to 1.3.17 label (only the newest option has a +)", VB.get("label") == "1.3.11 to 1.3.17", VB.get("label"))
         PB = G.get("pre")
         C.true("Before 1.3.11 option in the version filter", bool(PB) == ("<option value='pre'>" in page), "drop-down option and data disagree")

@@ -25,7 +25,8 @@ STEPS = list(range(1, 11)) + [11, 16, 21, 26, 31]   # Guy, Nov 6: "Where players
 RELEASED = {"1.3.1": START, "1.3.2": dt.date(2026, 11, 4), "1.3.3": dt.date(2026, 11, 6), "1.3.11": dt.date(2026, 11, 15), "1.3.18": dt.date(2026, 11, 20), "1.3.19": dt.date(2026, 11, 21), "1.3.20": dt.date(2026, 11, 21)}   # App Store release days; later versions use Apple's date while live
 VF = (1, 3, 11)   # Guy, Nov 16: Game stats filter "1.3.11+"
 VF_TO = (1, 3, 17)   # Guy, Nov 22: "1.3.11 to 1.3.17" (only the newest option keeps the +)
-VX = [((1, 3, 18), (1, 3, 23), "1.3.18 to 1.3.23"), ((1, 4, 0), None, None)]   # Guy, Nov 24: 1.3.18 to 1.3.23 grouped, new 1.4.0+ (was 1.3.18/19 and 1.3.20+, Nov 22); only an open-ended option has a +; each option shows once that version is on the App Store (vers stops at the live version), until then "vxnext" lists its label for the Day-1 chart
+VX = [((1, 3, 18), (1, 3, 23), "1.3.18 to 1.3.23"), ((1, 4, 0), (1, 4, 2), "1.4.0 to 1.4.2"), ((1, 5, 0), None, None)]   # Guy, Nov 26: "Build a 1.5.0+ section into game analytics wherever it needs it"; 1.4.0+ became 1.4.0 to 1.4.2
+   # Guy, Nov 24: 1.3.18 to 1.3.23 grouped, new 1.4.0+ (was 1.3.18/19 and 1.3.20+, Nov 22); only an open-ended option has a +; each option shows once that version is on the App Store (vers stops at the live version), until then "vxnext" lists its label for the Day-1 chart
 QS_FROM = dt.date(2026, 11, 25)   # Guy, Nov 24: "track the quiet start update made today" (live config, done Nov 24 10:13 AM ET). "why isn't it showing the 3 new players": Nov 24 counts from 10:13 AM (Google's clock here is UTC-4, so hour 11+; nobody first opened 11:00-11:12), today so far included
 QS_OLDER = (dt.date(2026, 11, 15), dt.date(2026, 11, 23))   # Guy, Nov 25: "add the version before" = 1.3.11 to 1.3.17, the same first days as its tiles
 QS_BEFORE = (dt.date(2026, 11, 21), dt.date(2026, 11, 23))   # before = new players on 1.3.20+ on these first days
@@ -467,7 +468,8 @@ def fetch(keys_dir, today):
         Q = {"older": ex.submit(quiet, [v for v in vers if (1, 3, 11) <= _ver(v) <= (1, 3, 17)], *QS_OLDER),
              "before": ex.submit(quiet, [v for v in vers if (1, 3, 20) <= _ver(v) < (1, 4, 0)], *QS_BEFORE),
              "after": ex.submit(quiet_after, [v for v in vers if (1, 3, 20) <= _ver(v) < (1, 4, 0)]),
-             "after140": ex.submit(quiet, [v for v in vers if _ver(v) >= (1, 4, 0)], QS_FROM, today)}
+             "after140": ex.submit(quiet, [v for v in vers if (1, 4, 0) <= _ver(v) < (1, 5, 0)], QS_FROM, today),
+             "after150": ex.submit(quiet, [v for v in vers if _ver(v) >= (1, 5, 0)], QS_FROM, today)}   # Guy, Nov 26: 1.5.0+ row (0 until it is on the App Store)
         F = {k: ex.submit(block, *v) for k, v in J.items()}
         TL = {"all": ex.submit(tiles, vers, True)}
         TL.update({k: ex.submit(tiles, v[0], False, START if k == "pre" else v[1], v[2]) for k, v in J.items()})
