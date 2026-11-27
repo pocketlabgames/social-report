@@ -60,12 +60,16 @@ def no_ct(body):
 
 # Guy, Nov 24: refresh took almost 10 min (1,085 questions, one version group at a time). Now at most 8 at once over every group
 # (GA4 allows 10 per property) and each group asks only for the levels its tile needs. CALLS is checked in verify_report.py.
-_SEM, CALLS = threading.BoundedSemaphore(8), [0]
+_SEM, CALLS, TALLY = threading.BoundedSemaphore(8), [0], {}
 
 
 def _post(s, *a, **k):
     with _SEM:
         CALLS[0] += 1
+        if os.environ.get("GA4_TALLY"):
+            import traceback, collections
+            fr = [f for f in traceback.extract_stack()[:-1] if f.name not in ("_post", "_run", "_fun1")][-1]
+            TALLY[f"{fr.name}:{fr.lineno}"] = TALLY.get(f"{fr.name}:{fr.lineno}", 0) + 1
         return s.post(*a, **k)
 
 
@@ -285,9 +289,12 @@ def fetch(keys_dir, today):
     # Guy, Nov 4: a player whose furthest level changes shows up once per level in a by-level report (285 "players" vs 53 real),
     # so ask for each level how many different players reached it or beyond
     lvs = sorted(int(lv) for (lv,), _ in _run(s, {"dateRanges": [dall], "dimensions": [{"name": "customUser:max_level"}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": newer, "limit": 1000}) if lv.isdigit())
+    # Nov 27: the report only shows the "Where players stop" steps, so ask only for the first level at or past each step (+ the lowest level =
+    # all players): ~15 questions instead of one per level ever reached (~300; the refresh hit 1,010 questions). Same numbers on the page.
+    need = sorted({lvs[0]} | {min(x for x in lvs if x >= st) for st in STEPS if any(x >= st for x in lvs)}) if lvs else []
     rs = _many(s, [{"dateRanges": [{"startDate": dall["startDate"], "endDate": dall["endDate"]}], "metrics": [{"name": "activeUsers"}],
-                    "dimensionFilter": {"andGroup": {"expressions": [newer, {"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in lvs if x >= lv]}}}]}}} for lv in lvs])
-    for lv, r in zip(lvs, rs):
+                    "dimensionFilter": {"andGroup": {"expressions": [newer, {"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in lvs if x >= lv]}}}]}}} for lv in need])
+    for lv, r in zip(need, rs):
         out["reach"][str(lv)] = int(r[0][1][0]) if r else 0
     # Guy, Nov 6: split each bar: played in the last 3 days (today + 2 before) = still playing; the rest of that bar has left
     def reached(base, dr, st, l1=False):   # l1 (Nov 27): new players only = played level 1, then reached the level (funnel; only where the plain count is above 0)
@@ -566,6 +573,8 @@ def fetch(keys_dir, today):
     out["all"] = {"today": total(today.isoformat()), "week": total((today - dt.timedelta(days=6)).isoformat()), "m30": total((today - dt.timedelta(days=29)).isoformat()), "ever": total("2026-01-01"),
                   "daily": {f"{d[:4]}-{d[4:6]}-{d[6:]}": int(n) for (d,), (n,) in _run(s, {"dateRanges": [dall], "dimensions": [{"name": "date"}], "metrics": [{"name": "activeUsers"}]})}}
     out["calls"] = CALLS[0]
+    if TALLY:
+        print("GA4 TALLY", sorted(TALLY.items(), key=lambda x: -x[1]))
     try:   # keep only what this refresh used (old versions' questions drop out by themselves)
         json.dump(_KEEP_NEW, open(FCACHE, "w"), sort_keys=True)
     except Exception:
