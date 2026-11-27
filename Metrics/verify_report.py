@@ -156,6 +156,17 @@ def _check_game(C, page, keys, today, G, on_sale):
     has = lambda f, v: {"filter": {"fieldName": f, "stringFilter": {"value": v}}}
     among = lambda f, vs: {"filter": {"fieldName": f, "inListFilter": {"values": list(vs)}}}
     AND = lambda *x: {"andGroup": {"expressions": list(x)}}
+    # Guy, Nov 27 2026: a new player = first day AND played level 1 that day (own copy of the report's L1); reinstalls that got their progress back
+    # (1.5.0: 2 of 6 opened on level 6) are not new players. Anything else they did is checked through an own funnel (step 1 = L1 on the first day).
+    L1V = {"orGroup": {"expressions": [AND(among("eventName", ["level_start", "lv_move", "level_end"]), has("customEvent:level", "1")), among("eventName", ["first_open_level", "level1_open"])]}}
+
+    def funnel(a, b, steps):   # users through each step, in order
+        f = lambda x: {("funnelFieldFilter" if k == "filter" else k): f(v) for k, v in x.items()} if isinstance(x, dict) else [f(v) for v in x] if isinstance(x, list) else x
+        body = {"dateRanges": [{"startDate": a.isoformat(), "endDate": b.isoformat()}], "funnel": {"steps": [{"name": f"s{i}", "filterExpression": f(AND(x, NO_CT))} for i, x in enumerate(steps)]}}
+        r = s.post(f"https://analyticsdata.googleapis.com/v1alpha/properties/{PROPERTY}:runFunnelReport", json=body, timeout=60)
+        r.raise_for_status()
+        q = {x["dimensionValues"][0]["value"].split(".")[0]: int(x["metricValues"][0]["value"]) for x in r.json().get("funnelTable", {}).get("rows", [])}
+        return [q.get(str(i + 1), 0) for i in range(len(steps))]
     # the version the report calls live must be what App Store Connect has on sale, and nothing on sale may be missing
     newest = max(map(_ver, on_sale))
     C.true("Live version", _ver(G.get("live", "")) == newest, f"report uses {G.get('live')}, App Store Connect has {'.'.join(map(str, newest))} on sale")
@@ -225,7 +236,7 @@ def _check_game(C, page, keys, today, G, on_sale):
             f = lambda x: {("funnelFieldFilter" if k == "filter" else k): f(v) for k, v in x.items()} if isinstance(x, dict) else [f(v) for v in x] if isinstance(x, list) else x
             k1, n1d = day.strftime("%Y%m%d"), day + dt.timedelta(days=hi)
             body = {"dateRanges": [{"startDate": day.isoformat(), "endDate": n1d.isoformat()}], "funnel": {"steps": [
-                {"name": "start", "filterExpression": f(AND(released_only(day, day, vs), has("firstSessionDate", k1), has("date", k1), NO_CT))},
+                {"name": "start", "filterExpression": f(AND(released_only(day, day, vs), has("firstSessionDate", k1), has("date", k1), L1V, NO_CT))},
                 {"name": "back", "filterExpression": f(among("date", [(day + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range(lo, hi + 1)]))}]}}
             r = s.post(f"https://analyticsdata.googleapis.com/v1alpha/properties/{PROPERTY}:runFunnelReport", json=body, timeout=60)
             r.raise_for_status()
@@ -239,7 +250,7 @@ def _check_game(C, page, keys, today, G, on_sale):
             base = back = 0
             for i in range((b - a).days + 1):
                 day = a + dt.timedelta(days=i); key = day.strftime("%Y%m%d")
-                n0 = one((day, day), flt=AND(released_only(day, day, vs), has("firstSessionDate", key)))
+                n0 = one((day, day), flt=AND(released_only(day, day, vs), has("firstSessionDate", key), L1V))
                 base += n0
                 if n0:
                     back += min(n0, next_day(day, vs))   # Guy, Nov 24: returners tied to their start version
@@ -255,7 +266,7 @@ def _check_game(C, page, keys, today, G, on_sale):
             base = back = 0
             for i in range((b - a).days + 1):
                 day = a + dt.timedelta(days=i); key = day.strftime("%Y%m%d")
-                n0 = one((day, day), flt=AND(released_only(day, day, vs), has("firstSessionDate", key)))
+                n0 = one((day, day), flt=AND(released_only(day, day, vs), has("firstSessionDate", key), L1V))
                 base += n0
                 if n0:
                     back += min(n0, next_day(day, vs, 7, (today - day).days))   # Guy, Nov 24: returners tied to their start version
@@ -273,10 +284,11 @@ def _check_game(C, page, keys, today, G, on_sale):
             _n24, _w24 = 0, {}
             if _k == "after":   # Nov 24 from 10:13 AM ET = 11:13 on Google's UTC-4 clock (Guy: "why isn't it showing the 3 new players")
                 _f24 = AND(among("appVersion", _vs), has("firstSessionDate", "20261124"))
-                _n24 = sum(int(r[1][0]) for r in run((dt.date(2026, 11, 24), dt.date(2026, 11, 24)), ["dateHourMinute"], ["totalUsers"], AND(_f24, has("eventName", "first_open"))) if r[0][0] >= "202611241113")
+                _fo = AND(_f24, has("eventName", "first_open"), has("date", "20261124"), among("dateHour", [f"20261124{h:02d}" for h in range(11, 24)])); _l24 = AND(L1V, has("date", "20261124"))
+                _n24 = funnel(dt.date(2026, 11, 24), dt.date(2026, 11, 24), [_fo, _l24])[1]   # Nov 27: and played level 1
                 C.true("Quiet start After: Nov 24 players are on the card", n1((_qd.get("1.3.20 to 1.3.23") or ["", ""])[0] or "0", r"([\d,]+)") >= _n24 - 1, f"{_n24} first opens since 10:13 AM, card {(_qd.get('1.3.20 to 1.3.23') or ['?'])[0]}")
                 for _l in ("1", "2", "3", "7"):   # nobody who started before 10:13 AM: wins after it by players who first opened after it can't exceed those counts
-                    _w24[_l] = sum(int(r[1][0]) for r in run((dt.date(2026, 11, 24), dt.date(2026, 11, 24)), ["dateHourMinute"], ["totalUsers"], AND(_f24, has("eventName", "lv_win_" + _l))) if r[0][0] >= "202611241113")
+                    _w24[_l] = funnel(dt.date(2026, 11, 24), dt.date(2026, 11, 24), [_fo, _l24, AND(has("eventName", "lv_win_" + _l), has("date", "20261124"))])[2]
             if _k == "after" and _c < _a:
                 _cl = _qd.get(_lab) or []
                 C.true("Quiet start After: every level column is out of all new players", len({n1(x, r"of ([\d,]+)<") for x in _cl[1:6] if "%" in x}) <= 1, str(_cl))   # Guy, Nov 24: level 7 was out of level 1 winners
@@ -290,14 +302,19 @@ def _check_game(C, page, keys, today, G, on_sale):
             if not _rel:
                 continue
             _fl = AND(released_only(_a, _c, _rel), among("firstSessionDate", [(_a + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((_c - _a).days + 1)]))
-            _nn = sum(int(r[1][0]) for r in run((_a, _c), ["firstSessionDate", "date"], flt=_fl) if r[0][0] == r[0][1]); _qsum += _nn
+            _days = {r[0][0]: int(r[1][0]) for r in run((_a, _c), ["firstSessionDate", "date"], flt=AND(_fl, L1V)) if r[0][0] == r[0][1] and int(r[1][0])}   # Nov 27: played level 1
+            _nn = sum(_days.values()); _qsum += _nn
             if not _nn:
                 continue
             _nn += _n24
             _ev = dict(_w24)
-            for r in run((_a, _c), ["firstSessionDate", "date", "eventName"], ["totalUsers"], AND(_fl, among("eventName", ["lv_win_1", "lv_win_2", "lv_win_3", "lv_win_7"]))):
+            for r in run((_a, _c), ["firstSessionDate", "date", "eventName"], ["totalUsers"], AND(_fl, has("eventName", "lv_win_1"))):
                 if r[0][0] == r[0][1]:
-                    _ev[r[0][2][7:]] = _ev.get(r[0][2][7:], 0) + int(r[1][0])
+                    _ev["1"] = _ev.get("1", 0) + int(r[1][0])
+            for _l in ("2", "3", "7"):   # Nov 27: won level 2 / 3 / 7 the same day by players who played level 1 that day (own funnel per first day)
+                for _dk in _days:
+                    _dd0 = dt.datetime.strptime(_dk, "%Y%m%d").date()
+                    _ev[_l] = _ev.get(_l, 0) + funnel(_dd0, _dd0, [AND(_fl, has("firstSessionDate", _dk), has("date", _dk), L1V), AND(has("eventName", "lv_win_" + _l), has("date", _dk))])[1]
             _cl = _qd.get(_lab) or []
             C.true(f"Quiet start {_lab}: row with 7 numbers", len(_cl) == 7, f"{len(_cl)} cells")
             if len(_cl) == 7:
@@ -305,9 +322,16 @@ def _check_game(C, page, keys, today, G, on_sale):
                 for _i, _l in ((1, "1"), (2, "2"), (3, "3"), (4, "7")):
                     C.same(f"Quiet start {_lab}: won level {_l}", n1(_cl[_i], r"<small>([\d,]+) of"), _ev.get(_l, 0), 3 if _k == "after" else 1) if "%" in _cl[_i] else C.true(f"Quiet start {_lab}: won level {_l} empty", not _ev.get("1"), _cl[_i])
                 C.same(f"Quiet start {_lab}: level 7 is a share of all new players, like the other columns", n1(_cl[4], r"of ([\d,]+)<") or 0, n1(_cl[0], r"([\d,]+)"), 0)
-                _nb = sum(min(one((_d0, _d0), flt=AND(released_only(_d0, _d0, _rel), has("firstSessionDate", _d0.strftime("%Y%m%d")))), next_day(_d0, _rel)) for _d0 in (_a + dt.timedelta(days=i) for i in range((min(_c, today - dt.timedelta(days=2)) - _a).days + 1)) if any(rel[v] <= _d0 for v in _rel)) if _k == "before" else None   # the later rows use the same code path; before is fixed and cheap to recount
+                _nb = sum(min(one((_d0, _d0), flt=AND(released_only(_d0, _d0, _rel), has("firstSessionDate", _d0.strftime("%Y%m%d")), L1V)), next_day(_d0, _rel)) for _d0 in (_a + dt.timedelta(days=i) for i in range((min(_c, today - dt.timedelta(days=2)) - _a).days + 1)) if any(rel[v] <= _d0 for v in _rel)) if _k == "before" else None   # the later rows use the same code path; before is fixed and cheap to recount
                 if _nb is not None:
                     C.same(f"Quiet start {_lab}: came back next day", n1(_cl[6], r"<small>([\d,]+) of"), _nb, 1)
+                # Nov 27: own count of "Reached level 10 on day one" (played level 1, then max level 10+ that same day). Missed once: the report asked
+                # level 1 and max level in one question, GA4 read the max level off the level-1 event (= 1), and the column showed 0 for every row.
+                _m10 = {"filter": {"fieldName": "customUser:max_level", "stringFilter": {"matchType": "FULL_REGEXP", "value": "[1-9][0-9]+"}}}
+                _l10 = sum(funnel(dt.datetime.strptime(_dk, "%Y%m%d").date(), dt.datetime.strptime(_dk, "%Y%m%d").date(), [AND(_fl, has("firstSessionDate", _dk), has("date", _dk), L1V), AND(_m10, has("date", _dk))])[1] for _dk in _days)
+                if _k == "after" and _n24:   # the row also holds the Nov 24 players from 10:13 AM (first open -> level 1 -> level 10+ that day)
+                    _l10 += funnel(dt.date(2026, 11, 24), dt.date(2026, 11, 24), [_fo, _l24, AND(_m10, has("date", "20261124"))])[2]
+                C.same(f"Quiet start {_lab}: reached level 10 on day one", n1(_cl[5], r"<small>([\d,]+) of") or 0, _l10, 1)
         C.same("Quiet start: new players since Nov 25", n1(_qh, r"<b>([\d,]+) of 200</b>") if _qh else None, sum((G.get("quiet", {}).get(k) or {}).get("n", 0) for k in ("after", "after140", "after150")), 0)
         C.true("1.3.11 to 1.3.17 label (only the newest option has a +)", VB.get("label") == "1.3.11 to 1.3.17", VB.get("label"))
         PB = G.get("pre")
@@ -364,9 +388,8 @@ def _check_game(C, page, keys, today, G, on_sale):
         _b7 = _k7 = 0
         for i in range(8, 15):
             _d = today - dt.timedelta(days=i); _key = _d.strftime("%Y%m%d")
-            _n = one((_d, _d), flt=has("firstSessionDate", _key)); _b7 += _n
-            if _n:
-                _k7 += one((_d + dt.timedelta(days=7), today), flt=has("firstSessionDate", _key))
+            _n, _k = funnel(_d, today, [AND(has("firstSessionDate", _key), has("date", _key), L1V), among("date", [(_d + dt.timedelta(days=j)).strftime("%Y%m%d") for j in range(7, (today - _d).days + 1)])])   # Nov 27: played level 1
+            _b7 += _n; _k7 += _k
         _t7 = tile("Day-7 return")
         C.same("Day-7 return: new players (all versions)", n1(_t7[1], r"of ([\d,]+) new"), _b7, max(2, wobble(_b7)))
         C.same("Day-7 return: came back (all versions)", n1(_t7[1], r"^([\d,]+) of"), _k7, 1)
@@ -375,8 +398,8 @@ def _check_game(C, page, keys, today, G, on_sale):
     # Guy, Nov 21: Reminders on = new players (first opened in the last 7 days) with quiet (soft_provisional) or full reminders (soft_authorized / remind_allow)
     try:
         _co = AND(wk, among("firstSessionDate", [(d7[0] + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((today - d7[0]).days + 1)]))
-        _rn = one(d7, metrics=("totalUsers",), flt=_co)
-        _ro = one(d7, metrics=("totalUsers",), flt=AND(_co, among("eventName", ["soft_provisional", "soft_authorized", "remind_allow"])))
+        _rn = one(d7, metrics=("totalUsers",), flt=AND(_co, L1V))   # Nov 27: new players = played level 1
+        _ro = funnel(d7[0], d7[1], [AND(_co, among("eventName", ["soft_provisional", "soft_authorized", "remind_allow"])), AND(_co, L1V)])[1]
         _rt = tile("Reminders on")
         C.same("Reminders on: new players (7 days)", n1(_rt[1], r"of ([\d,]+) new players"), _rn, max(1, wobble(_rn)))
         C.same("Reminders on: players with reminders (7 days)", n1(_rt[1], r"^([\d,]+) of"), _ro, max(1, wobble(_ro)))
@@ -425,7 +448,7 @@ def _check_game(C, page, keys, today, G, on_sale):
             fl = released_only(r0, r1, vs)
             o = {r[0][0]: int(r[1][0]) for r in run((r0, r1), ["customEvent:outcome"], ["eventCount"], AND(fl, has("eventName", "level_end")))}
             kd = {r[0][0]: int(r[1][0]) for r in run((r0, r1), ["customEvent:kind"], ["eventCount"], AND(fl, has("eventName", "ad_shown")))}
-            return a, (one((r0, r1), flt=fl), sum(int(r[1][0]) for r in run((r0, r1), ["firstSessionDate", "date"], flt=fl) if r[0][0] == r[0][1]), o, kd)
+            return a, (one((r0, r1), flt=fl), sum(int(r[1][0]) for r in run((r0, r1), ["firstSessionDate", "date"], flt=AND(fl, L1V)) if r[0][0] == r[0][1]), o, kd)   # Nov 27: new = played level 1
         with ThreadPoolExecutor(5) as _ex:
             _res = dict(_ex.map(_own, [(v, t) for v in _VW for t in (G.get("periods") or {})]))
         for (v, t), (na, nn, o, kd) in _res.items():
@@ -518,15 +541,16 @@ def _check_game(C, page, keys, today, G, on_sale):
         new = AND(released_only(START, today, [v for v in want if _ver(v) >= ver]), among("firstSessionDate", dates(since, today)))
         bv = _ver(G["compare"].get("base") or "0.0.0"); b0 = dt.date.fromisoformat(G["compare"].get("bsince") or START.isoformat())   # Guy, Nov 20: reference = 1.3.11+
         old = AND(released_only(START, today, [v for v in want if bv <= _ver(v) < ver]), among("firstSessionDate", dates(b0, since - dt.timedelta(days=1))))
-        C.same("New players on the new version", X["cn"], reach_of(1, new, (START, today)), 1)
-        C.same("New players before the new version", X["co"], reach_of(1, old, (START, today)), 1)
+        C.same("New players on the new version", X["cn"], reach_of(1, AND(new, L1V), (START, today)), 1)   # Nov 27: played level 1
+        C.same("New players before the new version", X["co"], reach_of(1, AND(old, L1V), (START, today)), 1)
     # retention (the same way Firebase's cohorts define it)
     a, b = today - dt.timedelta(days=8), today - dt.timedelta(days=2)
-    body = {"dimensions": [{"name": "cohort"}, {"name": "cohortNthDay"}], "metrics": [{"name": "cohortActiveUsers"}], "cohortSpec": {"cohortsRange": {"granularity": "DAILY", "startOffset": 0, "endOffset": 1},
-            "cohorts": [{"name": str(i), "dimension": "firstSessionDate", "dateRange": {"startDate": (a + dt.timedelta(days=i)).isoformat(), "endDate": (a + dt.timedelta(days=i)).isoformat()}} for i in range((b - a).days + 1)]}, "dimensionFilter": NO_CT}
-    rows = s.post(f"https://analyticsdata.googleapis.com/v1beta/properties/{PROPERTY}:runReport", json=body, timeout=60).json().get("rows", [])
-    base = sum(int(r["metricValues"][0]["value"]) for r in rows if int(r["dimensionValues"][1]["value"]) == 0)
-    back = sum(int(r["metricValues"][0]["value"]) for r in rows if int(r["dimensionValues"][1]["value"]) == 1)
+    # Nov 27: own funnel per start day (step 1 = first day and played level 1, step 2 = the next day); was Firebase's cohorts (every first open)
+    base = back = 0
+    for i in range((b - a).days + 1):
+        _d = a + dt.timedelta(days=i); _k = _d.strftime("%Y%m%d")
+        _x = funnel(_d, _d + dt.timedelta(days=1), [AND(has("firstSessionDate", _k), has("date", _k), L1V), has("date", (_d + dt.timedelta(days=1)).strftime("%Y%m%d"))])
+        base += _x[0]; back += _x[1]
     C.same("Day-1 retention", _num(r"(\d+)% <small><span class='nf'>day-1 retention", page), round(back / base * 100) if base else 0, 1)
     # Guy, Nov 23: Day-1 return chart: last point = the badge's 7 start days (same cohorts), every start day since Nov 1 present
     _m = re.search(r"id='d1tc' data-last='([\d.]+)' data-lo='([\d.]+)'", page)

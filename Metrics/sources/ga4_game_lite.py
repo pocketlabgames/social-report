@@ -42,6 +42,16 @@ NO_CT = {"andGroup": {"expressions": [{"notExpression": {"filter": {"fieldName":
                                       {"notExpression": {"filter": {"fieldName": "operatingSystemVersion", "stringFilter": {"matchType": "EXACT", "value": "27.1"}}}}]}}   # iOS 27.1: 0 App Store downloads ever (27.2 has 86), all US   # Guy, Nov 21: Connecticut = Guy's own test plays (11 of 12 "1.3.20 players"); left out of every game stat
 
 
+# Guy, Nov 27 2026 ("how come only 50% passed level one?" ... "fix the card. fix other areas of social report that have this bug too"):
+# a reinstall that gets its saved progress back (iCloud / Keychain) has a new first day but opens past level 1 (1.5.0 card: 2 of 6 "new" players opened
+# on level 6). New player = first day on these versions AND a level-1 event that day (level_start / lv_move / level_end on level 1, first_open_level,
+# level1_open). 84 of 758 first-day players since Nov 2 never touched level 1. Counts of new players use L1 as an event filter; anything else they did
+# (came back, won level 2+, reminders) goes through a funnel with step 1 = L1 on the first day (_fun).
+L1 = {"orGroup": {"expressions": [{"andGroup": {"expressions": [{"filter": {"fieldName": "eventName", "inListFilter": {"values": ["level_start", "lv_move", "level_end"]}}},
+                                                                {"filter": {"fieldName": "customEvent:level", "stringFilter": {"value": "1"}}}]}},
+                                  {"filter": {"fieldName": "eventName", "inListFilter": {"values": ["first_open_level", "level1_open"]}}}]}}
+
+
 def no_ct(body):
     """Same question without Connecticut players (Guy testing)."""
     f = body.get("dimensionFilter")
@@ -79,6 +89,14 @@ def _ff(x):
 
 
 _BACK = {}
+# Nov 27: funnel answers for finished days (end date 3+ days ago) are kept in cache/funnel-cache.json and not asked again; the level-1 rule added
+# per-day funnels and took a refresh to 1,009 questions (limit 1,000). A new version changes the version filter, so its questions are new.
+FCACHE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cache", "funnel-cache.json")
+try:
+    _KEEP = json.load(open(FCACHE))
+except Exception:
+    _KEEP = {}
+_KEEP_NEW = {}
 
 
 def _back(s, days, flt, until=None):
@@ -87,25 +105,47 @@ def _back(s, days, flt, until=None):
     who started on 1.3.18/19 were added to "1.3.11 to 1.3.17" (29 shown, really 16). With until = day 7 OR LATER, up to that day (Day-7 tiles)."""
     from concurrent.futures import ThreadPoolExecutor
 
-    def ask(d):
+    # Nov 27: step 1 also needs a level-1 event that first day (L1), so reinstalls that got their progress back are not "new players"
+    def nxt(d):
         d0 = dt.datetime.strptime(d, "%Y%m%d").date()
         a, n = d0 + dt.timedelta(days=7 if until else 1), until or d0 + dt.timedelta(days=1)
-        ret = [(a + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((n - a).days + 1)]
-        on = lambda f, v: {"filter": {"fieldName": f, "stringFilter": {"value": v}}}
-        step1 = {"andGroup": {"expressions": [flt, on("firstSessionDate", d), on("date", d), NO_CT]}}
-        body = {"dateRanges": [{"startDate": f"{d[:4]}-{d[4:6]}-{d[6:]}", "endDate": n.isoformat()}],
-                "funnel": {"steps": [{"name": "start", "filterExpression": _ff(step1)}, {"name": "back", "filterExpression": _ff({"filter": {"fieldName": "date", "inListFilter": {"values": ret}}})}]}}
-        key = json.dumps(body, sort_keys=True)
-        if key not in _BACK:
-            for wait in (2, 5, 10, 0):
-                r = _post(s, f"https://analyticsdata.googleapis.com/v1alpha/properties/{PROPERTY}:runFunnelReport", json=body, timeout=60)
-                if r.ok or r.status_code not in (429, 500, 503) or not wait:
-                    break
-                time.sleep(wait)
-            if not r.ok:
-                raise RuntimeError(f"GA4 funnel {r.status_code}: {r.text[:200]}")
-            _BACK[key] = {row["dimensionValues"][0]["value"][:1]: int(row["metricValues"][0]["value"]) for row in r.json().get("funnelTable", {}).get("rows", [])}.get("2", 0)
-        return _BACK[key]
+        return {"filter": {"fieldName": "date", "inListFilter": {"values": [(a + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((n - a).days + 1)]}}}, n
+    return _fun(s, days, flt, nxt)
+
+
+def _fun1(s, steps, start, end):
+    """One funnel question: users through every step (each step = one event matching its filter, in order). Returns [users at step 1, step 2, ...]."""
+    body = {"dateRanges": [{"startDate": start, "endDate": end}], "funnel": {"steps": [{"name": f"s{i}", "filterExpression": _ff(x)} for i, x in enumerate(steps)]}}
+    key = json.dumps(body, sort_keys=True)
+    if key not in _BACK and key in _KEEP:
+        _BACK[key] = _KEEP[key]
+    if key not in _BACK:
+        for wait in (2, 5, 10, 0):
+            r = _post(s, f"https://analyticsdata.googleapis.com/v1alpha/properties/{PROPERTY}:runFunnelReport", json=body, timeout=60)
+            if r.ok or r.status_code not in (429, 500, 503) or not wait:
+                break
+            time.sleep(wait)
+        if not r.ok:
+            raise RuntimeError(f"GA4 funnel {r.status_code}: {r.text[:200]}")
+        q = {row["dimensionValues"][0]["value"].split(".")[0]: int(row["metricValues"][0]["value"]) for row in r.json().get("funnelTable", {}).get("rows", [])}
+        _BACK[key] = [q.get(str(i + 1), 0) for i in range(len(steps))]
+    if end <= (dt.date.today() - dt.timedelta(days=3)).isoformat():
+        _KEEP_NEW[key] = _BACK[key]
+    return _BACK[key]
+
+
+def _fun(s, days, flt, step2, first=False):
+    """Nov 27: new players of each first day d (on these versions, played level 1 that day) who then did step2(d) -> (filter, last date).
+    first=True: step2's event comes BEFORE the level-1 event (the quiet-reminder status is sent at launch, before the first pour)."""
+    from concurrent.futures import ThreadPoolExecutor
+    on = lambda f, v: {"filter": {"fieldName": f, "stringFilter": {"value": v}}}
+
+    def ask(d):
+        f2, n = step2(d)
+        s1 = {"andGroup": {"expressions": [flt, on("firstSessionDate", d), on("date", d), L1, NO_CT]}}
+        if first:
+            return _fun1(s, [{"andGroup": {"expressions": [flt, on("firstSessionDate", d), f2, NO_CT]}}, s1], f"{d[:4]}-{d[4:6]}-{d[6:]}", n.isoformat())[1]
+        return _fun1(s, [s1, f2], f"{d[:4]}-{d[4:6]}-{d[6:]}", n.isoformat())[1]
     with ThreadPoolExecutor(8) as ex:
         return dict(zip(days, ex.map(ask, days)))
 
@@ -250,9 +290,14 @@ def fetch(keys_dir, today):
     for lv, r in zip(lvs, rs):
         out["reach"][str(lv)] = int(r[0][1][0]) if r else 0
     # Guy, Nov 6: split each bar: played in the last 3 days (today + 2 before) = still playing; the rest of that bar has left
-    def reached(base, dr, st):
+    def reached(base, dr, st, l1=False):   # l1 (Nov 27): new players only = played level 1, then reached the level (funnel; only where the plain count is above 0)
         ks = [lv for lv in st if any(x >= lv for x in lvs)]
-        rs = _many(s, [{"dateRanges": [dr], "metrics": [{"name": "activeUsers"}], "dimensionFilter": {"andGroup": {"expressions": [base, {"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in lvs if x >= lv]}}}]}}} for lv in ks])
+        if l1:
+            plain = reached(base, dr, st)
+            ml = lambda lv: {"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in lvs if x >= lv]}}}
+            return {str(lv): (_fun1(s, [{"andGroup": {"expressions": [base, L1, NO_CT]}}, {"andGroup": {"expressions": [base, ml(lv), NO_CT]}}], dr["startDate"], dr["endDate"])[0 if lv <= 1 else 1]
+                              if plain.get(str(lv)) else 0) for lv in ks}
+        rs = _many(s, [{"dateRanges": [dr], "metrics": [{"name": "activeUsers"}], "dimensionFilter": {"andGroup": {"expressions": [base] + [{"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in lvs if x >= lv]}}}]}}} for lv in ks])
         return {str(lv): int(next(iter(r), ([], [0]))[1][0]) for lv, r in zip(ks, rs)}
     out["active"] = reached(newer, {"startDate": max(today - dt.timedelta(days=QUIT_DAYS - 1), START).isoformat(), "endDate": today.isoformat()}, STEPS)
     # Guy, Nov 6: did 1.3.4 help? New players only (first opened the game after it came out) vs new players before it, so updaters with high levels don't flatter it
@@ -264,10 +309,10 @@ def fetch(keys_dir, today):
             dates = lambda a, b: [(a + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((b - a).days + 1)]
             group = lambda vs, ds: {"andGroup": {"expressions": [newer, {"filter": {"fieldName": "appVersion", "inListFilter": {"values": vs}}}, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": ds}}}]}}
             cmp["since"] = since.isoformat()
-            cmp["new"] = reached(group([v for v in vers if _ver(v) >= COMPARE], dates(since, today)), dall, STEPS)
+            cmp["new"] = reached(group([v for v in vers if _ver(v) >= COMPARE], dates(since, today)), dall, STEPS, True)
             b0 = RELEASED.get(".".join(map(str, BASE))) or START
             cmp["base"], cmp["bsince"] = ".".join(map(str, BASE)), b0.isoformat()
-            cmp["old"] = reached(group([v for v in vers if BASE <= _ver(v) < COMPARE], dates(b0, since - dt.timedelta(days=1))), dall, STEPS)
+            cmp["old"] = reached(group([v for v in vers if BASE <= _ver(v) < COMPARE], dates(b0, since - dt.timedelta(days=1))), dall, STEPS, True)
     out["compare"] = cmp
     # Guy, Nov 8: win rate per level. 1.3.4+ sends lv_start_N / lv_win_N for levels 1-25 (players = different people; tries = every start)
     lvf = {"andGroup": {"expressions": [newer, {"filter": {"fieldName": "eventName", "stringFilter": {"matchType": "BEGINS_WITH", "value": "lv_"}}}]}}
@@ -317,19 +362,22 @@ def fetch(keys_dir, today):
         mv, mvu = add(mvr, lambda d: d[1]), add(mvr, lambda d: d[1], 1)
         sh, shu = add(q(["customEvent:kind"], ["eventCount"], ev("share_done")), lambda d: d[1]), add(q([], ["totalUsers"], ev("share_done")))
         # furthest level of the middle player
-        lvr = [(d, v) for d, v in q(["customUser:max_level"], ["activeUsers"]) if d[1].isdigit() and v[0]]   # GA4 lists every level in every period, with 0 players
+        # Nov 27: the "new" side only counts players who played level 1 (L1), so a reinstall that came back on level 6 is not a new player on level 6
         lvl = {}
-        for d, v in lvr:
-            for who in ("all",) + (("new",) if d[0] in FD[d[-1]] else ()):
-                lvl.setdefault((d[-1], who), set()).add(int(d[1]))
+        for d, v in q(["customUser:max_level"], ["activeUsers"]):   # GA4 lists every level in every period, with 0 players
+            if d[1].isdigit() and v[0]:
+                for who in ("all",) + (("new",) if d[0] in FD[d[-1]] else ()):
+                    lvl.setdefault((d[-1], who), set()).add(int(d[1]))
         every, cache = sorted({x for v in lvl.values() for x in v}), {}
 
-        def reach(lv):
+        def reach(lv):   # plain counts; for "new" an upper bound (reinstalls included), see half_new
             if lv not in cache:
                 cache[lv] = add(q([], ["activeUsers"], INN("customUser:max_level", [str(x) for x in every if x >= lv])))
             return cache[lv]
         half = {}
         for sr, ls in lvl.items():
+            if sr[1] == "new":
+                continue
             v = sorted(ls); top = reach(v[0]).get(sr, {}).get("n", 0); lo, hi = 0, len(v)
             while hi - lo > 1:
                 m = (lo + hi) // 2
@@ -340,8 +388,14 @@ def fetch(keys_dir, today):
         first = min(a for _, a, _ in PER); whole = {"startDate": first.isoformat(), "endDate": today.isoformat()}
         first14 = max(START, min(first, today - dt.timedelta(days=14))); fw = {"startDate": first14.isoformat(), "endDate": today.isoformat()}
         two = lambda *f: {(d, d2): int(n) for (d, d2), (n,) in _run(s, {"dateRanges": [fw], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": AND(fil, INN("firstSessionDate", [key(d) for d in span(first14, today)]), *f), "limit": 100000})}
-        pair = two(); hi10 = two(INN("customUser:max_level", [str(x) for x in lvs if x >= 10] or ["x"]))
-        base = {d: n for (d, d2), n in pair.items() if d == d2}
+        # Nov 27: new players = first day on these versions AND a level-1 event that day (L1); level 10 = the same players (max level is per player)
+        pair = two(L1); base = {d: n for (d, d2), n in pair.items() if d == d2}
+        # level 10 on day one: the max level can't sit in the same question as L1 (GA4 reads it off the level-1 event = 1), so funnel L1 -> level 10+ that day,
+        # only on days where the plain count (reinstalls included) is above 0
+        D = lambda k: dt.datetime.strptime(k, "%Y%m%d").date()
+        _m10 = INN("customUser:max_level", [str(x) for x in lvs if x >= 10] or ["x"])
+        _h = [d for (d, d2), n in two(_m10).items() if d == d2 and n and base.get(d)]
+        hi10 = {(d, d): n for d, n in _fun(s, _h, fil, lambda d: (AND(_m10, INN("date", [d])), D(d))).items()}
         W1 = {"today": span(max(START, today - dt.timedelta(days=1)), today - dt.timedelta(days=1)), "yest": span(max(START, today - dt.timedelta(days=2)), today - dt.timedelta(days=2)), "d7": span(max(START, today - dt.timedelta(days=8)), today - dt.timedelta(days=2))}
         W7 = {"today": [], "yest": span(max(START, today - dt.timedelta(days=8)), today - dt.timedelta(days=8)), "d7": span(max(START, today - dt.timedelta(days=14)), today - dt.timedelta(days=8))}
         for k, a, b in PER:
@@ -350,21 +404,44 @@ def fetch(keys_dir, today):
         W1, W7 = ({k: [d for d in w if since <= d <= until] for k, w in W.items()} for W in (W1, W7))
         n1 = sorted({key(d) for w in W1.values() for d in w if base.get(key(d))}); n7 = sorted({key(d) for w in W7.values() for d in w if base.get(key(d))})
         D = lambda k: dt.datetime.strptime(k, "%Y%m%d").date()
-        if allv:
-            b1 = {d: pair.get((d, key(D(d) + dt.timedelta(days=1))), 0) for d in n1}
-            b7 = {}
-            for i in range(0, len(n7), 4):
-                ch = n7[i:i + 4]
-                for r in _run(s, {"dateRanges": [{"startDate": (D(x) + dt.timedelta(days=7)).isoformat(), "endDate": today.isoformat(), "name": "r" + x} for x in ch], "dimensions": [{"name": "firstSessionDate"}], "metrics": [{"name": "activeUsers"}], "dimensionFilter": AND(fil, INN("firstSessionDate", ch)), "limit": 1000}):
-                    if len(ch) == 1 or r[0][1] == "r" + r[0][0]:
-                        b7[r[0][0]] = int(r[1][0])
-        else:   # tied to the version they started on
-            b1, b7 = _back(s, n1, fil), _back(s, n7, fil, until=today)
+        b1, b7 = _back(s, n1, fil), _back(s, n7, fil, until=today)   # Nov 27: every group through the funnel (step 1 = played level 1 on the first day); all versions used plain counts before
         ret = lambda w, bk: [sum(min(bk.get(key(d), 0), base.get(key(d), 0)) for d in w), sum(base.get(key(d), 0) for d in w)] + ([w[0].isoformat(), w[-1].isoformat()] if w else [None, None])
         # reminders: new players of the period (counted up to today)
-        rq = lambda names, dims=(): _run(s, {"dateRanges": [whole], "dimensions": [{"name": "firstSessionDate"}] + [{"name": d} for d in dims], "metrics": [{"name": "totalUsers"}], "dimensionFilter": AND(fil, INN("eventName", names)), "limit": 100000})
-        ron, roff = {d[0]: int(v[0]) for d, v in rq(R_ON)}, {d[0]: int(v[0]) for d, v in rq(R_OFF)}
+        # Nov 27: only new players who played level 1: funnel reminder status (sent at launch) -> level-1 event, first day in the period
+        def rq(names, ds):
+            if not ds:
+                return 0
+            fd = INN("firstSessionDate", sorted(ds))
+            return _fun1(s, [AND(fil, fd, INN("eventName", names), NO_CT), AND(fil, fd, L1, NO_CT)], min(D(d) for d in ds).isoformat(), today.isoformat())[1]
+        ron, roff = {k: rq(R_ON, FD[k]) for k, _, _ in PER}, {k: rq(R_OFF, FD[k]) for k, _, _ in PER}
         NEWN = {k: sum(base.get(d, 0) for d in FD[k]) for k, _, _ in PER}   # new players = first day on these versions, one number on every card
+        # Nov 27: typical / top level of new players (played level 1): funnel L1 -> max level >= lv, asked only where the plain count could pass
+        for k, _, _ in PER:
+            ls = sorted(lvl.get((k, "new"), ()))
+            top = NEWN[k]
+            if not ls or not top:
+                continue
+            ds = sorted(FD[k]); fd = INN("firstSessionDate", ds); memo = {}
+
+            def ex(lv):
+                if lv <= ls[0]:
+                    return top
+                if not reach(lv).get((k, "new"), {}).get("n", 0):
+                    return 0
+                if lv not in memo:
+                    memo[lv] = _fun1(s, [AND(fil, fd, L1, NO_CT), AND(fil, fd, INN("customUser:max_level", [str(x) for x in every if x >= lv]), NO_CT)], D(ds[0]).isoformat(), today.isoformat())[1]
+                return memo[lv]
+            lo, hi = 0, len(ls)
+            while hi - lo > 1:
+                m = (lo + hi) // 2
+                if reach(ls[m]).get((k, "new"), {}).get("n", 0) * 2 >= top and ex(ls[m]) * 2 >= top: lo = m
+                else: hi = m
+            t0, t1 = 0, len(ls)   # top player: highest level a new player reached
+            while t1 - t0 > 1:
+                m = (t0 + t1) // 2
+                if ex(ls[m]) > 0: t0 = m
+                else: t1 = m
+            half[(k, "new")] = [ls[lo], top, ls[t0]]
         S = {}
         for k, a, b in PER:
             for who in ("all", "new"):
@@ -373,7 +450,7 @@ def fetch(keys_dir, today):
                                     "kind": {x: n for x, n in g(kind).items() if x not in ("", "(not set)")}, "stir": g(sup).get("super_stir", 0), "solve": g(sup).get("super_solve", 0), "superu": g(supu).get("n", 0),
                                     "offers": g(mv).get("rewarded_offer_shown", 0), "watched": g(mv).get("rewarded_watched", 0), "watchu": g(mvu).get("rewarded_watched", 0), "shares": sum(g(sh).values()), "shareu": g(shu).get("n", 0),
                                     "half": half.get((k, who)), "l10": [sum(hi10.get((d, d), 0) for d in FD[k]), NEWN[k]], "d1": ret(W1[k], b1), "d7": ret(W7[k], b7),
-                                    "remind": [min(NEWN[k], sum(ron.get(d, 0) for d in FD[k])), NEWN[k], sum(roff.get(d, 0) for d in FD[k])]}
+                                    "remind": [min(NEWN[k], ron[k]), NEWN[k], roff[k]]}
         return S
 
     def block(vf, since, until, label):
@@ -394,14 +471,14 @@ def fetch(keys_dir, today):
         if c_end >= since:
             cd = lambda a, b: [(a + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range((b - a).days + 1)]
             base = {d: int(n) for (d, d2), (n,) in _run(s, {"dateRanges": [{"startDate": since.isoformat(), "endDate": c_end.isoformat()}], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}], "metrics": [{"name": "activeUsers"}],
-                    "dimensionFilter": {"andGroup": {"expressions": [vfil, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": cd(since, c_end)}}}]}}, "limit": 10000}) if d == d2}
+                    "dimensionFilter": {"andGroup": {"expressions": [vfil, L1, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": cd(since, c_end)}}}]}}, "limit": 10000}) if d == d2}   # Nov 27: + played level 1 that day
             back = {d: min(n, base[d]) for d, n in _back(s, list(base), vfil).items()}   # Guy, Nov 24: only players who started on these versions
             B["d1"] = [sum(back.get(d, 0) for d in base), sum(base.values()), since.isoformat(), c_end.isoformat()]
             # Guy, Nov 22: "Day-1 return by version" chart: the same players split by Google Ads (firstUserMedium cpc) vs everyone else
             B["d1src"] = {}
             for med, mf in (("ads", {"filter": {"fieldName": "firstUserMedium", "stringFilter": {"value": "cpc"}}}), ("other", {"notExpression": {"filter": {"fieldName": "firstUserMedium", "stringFilter": {"value": "cpc"}}}})):
                 b2 = {d: int(n) for (d, d2), (n,) in _run(s, {"dateRanges": [{"startDate": since.isoformat(), "endDate": c_end.isoformat()}], "dimensions": [{"name": "firstSessionDate"}, {"name": "date"}], "metrics": [{"name": "activeUsers"}],
-                      "dimensionFilter": {"andGroup": {"expressions": [vfil, mf, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": cd(since, c_end)}}}]}}, "limit": 10000}) if d == d2}
+                      "dimensionFilter": {"andGroup": {"expressions": [vfil, mf, L1, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": cd(since, c_end)}}}]}}, "limit": 10000}) if d == d2}
                 k2 = {d: min(n, b2[d]) for d, n in _back(s, list(b2), {"andGroup": {"expressions": [vfil, mf]}}).items()}
                 B["d1src"][med] = [sum(k2.get(d, 0) for d in b2), sum(b2.values())]
         return B
@@ -431,28 +508,31 @@ def fetch(keys_dir, today):
         ask = lambda dims, m, *x: _run(s, {"dateRanges": [{"startDate": a.isoformat(), "endDate": b.isoformat()}], "dimensions": [{"name": d} for d in dims], "metrics": [{"name": m}], "limit": 10000,
                      "dimensionFilter": {"andGroup": {"expressions": [fil, {"filter": {"fieldName": "firstSessionDate", "inListFilter": {"values": ds}}}, *x]}}})
         r = ask(["firstSessionDate", "date", "eventName"], "totalUsers", {"filter": {"fieldName": "eventName", "inListFilter": {"values": E}}})
-        base = {d: int(n) for (d, d2), (n,) in ask(["firstSessionDate", "date"], "activeUsers") if d == d2}
-        l10 = sum(int(n) for (d, d2), (n,) in ask(["firstSessionDate", "date"], "activeUsers", {"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in lvs if x >= 10]}}}) if d == d2)
+        # Nov 27 (Guy: "how come only 50% passed level one?"): new players = played level 1 on their first day (L1); 2 of the 6 "1.5.0+" players were
+        # reinstalls that opened on level 6. Won level 2 / 3 / 7 the same day go through a funnel (step 1 = L1 that day), so a reinstall's wins never count.
+        base = {d: int(n) for (d, d2), (n,) in ask(["firstSessionDate", "date"], "activeUsers", L1) if d == d2}
+        m10 = {"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in lvs if x >= 10] or ["x"]}}}
+        D0 = lambda d: dt.datetime.strptime(d, "%Y%m%d").date()
+        on = lambda f, v: {"filter": {"fieldName": f, "stringFilter": {"value": v}}}
+        h10 = [d for (d, d2), (n,) in ask(["firstSessionDate", "date"], "activeUsers", m10) if d == d2 and n and base.get(d)]   # plain count first, funnel only where it is above 0
+        l10 = sum(_fun(s, h10, fil, lambda d: ({"andGroup": {"expressions": [m10, on("date", d)]}}, D0(d))).values())
         nx = [d for d in base if d <= (today - dt.timedelta(days=2)).strftime("%Y%m%d")]
         bk = _back(s, nx, fil)
-        return {"n": sum(base.values()), "l10": l10, "w": {e[7:]: sum(int(n) for (d, d2, x), (n,) in r if d == d2 and x == e) for e in E},
+        hit = lambda e: sorted({d for (d, d2, x), (n,) in r if d == d2 and x == e and n and base.get(d)})   # days where the plain count is above 0
+        won = {e[7:]: sum(_fun(s, hit(e), fil, lambda d, e=e: ({"andGroup": {"expressions": [on("eventName", e), on("date", d)]}}, D0(d))).values()) for e in E[1:]}
+        won["1"] = sum(int(n) for (d, d2, x), (n,) in r if d == d2 and x == E[0])   # winning level 1 = played level 1
+        return {"n": sum(base.values()), "l10": l10, "w": won,
                 "back": [sum(min(bk[d], base[d]) for d in nx), sum(base[d] for d in nx)], "a": a.isoformat(), "b": b.isoformat()}
 
     def quiet24(vs):   # Nov 24 from 10:13 AM: the players whose first open was in those hours (funnel step 1), then what they did
         on = lambda f, v: {"filter": {"fieldName": f, "stringFilter": {"value": v}}}
         st = {"andGroup": {"expressions": [on("eventName", "first_open"), on("date", "20261124"), {"filter": {"fieldName": "dateHour", "inListFilter": {"values": [f"20261124{h:02d}" for h in range(11, 24)]}}},
                                            {"filter": {"fieldName": "appVersion", "inListFilter": {"values": vs}}}, NO_CT]}}
+        lv1 = {"andGroup": {"expressions": [L1, on("date", "20261124"), NO_CT]}}   # Nov 27: and played level 1 that day (reinstalls with their progress back are not new)
+
         def two(step2, end="2026-11-24"):
-            body = {"dateRanges": [{"startDate": "2026-11-24", "endDate": end}], "funnel": {"steps": [{"name": "new", "filterExpression": _ff(st)}, {"name": "did", "filterExpression": _ff(step2)}]}}
-            for wait in (2, 5, 10, 0):
-                r = _post(s, f"https://analyticsdata.googleapis.com/v1alpha/properties/{PROPERTY}:runFunnelReport", json=body, timeout=60)
-                if r.ok or r.status_code not in (429, 500, 503) or not wait:
-                    break
-                time.sleep(wait)
-            if not r.ok:
-                raise RuntimeError(f"GA4 funnel {r.status_code}: {r.text[:200]}")
-            q = {x["dimensionValues"][0]["value"][:1]: int(x["metricValues"][0]["value"]) for x in r.json().get("funnelTable", {}).get("rows", [])}
-            return q.get("1", 0), q.get("2", 0)
+            r = _fun1(s, [st, lv1, step2], "2026-11-24", end)
+            return r[1], r[2]
         W = {k: two({"andGroup": {"expressions": [on("eventName", "lv_win_" + k), on("date", "20261124")]}}) for k in ("1", "2", "3", "7")}
         n = W["1"][0]
         l10 = two({"andGroup": {"expressions": [{"filter": {"fieldName": "customUser:max_level", "inListFilter": {"values": [str(x) for x in lvs if x >= 10]}}}, on("date", "20261124")]}})[1]
@@ -486,4 +566,8 @@ def fetch(keys_dir, today):
     out["all"] = {"today": total(today.isoformat()), "week": total((today - dt.timedelta(days=6)).isoformat()), "m30": total((today - dt.timedelta(days=29)).isoformat()), "ever": total("2026-01-01"),
                   "daily": {f"{d[:4]}-{d[4:6]}-{d[6:]}": int(n) for (d,), (n,) in _run(s, {"dateRanges": [dall], "dimensions": [{"name": "date"}], "metrics": [{"name": "activeUsers"}]})}}
     out["calls"] = CALLS[0]
+    try:   # keep only what this refresh used (old versions' questions drop out by themselves)
+        json.dump(_KEEP_NEW, open(FCACHE, "w"), sort_keys=True)
+    except Exception:
+        pass
     return {"GA4 Game Lite": (pd.DataFrame([{"json": json.dumps(out)}]), None)}

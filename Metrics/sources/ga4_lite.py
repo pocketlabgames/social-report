@@ -40,30 +40,45 @@ def _rate(data, n):
     return (round(back / base * 100, 1), base) if base else (None, 0)
 
 
+# Guy, Nov 27 2026 ("fix other areas of social report that have this bug too"): new player = first day AND played level 1 that day (L1, see
+# ga4_game_lite); reinstalls that got their saved progress back opened past level 1 and were counted as new. Funnel per first day:
+# step 1 = L1 on the first day, step 2 = played on the day(s) after. Replaces the cohort question (which had no way to require level 1).
+from .ga4_game_lite import L1, _ff
+
+
+def _fun(s, d, back_days):
+    on = lambda f, v: {"filter": {"fieldName": f, "stringFilter": {"value": v}}}
+    k = d.strftime("%Y%m%d")
+    s1 = {"andGroup": {"expressions": [on("firstSessionDate", k), on("date", k), L1, NO_CT]}}
+    s2 = {"filter": {"fieldName": "date", "inListFilter": {"values": [x.strftime("%Y%m%d") for x in back_days]}}}
+    body = {"dateRanges": [{"startDate": d.isoformat(), "endDate": back_days[-1].isoformat()}], "funnel": {"steps": [{"name": "a", "filterExpression": _ff(s1)}, {"name": "b", "filterExpression": _ff(s2)}]}}
+    for wait in (2, 5, 10, 0):
+        r = s.post(f"https://analyticsdata.googleapis.com/v1alpha/properties/{PROPERTY}:runFunnelReport", json=body, timeout=60)
+        if r.ok or r.status_code not in (429, 500, 503) or not wait:
+            break
+        import time; time.sleep(wait)
+    if not r.ok:
+        raise RuntimeError(f"GA4 funnel {r.status_code}: {r.text[:200]}")
+    q = {row["dimensionValues"][0]["value"].split(".")[0]: int(row["metricValues"][0]["value"]) for row in r.json().get("funnelTable", {}).get("rows", [])}
+    return q.get("1", 0), q.get("2", 0)
+
+
 def fetch(keys_dir, today):
+    from concurrent.futures import ThreadPoolExecutor
     creds = Credentials.from_authorized_user_file(os.path.join(keys_dir, "ga4-token.json"), SCOPES)
     if not creds.valid:
         creds.refresh(Request())
     s = AuthorizedSession(creds)
-    d1 = _cohorts(s, today - dt.timedelta(days=8), today - dt.timedelta(days=2), 1)     # last 7 complete day-1 cohorts
-    d7 = _cohorts(s, today - dt.timedelta(days=14), today - dt.timedelta(days=8), 7)    # last 7 complete day-7 cohorts
-    r1, n1 = _rate(d1, 1)
-    # Guy, Nov 8: Day-7 = came back on day 7 OR LATER (distinct players), not "played exactly on day 7" (that showed 0% while 2 of 52 came back on day 8)
-    n7 = sum(v.get(0, 0) for v in d7.values()); back7 = 0
-    for c in d7:
-        d = dt.date.fromisoformat(c)
-        body = {"dateRanges": [{"startDate": (d + dt.timedelta(days=7)).isoformat(), "endDate": today.isoformat()}], "metrics": [{"name": "activeUsers"}],
-                "dimensionFilter": {"andGroup": {"expressions": [{"filter": {"fieldName": "firstSessionDate", "stringFilter": {"value": d.strftime("%Y%m%d")}}}, NO_CT]}}}
-        r = s.post(f"https://analyticsdata.googleapis.com/v1beta/properties/{PROPERTY}:runReport", json=body, timeout=60)
-        if not r.ok:
-            raise RuntimeError(f"GA4 {r.status_code}: {r.text[:200]}")
-        back7 += sum(int(x["metricValues"][0]["value"]) for x in r.json().get("rows", []))
-    r7 = round(back7 / n7 * 100, 1) if n7 else None
-    # Guy, Nov 23: "Day-1 return" chart: every complete start day since Nov 1, same cohort question as the badge (7 days per question)
-    days, d = {}, dt.date(2026, 11, 1)
-    while d <= today - dt.timedelta(days=2):
-        e = min(d + dt.timedelta(days=6), today - dt.timedelta(days=2))
-        for c, v in _cohorts(s, d, e, 1).items():
-            days[c] = [v.get(0, 0), v.get(1, 0)]
-        d = e + dt.timedelta(days=1)
+    span = lambda a, b: [a + dt.timedelta(days=i) for i in range((b - a).days + 1)]
+    d1days = span(dt.date(2026, 11, 1), today - dt.timedelta(days=2))   # every complete start day since Nov 1 (chart) incl. the last 7 (badge)
+    d7days = span(today - dt.timedelta(days=14), today - dt.timedelta(days=8))
+    with ThreadPoolExecutor(6) as ex:
+        one = dict(zip(d1days, ex.map(lambda d: _fun(s, d, [d + dt.timedelta(days=1)]), d1days)))
+        seven = dict(zip(d7days, ex.map(lambda d: _fun(s, d, span(d + dt.timedelta(days=7), today)), d7days)))   # Guy, Nov 8: day 7 OR LATER
+    last7 = [one[d] for d in d1days if d >= today - dt.timedelta(days=8)]
+    n1, b1 = sum(x[0] for x in last7), sum(x[1] for x in last7)
+    n7, b7 = sum(x[0] for x in seven.values()), sum(x[1] for x in seven.values())
+    r1 = round(b1 / n1 * 100, 1) if n1 else None
+    r7 = round(b7 / n7 * 100, 1) if n7 else None
+    days = {d.isoformat(): [v[0], v[1]] for d, v in one.items()}
     return {"GA4 Retention Lite": (pd.DataFrame([{"d1": r1, "d1_n": n1, "d7": r7, "d7_n": n7, "d1days": json.dumps(days, sort_keys=True)}]), None)}
