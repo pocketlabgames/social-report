@@ -379,10 +379,32 @@ def _check_game(C, page, keys, today, G, on_sale):
     C.true("Ad views per player = its listed ads / its listed players", _ap is not None and _num(r"([\d.]+)", _at[0]) == round(_ak / _ap, 1), f"tile {_at[0]}, {_ak} ads, players {_ap}")
     C.same("Rewarded ads", n1(tile("Ad views per player")[1], r"([\d,]+) rewarded"), kind.get("rewarded", 0), wobble(kind.get("rewarded", 0)))
     C.same("Ads between levels", n1(tile("Ad views per player")[1], r"([\d,]+) between levels"), kind.get("interstitial", 0), wobble(kind.get("interstitial", 0)))
-    mv = lambda e, m="eventCount": int(next(iter(run(d7, (), (m,), AND(wk, has("eventName", e), has("customEvent:placement", "out_of_moves")))), ([], [0]))[1][0])
-    mw, mo = mv("rewarded_watched"), mv("rewarded_offer_shown")
-    C.same("+Moves videos watched", n1(tile("+Moves videos watched")[0], r"([\d,]+)"), mw, wobble(mw))
-    C.same("+Moves video offers", n1(tile("+Moves videos watched")[1], r"of ([\d,]+) offers"), mo, wobble(mo))
+    # Guy, Nov 27: "change this card to all reward videos. clicking it shows a pop up with reward video by type, income earned" (own pulls, every placement)
+    _rwt = {}
+    for (e_, pl_), (n_,) in run(d7, ["eventName", "customEvent:placement"], ["eventCount"], AND(wk, among("eventName", ["rewarded_watched", "rewarded_offer_shown"]))):
+        _rwt.setdefault(pl_, [0, 0, 0.0])[0 if e_ == "rewarded_watched" else 1] += int(n_)
+    for (pl_,), (v_,) in run(d7, ["customEvent:placement"], ["eventValue"], AND(wk, has("eventName", "ad_revenue"), has("customEvent:kind", "rewarded"))):
+        _rwt.setdefault(pl_, [0, 0, 0.0])[2] += float(v_)
+    mw, mo = sum(v[0] for v in _rwt.values()), sum(v[1] for v in _rwt.values())
+    C.same("Reward videos watched (all types)", n1(tile("Reward videos watched")[0], r"([\d,]+)"), mw, wobble(mw))
+    C.same("Reward video offers (all types)", n1(tile("Reward videos watched")[1], r"of ([\d,]+) offers"), mo, wobble(mo))
+    _rwp = one(d7, metrics=("totalUsers",), flt=AND(wk, has("eventName", "rewarded_watched")))
+    C.same("Players who watched a reward video", n1(tile("Reward videos watched")[1], r"([\d,]+) player"), _rwp, max(1, wobble(_rwp)))
+    _seg0 = seg("gst-all-d7-all"); _tp = re.search(r"<template class='rwt'>(.*?)</template>", _seg0, re.S)
+    C.true("Reward videos card has its pop-up table", bool(_tp), "no template after the card")
+    if _tp:
+        _nm = lambda t: "Unknown" if t in ("", "(not set)") else t.replace("_", " ").capitalize()
+        _rows = {html.unescape(a): (int(b.replace(",", "")), int(c.replace(",", "")), d) for a, b, c, d in re.findall(r"<tr><td class='cmnm'>(.*?)</td><td class='cmnn'>([\d,]+)</td><td class='cmnn'>([\d,]+)</td><td class='cmnn'>(.*?)</td></tr>", _tp.group(1))}
+        _tot = re.search(r"<tr class='rwtot'><td class='cmnm'><b>Total</b></td><td class='cmnn'>([\d,]+)</td><td class='cmnn'>([\d,]+)</td><td class='cmnn'>(.*?)</td>", _tp.group(1))
+        C.true("Reward pop-up: total = the card", bool(_tot) and (int(_tot[1].replace(",", "")), int(_tot[2].replace(",", ""))) == (n1(tile("Reward videos watched")[0], r"([\d,]+)"), n1(tile("Reward videos watched")[1], r"of ([\d,]+) offers")), _tot.group(0)[-80:] if _tot else "no total row")
+        C.true("Reward pop-up: rows add up to the total", bool(_tot) and sum(r[0] for r in _rows.values()) == int(_tot[1].replace(",", "")) and sum(r[1] for r in _rows.values()) == int(_tot[2].replace(",", "")), f"{len(_rows)} rows")
+        _cents = lambda x: 0.0 if x.startswith(("<", "&lt;")) else float(x.replace("$", "").replace(",", ""))
+        C.true("Reward pop-up: income rows add up to the total (to the cent)", bool(_tot) and abs(sum(_cents(r[2]) for r in _rows.values()) - _cents(_tot[3])) <= 0.01 * max(1, len(_rows)), f"total {_tot[3] if _tot else '-'}")
+        for t_, v_ in _rwt.items():
+            r_ = _rows.get(_nm(t_))
+            C.same(f"Reward pop-up {_nm(t_)}: watched", r_[0] if r_ else 0, v_[0], wobble(v_[0]))
+            C.same(f"Reward pop-up {_nm(t_)}: offers", r_[1] if r_ else 0, v_[1], wobble(v_[1]))
+            C.same(f"Reward pop-up {_nm(t_)}: income (cents)", round(_cents(r_[2]) * 100) if r_ else 0, round(v_[2] * 100), max(1, round(v_[2] * 100 * 0.05)))
     C.same("Active players, last 7 days (1.3.1+, test days left out)", n1(tile("Active players")[0], r"([\d,]+)"), players, 2)
     try:   # Guy, Nov 21: All versions Day-7 tile, own pull (first days 8-14 days ago, back on day 7 or later)
         _b7 = _k7 = 0
@@ -435,7 +457,7 @@ def _check_game(C, page, keys, today, G, on_sale):
         _ids = re.findall(r"id='(gst-[\w-]+)'", page)
         C.true("Time drop-down: Today, Yesterday, Last 7 days, This month, Last month", re.findall(r"<option value='(\w+)'(?: selected)?>([^<]+)</option>", (re.findall(r"<select id='tsel'.*?</select>", page) or [""])[0]) == [("today", "Today"), ("yest", "Yesterday"), ("d7", "Last 7 days"), ("month", "This month"), ("last", "Last month")] and "bl_tsel_default" in page, "wrong or missing")
         C.true("Players filter on the page", "id='psel'" in page and "bl_psel_default" in page, "missing")
-        _NM = ["Active players", "Day-1 return", "Day-7 return", "Win rate", "Typical furthest level", "Reached level 10 on day one", "Ad views per player", "+Moves videos watched", "Super Stir / Solve uses", "Shares", "Purchases", "Reminders on"]
+        _NM = ["Active players", "Day-1 return", "Day-7 return", "Win rate", "Typical furthest level", "Reached level 10 on day one", "Ad views per player", "Reward videos watched", "Super Stir / Solve uses", "Shares", "Purchases", "Reminders on"]
         _VW = {"all": want, **({"pre": [v for v in want if _ver(v) < (1, 3, 11)]} if G.get("pre") else {}), **({"vf": [v for v in want if (1, 3, 11) <= _ver(v) <= (1, 3, 17)]} if G.get("vf") else {}), **{k: B["vers"] for k, B in (G.get("vx") or {}).items()}}
         C.true("A card set for every version, time and player choice", sorted(_ids) == sorted(f"gst-{v}-{t}-{w}" for v in _VW for t in ("today", "yest", "d7", "month", "last") for w in ("all", "new")), f"{len(_ids)} sets")
 

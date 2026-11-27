@@ -365,8 +365,16 @@ def fetch(keys_dir, today):
         kind = add(q(["customEvent:kind"], ["eventCount"], ev("ad_shown")), lambda d: d[1])
         sf = AND(INN("eventName", SUPERS), {"notExpression": _tut()})
         sup, supu = add(q(["eventName"], ["eventCount"], sf), lambda d: d[1]), add(q([], ["activeUsers"], sf))
-        mvr = q(["eventName"], ["eventCount", "totalUsers"], INN("eventName", ["rewarded_offer_shown", "rewarded_watched"]), {"filter": {"fieldName": "customEvent:placement", "stringFilter": {"value": "out_of_moves"}}})
-        mv, mvu = add(mvr, lambda d: d[1]), add(mvr, lambda d: d[1], 1)
+        # Guy, Nov 27: "change this card to all reward videos. clicking it shows a pop up with reward video by type, income earned"
+        mv = add(q(["eventName", "customEvent:placement"], ["eventCount"], INN("eventName", ["rewarded_offer_shown", "rewarded_watched"])), lambda d: d[1] + "|" + d[2])
+        mvu = add(q([], ["totalUsers"], ev("rewarded_watched")))
+        def addf(rows):   # like add, money kept as dollars (ad_revenue value = what AdMob paid for that video, sent by 1.3.19+)
+            o = {}
+            for d, v in rows:
+                for who in ("all",) + (("new",) if d[0] in FD[d[-1]] else ()):
+                    x = o.setdefault((d[-1], who), {}); x[d[1]] = x.get(d[1], 0) + float(v[0])
+            return o
+        mvd = addf(q(["customEvent:placement"], ["eventValue"], ev("ad_revenue"), {"filter": {"fieldName": "customEvent:kind", "stringFilter": {"value": "rewarded"}}}))
         sh, shu = add(q(["customEvent:kind"], ["eventCount"], ev("share_done")), lambda d: d[1]), add(q([], ["totalUsers"], ev("share_done")))
         # furthest level of the middle player
         # Nov 27: the "new" side only counts players who played level 1 (L1), so a reinstall that came back on level 6 is not a new player on level 6
@@ -455,7 +463,8 @@ def fetch(keys_dir, today):
                 g = lambda o: o.get((k, who), {})
                 S[k + "|" + who] = {"players": g(players).get("n", 0) if who == "all" else NEWN[k], "other": NEWN[k] if who == "all" else players.get((k, "all"), {}).get("n", 0), "outcome": {x: n for x, n in g(outc).items() if x not in ("", "(not set)")},
                                     "kind": {x: n for x, n in g(kind).items() if x not in ("", "(not set)")}, "stir": g(sup).get("super_stir", 0), "solve": g(sup).get("super_solve", 0), "superu": g(supu).get("n", 0),
-                                    "offers": g(mv).get("rewarded_offer_shown", 0), "watched": g(mv).get("rewarded_watched", 0), "watchu": g(mvu).get("rewarded_watched", 0), "shares": sum(g(sh).values()), "shareu": g(shu).get("n", 0),
+                                    "offers": sum(n for x, n in g(mv).items() if x.startswith("rewarded_offer_shown|")), "watched": sum(n for x, n in g(mv).items() if x.startswith("rewarded_watched|")), "watchu": g(mvu).get("n", 0),
+                                    "rwtype": {t: [g(mv).get("rewarded_watched|" + t, 0), g(mv).get("rewarded_offer_shown|" + t, 0), round(g(mvd).get(t, 0), 4)] for t in sorted({x.split("|", 1)[1] for x in g(mv)} | set(g(mvd)))}, "shares": sum(g(sh).values()), "shareu": g(shu).get("n", 0),
                                     "half": half.get((k, who)), "l10": [sum(hi10.get((d, d), 0) for d in FD[k]), NEWN[k]], "d1": ret(W1[k], b1), "d7": ret(W7[k], b7),
                                     "remind": [min(NEWN[k], ron[k]), NEWN[k], roff[k]]}
         return S

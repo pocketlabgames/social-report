@@ -1320,6 +1320,16 @@ def game_section():
     PERS = [("today", "Today"), ("yest", "Yesterday"), ("d7", "Last 7 days"), ("month", "This month"), ("last", "Last month")]   # Guy, Nov 25: third drop-down
     RGS = G.get("periods") or {}
 
+    def rw_pop(B):   # Guy, Nov 27: the Reward videos card opens this table: videos by type, offers, income (AdMob, reported by the game)
+        T = B.get("rwtype") or {}
+        name = lambda t: "Unknown" if t in ("", "(not set)") else t.replace("_", " ").capitalize()
+        rows = sorted(((t, v) for t, v in T.items() if v[0] or v[1] or v[2]), key=lambda x: (-x[1][0], -x[1][2], -x[1][1], x[0]))
+        usd = lambda v: f"${v:,.2f}" if v >= 0.005 or v == 0 else "&lt;$0.01"
+        tw, to, tu = sum(v[0] for v in T.values()), sum(v[1] for v in T.values()), sum(v[2] for v in T.values())
+        body = "".join(f"<tr><td class='cmnm'>{e(name(t))}</td><td class='cmnn'>{v[0]:,}</td><td class='cmnn'>{v[1]:,}</td><td class='cmnn'>{usd(v[2])}</td></tr>" for t, v in rows)
+        return ("<table class='cmnt rwtab'><tr class='rwh'><td class='cmnm'><b>Type</b></td><td class='cmnn'>Watched</td><td class='cmnn'>Offers</td><td class='cmnn'>Income</td></tr>" + body
+                + f"<tr class='rwtot'><td class='cmnm'><b>Total</b></td><td class='cmnn'>{tw:,}</td><td class='cmnn'>{to:,}</td><td class='cmnn'>{usd(tu)}</td></tr></table>"
+                + "<p class='cmne'>Watched = reward earned. Income = what AdMob paid for every video shown, including ones closed early (sent by the game from 1.3.19).</p>") if T else "<p class='cmne'>No reward videos yet.</p>"
     def mk_tiles(view, per, who):   # Guy, Nov 25: "clean up the section to make the cards and data consistent": 12 cards, each = number, name, one short line; every card covers the same players and the same days
         B = ((G.get("tiles") or {}).get(view) or {}).get(per + "|" + who) or {}
         pl = lambda n: f"{n:,} player{'' if n == 1 else 's'}"
@@ -1346,16 +1356,27 @@ def game_section():
                 (f"{hf[0]}" if hf else "—", "Typical furthest level", f"half of {pl(hf[1])} · top player {hf[2]:,}" if hf else "no players yet"),
                 (pct(*l10), "Reached level 10 on day one", f"{l10[0]:,} of {l10[1]:,} new players" if l10[1] else "no new players yet"),
                 (f"{ads / n:.1f}" if n else "—", "Ad views per player", f"{kd.get('interstitial', 0):,} between levels · {kd.get('rewarded', 0):,} rewarded" if n else "no players yet"),
-                (f"{B.get('watched', 0):,}", "+Moves videos watched", f"of {B.get('offers', 0):,} offers · {pl(B.get('watchu', 0))}"),
+                (f"{B.get('watched', 0):,}", "Reward videos watched", f"of {B.get('offers', 0):,} offers · {pl(B.get('watchu', 0))}", rw_pop(B)),
                 (f"{B.get('stir', 0) + B.get('solve', 0):,}", "Super Stir / Solve uses", f"{B.get('stir', 0):,} Stir · {B.get('solve', 0):,} Solve · {pl(B.get('superu', 0))}"),
                 (f"{B.get('shares', 0):,}", "Shares", f"by {pl(B.get('shareu', 0))}"),
                 (f"{buy:,}" if RCTX else "—", "Purchases", "all versions and players" if RCTX else "RevenueCat not loaded"),
                 (pct(rm[0], rm[1]), "Reminders on", f"{rm[0]:,} of {rm[1]:,} new players · {rm[2]:,} turned off" if rm[1] else "no new players yet")]
-    grid = lambda T: "".join(f"<div class='gt'><b>{e(x[0])}</b><span>{e(x[1])}</span><small>{e(x[2])}</small></div>" for x in T)
+    grid = lambda T: "".join(f"<div class='gt'><b>{e(x[0])}</b><span>{e(x[1])}</span><small>{e(x[2])}</small></div>" + (f"<template class='rwt'>{x[3]}</template>" if len(x) > 3 else "") for x in T)
     VB, PB = G.get("vf"), G.get("pre")
     XB = G.get("vx") or {}   # Guy, Nov 19: 1.3.18+, once it is on the App Store
     VIEWS = ["all"] + (["pre"] if PB else []) + (["vf"] if VB else []) + list(XB)
     tiles_html = "".join(f"<div class='gst' id='gst-{v}-{t}-{w}'{'' if (v, t, w) == ('all', 'd7', 'all') else ' hidden'}>" + (grid(mk_tiles(v, t, w)) if t in RGS else "<p class='sub gempty'>Game stats start Nov 1, 2026.</p>") + "</div>" for v in VIEWS for t, _ in PERS for w in ("all", "new"))
+    tiles_html += (f"<style>{CMAP_CSS} .gt.rwc{{cursor:pointer}} .gt.rwc span{{text-decoration:underline dotted;text-underline-offset:3px}} .rwtab td{{white-space:nowrap}} .rwtab tr.rwh td{{color:var(--muted);font-size:13px}} .rwtot td{{font-weight:600}}</style>"
+                   "<div class='cmo' id='rwpop' hidden><div class='cmc' style='max-width:560px'><button class='cmx' id='rwx' aria-label='Close'>×</button><div class='cmh'><h2>Reward videos by type</h2><small id='rwsub'></small></div><div id='rwbody'></div></div></div>"
+                   """<script>(() => { const ov = document.getElementById('rwpop'); if (!ov) return;
+  const close = () => { ov.hidden = true; document.body.style.overflow = ''; };
+  document.getElementById('rwx').onclick = close; ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  addEventListener('keydown', e => { if (e.key === 'Escape' && !ov.hidden) close(); });
+  document.querySelectorAll('template.rwt').forEach(t => { const c = t.previousElementSibling; if (!c) return; c.classList.add('rwc'); c.setAttribute('role', 'button'); c.tabIndex = 0;
+    const open = () => { const g = c.closest('.gst'); document.getElementById('rwbody').innerHTML = t.innerHTML;
+      const f = [...document.querySelectorAll("select[aria-label='App versions'], #psel, #tsel")].filter(x => x.offsetParent && x.closest('.gcard')).map(x => x.options[x.selectedIndex].text);
+      document.getElementById('rwsub').textContent = f.join(' · '); ov.hidden = false; document.body.style.overflow = 'hidden'; };
+    c.addEventListener('click', open); c.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } }); }); })();</script>""")
     def d1v_chart():   # Guy, Nov 22: "Day-1 return by version" (one bar per version group, Google Ads players vs everyone else, likely range; test days left out like the tiles)
         def wil(k, n):
             z = 1.96; p = k / n; d = 1 + z * z / n; c = (p + z * z / (2 * n)) / d; h = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / d
