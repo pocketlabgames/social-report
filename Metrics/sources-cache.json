@@ -202,25 +202,30 @@
 "2026-11-24": {
 "dl_ads": 16,
 "dl_search": 17,
-"imp_search": 2437,
-"pv_ads": 1405,
-"pv_browse": 46,
-"pv_other": 875,
+"imp_search": 2438,
+"pv_ads": 1808,
+"pv_browse": 47,
+"pv_other": 1094,
 "pv_search": 36
 },
 "2026-11-25": {
 "dl_ads": 24,
 "dl_browse": 3,
 "dl_search": 11,
-"imp_search": 2347,
-"pv_ads": 450,
-"pv_browse": 26,
-"pv_other": 274,
+"imp_search": 2356,
+"pv_ads": 535,
+"pv_browse": 27,
+"pv_other": 326,
 "pv_search": 26
 },
 "2026-11-26": {
 "dl_ads": 45,
 "dl_browse": 3,
-"dl_search": 15
+"dl_search": 15,
+"imp_search": 1325,
+"pv_ads": 892,
+"pv_browse": 48,
+"pv_other": 480,
+"pv_search": 15
 }
 }
