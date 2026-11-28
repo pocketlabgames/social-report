@@ -1,18 +1,9 @@
 {
-"2026-11-03": {
-"imp_search": 305,
-"pv_ads": 321,
-"pv_browse": 22,
-"pv_other": 175,
-"pv_search": 7
-},
 "2026-11-04": {
-"dl_ads": 23,
-"dl_search": 4,
 "imp_search": 599,
-"pv_ads": 465,
+"pv_ads": 461,
 "pv_browse": 19,
-"pv_other": 230,
+"pv_other": 227,
 "pv_search": 10
 },
 "2026-11-05": {
@@ -20,9 +11,9 @@
 "dl_browse": 2,
 "dl_search": 6,
 "imp_search": 730,
-"pv_ads": 1607,
-"pv_browse": 53,
-"pv_other": 626,
+"pv_ads": 1575,
+"pv_browse": 52,
+"pv_other": 591,
 "pv_search": 12
 },
 "2026-11-06": {
