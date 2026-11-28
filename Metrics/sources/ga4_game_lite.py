@@ -366,6 +366,7 @@ def fetch(keys_dir, today):
         kind = add(q(["customEvent:kind"], ["eventCount"], ev("ad_shown")), lambda d: d[1])
         sf = AND(INN("eventName", SUPERS), {"notExpression": _tut()})
         sup, supu = add(q(["eventName"], ["eventCount"], sf), lambda d: d[1]), add(q([], ["activeUsers"], sf))
+        supk = add(q(["eventName", "customEvent:kind"], ["eventCount"], sf), lambda d: d[1] + "|" + d[2])   # Guy, Nov 28: Super Stir / Solve pop-up "by type of use"
         # Guy, Nov 27: "change this card to all reward videos. clicking it shows a pop up with reward video by type, income earned"
         mv = add(q(["eventName", "customEvent:placement"], ["eventCount"], INN("eventName", ["rewarded_offer_shown", "rewarded_watched"])), lambda d: d[1] + "|" + d[2])
         mvu = add(q([], ["totalUsers"], ev("rewarded_watched")))
@@ -484,7 +485,7 @@ def fetch(keys_dir, today):
                                     "rwtype": {t: [g(mv).get("rewarded_watched|" + t, 0), g(mv).get("rewarded_offer_shown|" + t, 0), round(g(mvd).get(t, 0), 4)] for t in sorted({x.split("|", 1)[1] for x in g(mv)} | set(g(mvd)))}, "shares": sum(g(sh).values()), "shareu": g(shu).get("n", 0),
                                     "half": half.get((k, who)), "grp": grp.get((k, who)), "l10": [sum(hi10.get((d, d), 0) for d in FD[k]), NEWN[k]], "d1": ret(W1[k], b1), "d7": ret(W7[k], b7),
                                     "remind": [min(NEWN[k], ron[k]), NEWN[k], roff[k]], "rfull": rfull[k],
-                                    "byver": g(byv), "winlv": g(wlv), "adinc": {x: round(v, 4) for x, v in g(adk).items()}, "shkind": g(sh),
+                                    "byver": g(byv), "supk": g(supk), "winlv": g(wlv), "adinc": {x: round(v, 4) for x, v in g(adk).items()}, "shkind": g(sh),
                                     "d1d": [[d.isoformat(), base.get(key(d), 0), min(b1.get(key(d), 0), base.get(key(d), 0))] for d in W1[k]],
                                     "d7d": [[d.isoformat(), base.get(key(d), 0), min(b7.get(key(d), 0), base.get(key(d), 0))] for d in W7[k]],
                                     "l10d": [[x, base.get(x, 0), hi10.get((x, x), 0)] for x in sorted(FD[k])]}

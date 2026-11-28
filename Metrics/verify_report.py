@@ -362,10 +362,10 @@ def _check_game(C, page, keys, today, G, on_sale):
     C.same("Win rate", n1(tile("Win rate")[0], r"(\d+)%"), round(wins / tries * 100) if tries else 0, 2)
     # Guy, Nov 22: tutorial uses (free Super Stir on level 4, free Super Solve on level 5, 1.3.19+) are left out of the card; counted here per row
     _tutv = lambda v: (1, 3, 19) <= _ver(v)
-    _sup = {"super_stir": 0, "super_solve": 0}
+    _sup, _supk = {"super_stir": 0, "super_solve": 0}, {}
     for (e, k, l, v), (n,) in run(d7, ["eventName", "customEvent:kind", "customEvent:level", "appVersion"], ["eventCount"], AND(wk, among("eventName", list(_sup)))):
         if not (k == "free" and _tutv(v) and (e, l) in (("super_stir", "4"), ("super_solve", "5"))):
-            _sup[e] += int(n)
+            _sup[e] += int(n); _supk[(e, k)] = _supk.get((e, k), 0) + int(n)
     _tutf = {"orGroup": {"expressions": [AND(has("eventName", e), has("customEvent:kind", "free"), has("customEvent:level", l), among("appVersion", [v for v in seen if _tutv(v)] or ["none"])) for e, l in (("super_stir", "4"), ("super_solve", "5"))]}}
     _supu = one(d7, flt=AND(wk, among("eventName", list(_sup)), {"notExpression": _tutf}))
     C.same("Super Stir uses (tutorial left out)", n1(tile("Super Stir / Solve uses")[1], r"([\d,]+) Stir"), _sup["super_stir"], wobble(_sup["super_stir"]))
@@ -443,7 +443,12 @@ def _check_game(C, page, keys, today, G, on_sale):
             return rows, (cl(tt.group(1))[1:] if tt else None)
         _i = lambda x: int(str(x).replace(",", "").replace("$", "") or 0)
         _usd = lambda x: 0.0 if str(x).startswith("<") else float(str(x).replace("$", "").replace(",", "") or 0)
-        C.same("Every Game stats card opens a pop-up (Super Stir / Solve waits for Guy)", len(re.findall(r"<template class='(?:lvt|rwt)'", _s0)), 11, 0)
+        C.same("Every Game stats card opens a pop-up", len(re.findall(r"<template class='(?:lvt|rwt)'", _s0)), 12, 0)
+        _r, _t = _pop("Super Stir / Solve by type")   # Guy, Nov 28: "By type of use"
+        C.true("Super pop-up: total = the card, rows add up", bool(_t) and _i(_t[0]) == n1(tile("Super Stir / Solve uses")[0], r"([\d,]+)") == sum(_i(x[0]) for x in (_r or {}).values()), f"{_t}")
+        for (e_, k_), n_ in _supk.items():
+            nm_ = {"super_stir": "Super Stir", "super_solve": "Super Solve"}[e_] + " · " + ("Type not sent" if k_ in ("", "(not set)") else k_.capitalize())
+            C.same(f"Super pop-up {nm_}", _i((_r or {}).get(nm_, ["0"])[0]), n_, wobble(n_))
         # Players by version
         _r, _ = _pop("Players by version")
         C.true("Players by version pop-up", bool(_r), "missing")

@@ -1380,6 +1380,13 @@ def game_section():
         T = sum(kd.values())
         return tbl(["Type", "Views", "Per player", "Income"], rows, ["Total", f"{T:,}", f"{T / n:.1f}" if n else "—", usd(sum(inc.values()))], "Income = what AdMob paid, sent by the game from 1.3.19.")
 
+    def sup_pop(B):   # Guy, Nov 28: "By type of use" = the kind the game sends with each use (free, paid, video, daily, pack)
+        K = B.get("supk") or {}
+        tn = {"super_stir": "Super Stir", "super_solve": "Super Solve"}
+        kn = lambda k: "Type not sent" if k in ("", "(not set)") else k.capitalize()
+        rows = [[f"{tn[e]} · {kn(k)}", f"{c:,}"] for (e, k), c in sorted(((tuple(x.split("|", 1)), c) for x, c in K.items()), key=lambda x: (x[0][0] != "super_stir", -x[1])) if c and e in tn]
+        return tbl(["Type", "Uses"], rows, ["Total", f"{B.get('stir', 0) + B.get('solve', 0):,}"], "Type = what the game sends with each use. Super Stir paid = bought with Bucks or a video. Tutorial uses left out, like the card.")
+
     def rem_pop(B):
         on, nn, off = (B.get("remind") or [0, 0, 0])[:3]; full = min(B.get("rfull", 0), on)
         rows = [["Full reminders", f"{full:,}", P_(full, nn)], ["Quiet reminders only", f"{on - full:,}", P_(on - full, nn)], ["Turned off", f"{off:,}", P_(off, nn)], ["No answer yet", f"{max(0, nn - on - off):,}", P_(max(0, nn - on - off), nn)]]
@@ -1424,7 +1431,7 @@ def game_section():
                 (pct(*l10), "Reached level 10 on day one", f"{l10[0]:,} of {l10[1]:,} new players" if l10[1] else "no new players yet", days_pop(B.get("l10d") or [], "Reached 10"), "Level 10 on day one by start day"),
                 (f"{ads / n:.1f}" if n else "—", "Ad views per player", f"{kd.get('interstitial', 0):,} between levels · {kd.get('rewarded', 0):,} rewarded" if n else "no players yet", ad_pop(B, n), "Ads by type"),
                 (f"{B.get('watched', 0):,}", "Reward videos watched", f"of {B.get('offers', 0):,} offers · {pl(B.get('watchu', 0))}", rw_pop(B)),
-                (f"{B.get('stir', 0) + B.get('solve', 0):,}", "Super Stir / Solve uses", f"{B.get('stir', 0):,} Stir · {B.get('solve', 0):,} Solve · {pl(B.get('superu', 0))}"),
+                (f"{B.get('stir', 0) + B.get('solve', 0):,}", "Super Stir / Solve uses", f"{B.get('stir', 0):,} Stir · {B.get('solve', 0):,} Solve · {pl(B.get('superu', 0))}", sup_pop(B), "Super Stir / Solve by type"),
                 (f"{B.get('shares', 0):,}", "Shares", f"by {pl(B.get('shareu', 0))}", tbl(["What was shared", "Shares"], [[e(NAME_(k)), f"{c:,}"] for k, c in sorted((B.get("shkind") or {}).items(), key=lambda x: -x[1]) if c], ["Total", f"{B.get('shares', 0):,}"]), "Shares by type"),
                 (f"{buy:,}" if RCTX else "—", "Purchases", "all versions and players" if RCTX else "RevenueCat not loaded", buy_pop(r), "Purchases by product"),
                 (pct(rm[0], rm[1]), "Reminders on", f"{rm[0]:,} of {rm[1]:,} new players · {rm[2]:,} turned off" if rm[1] else "no new players yet", rem_pop(B), "Reminders by answer")]
