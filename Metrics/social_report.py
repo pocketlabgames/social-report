@@ -1542,8 +1542,8 @@ def game_section():
   const W = ch.canvas.parentNode.clientWidth, w = el.offsetWidth, hh = el.offsetHeight;
   let x = t.caretX + 16; if (x + w > W) x = t.caretX - w - 16; if (x < 0) x = Math.max(0, (W - w) / 2);
   el.style.left = x + 'px'; el.style.top = Math.max(0, Math.min(t.caretY - hh / 2, ch.canvas.clientHeight - hh)) + 'px'; };
- const bar = (cv, labels, data, color, ytitle, f) => { if (!cv || Chart.getChart(cv)) return;
-  const ch = new Chart(cv, {type: 'bar', data: {labels, datasets: [{data, backgroundColor: color, borderRadius: 4, borderSkipped: 'start', maxBarThickness: 34}]},
+ const bar = (cv, labels, data, color, ytitle, f, xp = []) => { if (!cv || Chart.getChart(cv)) return;
+  const ch = new Chart(cv, {type: 'bar', data: {labels, datasets: [{data, backgroundColor: color, borderRadius: 4, borderSkipped: 'start', maxBarThickness: 34}]}, plugins: xp,
    options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false}, plugins: {legend: {display: false}, tooltip: {enabled: false, external: tip(f)}},
     scales: {x: {grid: {display: false}, ticks: {color: muted, maxRotation: 0, autoSkip: true, font: {size: 12}, callback(v) { return window.TWO ? TWO(this.getLabelForValue(v)) : this.getLabelForValue(v); }}},
      y: {beginAtZero: true, grid: {color: grid}, ticks: {color: muted, precision: 0}, title: {display: true, text: ytitle, color: muted}}}}});
@@ -1592,9 +1592,13 @@ def game_section():
      y: {beginAtZero: true, max: 100, grid: {color: grid}, ticks: {color: muted, callback: v => v + '%'}, title: {display: true, text: 'Win rate', color: muted}}}}});
   document.addEventListener('touchstart', e => { if (e.target !== gl) { const el = gl.parentNode.querySelector('.ctt'); if (el) el.style.opacity = 0; ch.tooltip.setActiveElements([], {x: 0, y: 0}); ch.update('none'); } }, {passive: true}); };
  if (gl && !Chart.getChart(gl)) LVDRAW((document.getElementById('gsel') || {}).value || 'all');
+ const avgLn = {id: 'avgln', afterDatasetsDraw(ch) { const o = ch.$off || 0, T = X.labels.length - 1, v = ch.data.datasets[0].data.filter((_, i) => o + i !== T); if (!v.length) return;   // Guy, Nov 28: dashed line = average players per day over the days shown (today left out, it isn't over)
+  const a = v.reduce((t, x) => t + (x || 0), 0) / v.length, y = ch.scales.y.getPixelForValue(a), {left, right} = ch.chartArea, c = ch.ctx, k = dark ? '#e8e6df' : '#3d3d3a';
+  c.save(); c.strokeStyle = k; c.lineWidth = 1.5; c.setLineDash([6, 4]); c.beginPath(); c.moveTo(left, y); c.lineTo(right, y); c.stroke(); c.setLineDash([]);
+  c.fillStyle = k; c.font = '600 11px system-ui, sans-serif'; c.textAlign = 'right'; c.textBaseline = 'bottom'; c.fillText(`Avg ${Math.round(a)}/day`, right - 2, y - 3); c.restore(); }};
  const gdc = bar(document.getElementById('gday'), X.labels, X.players, '#8E6FD8', 'Players', i => `<div class="ctt-h">${X.full[i]} · ${pl(X.players[i], 'player')}</div>`
   + `<div class="ctt-r">${n(X.newer[i])} on 1.3.1+; the numbers below are theirs</div><div class="ctt-r">${pl(X.level_up[i], 'new level')} beaten · ${pl(X.level_end[i], 'level attempt')}</div><div class="ctt-r">${pl(X.ad_shown[i], 'ad')}` + (X.newer[i] ? ` (${(X.ad_shown[i] / X.newer[i]).toFixed(1)} per player)` : '') + '</div>'
-  + `<div class="ctt-r">${n(X.super_stir[i])} Super Stir · ${n(X.super_solve[i])} Super Solve · ${pl(X.purchase_ok[i], 'purchase')}</div>`);
+  + `<div class="ctt-r">${n(X.super_stir[i])} Super Stir · ${n(X.super_solve[i])} Super Solve · ${pl(X.purchase_ok[i], 'purchase')}</div>`, [avgLn]);
  if (gdc && window.RANGE) RANGE(gdc, X.labels, X.players, document.getElementById('rngg'), document.getElementById('rnggl')); }; </script>""".replace("__DATA__", json.dumps(data))
     stale_note = f"<p class='sub' style='color:#C0392B'>Google Analytics didn't answer this run; showing the last numbers from {e(GAME['_stale'])}.</p>" if GAME.get("_stale") else ""
     return (f"<style>.sh3{{font-size:18px;margin:22px 0 4px}} .gst{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:4px 0 18px}} "
