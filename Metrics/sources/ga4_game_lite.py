@@ -345,6 +345,7 @@ def fetch(keys_dir, today):
     FDS = {k: {key(d) for d in span(a, b)} for k, a, b in PER}
     AND = lambda *x: {"andGroup": {"expressions": [y for y in x if y]}}
     INN = lambda f, v: {"filter": {"fieldName": f, "inListFilter": {"values": list(v)}}}
+    GB = [1, 6, 11, 16, 21, 31, 51, 101]   # Guy, Nov 28: furthest-level groups 1-5, 6-10, 11-15, 16-20, 21-30, 31-50, 51-100, 101+
 
     def tiles(vs, allv, since=START, until=today):   # since / until = the version group's own days: new players of a group started on it (players who updated into it are not new)
         FD = {k: {d for d in v if key(since) <= d <= key(until)} for k, v in FDS.items()}
@@ -387,9 +388,9 @@ def fetch(keys_dir, today):
 
         def reach(lv):   # plain counts; for "new" an upper bound (reinstalls included), see half_new
             if lv not in cache:
-                cache[lv] = add(q([], ["activeUsers"], INN("customUser:max_level", [str(x) for x in every if x >= lv])))
+                cache[lv] = add(q([], ["activeUsers"], INN("customUser:max_level", [str(x) for x in every if x >= lv]))) if any(x >= lv for x in every) else {}
             return cache[lv]
-        half = {}
+        half, grp = {}, {}
         for sr, ls in lvl.items():
             if sr[1] == "new":
                 continue
@@ -399,6 +400,7 @@ def fetch(keys_dir, today):
                 if reach(v[m]).get(sr, {}).get("n", 0) * 2 >= top: lo = m
                 else: hi = m
             half[sr] = [v[lo], top, v[-1]]
+            grp[sr] = [reach(x).get(sr, {}).get("n", 0) if x > v[0] else top for x in GB]   # Guy, Nov 28: players by furthest level, groups GB (count = reached this group or higher)
         # first days: level 10 on day one, next day, day 7 or later
         first = min(a for _, a, _ in PER); whole = {"startDate": first.isoformat(), "endDate": today.isoformat()}
         first14 = max(START, min(first, today - dt.timedelta(days=14))); fw = {"startDate": first14.isoformat(), "endDate": today.isoformat()}
@@ -457,6 +459,7 @@ def fetch(keys_dir, today):
                 if ex(ls[m]) > 0: t0 = m
                 else: t1 = m
             half[(k, "new")] = [ls[lo], top, ls[t0]]
+            grp[(k, "new")] = [ex(x) if x <= ls[t0] else 0 for x in GB]
         S = {}
         for k, a, b in PER:
             for who in ("all", "new"):
@@ -465,7 +468,7 @@ def fetch(keys_dir, today):
                                     "kind": {x: n for x, n in g(kind).items() if x not in ("", "(not set)")}, "stir": g(sup).get("super_stir", 0), "solve": g(sup).get("super_solve", 0), "superu": g(supu).get("n", 0),
                                     "offers": sum(n for x, n in g(mv).items() if x.startswith("rewarded_offer_shown|")), "watched": sum(n for x, n in g(mv).items() if x.startswith("rewarded_watched|")), "watchu": g(mvu).get("n", 0),
                                     "rwtype": {t: [g(mv).get("rewarded_watched|" + t, 0), g(mv).get("rewarded_offer_shown|" + t, 0), round(g(mvd).get(t, 0), 4)] for t in sorted({x.split("|", 1)[1] for x in g(mv)} | set(g(mvd)))}, "shares": sum(g(sh).values()), "shareu": g(shu).get("n", 0),
-                                    "half": half.get((k, who)), "l10": [sum(hi10.get((d, d), 0) for d in FD[k]), NEWN[k]], "d1": ret(W1[k], b1), "d7": ret(W7[k], b7),
+                                    "half": half.get((k, who)), "grp": grp.get((k, who)), "l10": [sum(hi10.get((d, d), 0) for d in FD[k]), NEWN[k]], "d1": ret(W1[k], b1), "d7": ret(W7[k], b7),
                                     "remind": [min(NEWN[k], ron[k]), NEWN[k], roff[k]]}
         return S
 

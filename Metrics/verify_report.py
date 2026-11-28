@@ -522,6 +522,19 @@ def _check_game(C, page, keys, today, G, on_sale):
     C.same("Typical furthest level (7 days)", _num(r"([\d.]+)", _tl[0]), max((lv for lv in _l7 if _b7l[lv] * 2 >= _t7l), default=0), 0)   # Guy, Nov 8: middle player, not the average
     C.same("Typical furthest level: players", n1(_tl[1], r"half of ([\d,]+) player"), _t7l, 2)
     C.same("Typical furthest level: top player", n1(_tl[1], r"top player ([\d,]+)"), _l7[-1] if _l7 else 0, 0)
+    # Guy, Nov 28: the card opens players by furthest level; own pull = players at level >= group start minus >= next group start
+    _gb = [1, 6, 11, 16, 21, 31, 51, 101]; _ra = lambda x: _b7l[min(lv for lv in _l7 if lv >= x)] if any(lv >= x for lv in _l7) else 0
+    _lt = re.search(r"<template class='lvt' data-t='Players by furthest level'>(.*?)</template>", seg("gst-all-d7-all"), re.S)
+    C.true("Furthest level card has its pop-up table", bool(_lt), "no template after the card")
+    if _lt:
+        _lr = {_a: int(_b.replace(",", "")) for _a, _b in re.findall(r"<tr class='lvr'><td class='cmnm'>Levels (.*?)</td><td class='cmnn'>([\d,]+)</td>", _lt.group(1))}
+        _ltot = n1(_lt.group(1), r"<tr class='rwtot'><td class='cmnm'><b>Total</b></td><td class='cmnn'>([\d,]+)</td>")
+        C.true("Furthest level pop-up: 8 groups", len(_lr) == 8, f"{len(_lr)} rows")
+        C.true("Furthest level pop-up: groups add up to the total", sum(_lr.values()) == _ltot, f"{sum(_lr.values())} vs {_ltot}")
+        C.same("Furthest level pop-up: total = the card's players", _ltot, n1(_tl[1], r"half of ([\d,]+) player"), 2)
+        for _gi, _gx in enumerate(_gb):
+            _gn = f"{_gx}+" if _gi == len(_gb) - 1 else f"{_gx}–{_gb[_gi + 1] - 1}"; _gw = max(0, _ra(_gx) - (_ra(_gb[_gi + 1]) if _gi + 1 < len(_gb) else 0))
+            C.same(f"Furthest level pop-up: levels {_gn}", _lr.get(_gn, -1), _gw, max(2, wobble(_gw)))
     m = re.search(r"window\.GAMECHART = \(\) => \{ const X = (\{.*?\}); if \(!window\.Chart\)", page, re.S)
     C.true("Level chart data found on the page", bool(m))
     if not m:

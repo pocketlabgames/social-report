@@ -1330,6 +1330,18 @@ def game_section():
         return ("<table class='cmnt rwtab'><tr class='rwh'><td class='cmnm'><b>Type</b></td><td class='cmnn'>Watched</td><td class='cmnn'>Offers</td><td class='cmnn'>Income</td></tr>" + body
                 + f"<tr class='rwtot'><td class='cmnm'><b>Total</b></td><td class='cmnn'>{tw:,}</td><td class='cmnn'>{to:,}</td><td class='cmnn'>{usd(tu)}</td></tr></table>"
                 + "<p class='cmne'>Watched = reward earned. Income = what AdMob paid for every video shown, including ones closed early (sent by the game from 1.3.19).</p>") if T else "<p class='cmne'>No reward videos yet.</p>"
+    def lv_pop(B):   # Guy, Nov 28: the Typical furthest level card opens players grouped by furthest level reached
+        G_ = B.get("grp") or []
+        if not G_ or not G_[0]:
+            return "<p class='cmne'>No players yet.</p>"
+        GB = [1, 6, 11, 16, 21, 31, 51, 101]
+        nm = lambda i: f"{GB[i]}+" if i == len(GB) - 1 else f"{GB[i]}–{GB[i + 1] - 1}"
+        cnt = [max(0, G_[i] - (G_[i + 1] if i + 1 < len(G_) else 0)) for i in range(len(GB))]
+        tot = sum(cnt); mx = max(cnt) or 1
+        body = "".join(f"<tr class='lvr'><td class='cmnm'>Levels {nm(i)}</td><td class='cmnn'>{c:,}</td><td class='cmnn'>{'&lt;1' if 0 < c / tot * 100 < 0.5 else f'{c / tot * 100:.0f}'}%</td><td class='lvb'><i style='width:{c / mx * 100:.0f}%'></i></td></tr>" for i, c in enumerate(cnt))
+        return ("<table class='cmnt rwtab'><tr class='rwh'><td class='cmnm'><b>Furthest level</b></td><td class='cmnn'>Players</td><td class='cmnn'>Share</td><td class='lvb'></td></tr>" + body
+                + f"<tr class='rwtot'><td class='cmnm'><b>Total</b></td><td class='cmnn'>{tot:,}</td><td class='cmnn'>100%</td><td></td></tr></table>"
+                + "<p class='cmne'>Each player counts once, in the group of the highest level they reached. Same players and days as the card.</p>")
     def mk_tiles(view, per, who):   # Guy, Nov 25: "clean up the section to make the cards and data consistent": 12 cards, each = number, name, one short line; every card covers the same players and the same days
         B = ((G.get("tiles") or {}).get(view) or {}).get(per + "|" + who) or {}
         pl = lambda n: f"{n:,} player{'' if n == 1 else 's'}"
@@ -1353,7 +1365,7 @@ def game_section():
         return [(f"{n:,}", "New players" if who == "new" else "Active players", f"of {B.get('other', 0):,} active players" if who == "new" else f"{nw:,} new"),
                 ret("d1", "Day-1 return"), ret("d7", "Day-7 return"),
                 (pct(oc.get("win", 0), tries), "Win rate", f"{oc.get('win', 0):,} of {tries:,} level attempts" if tries else "no level attempts yet"),
-                (f"{hf[0]}" if hf else "—", "Typical furthest level", f"half of {pl(hf[1])} · top player {hf[2]:,}" if hf else "no players yet"),
+                (f"{hf[0]}" if hf else "—", "Typical furthest level", f"half of {pl(hf[1])} · top player {hf[2]:,}" if hf else "no players yet", lv_pop(B), "Players by furthest level"),
                 (pct(*l10), "Reached level 10 on day one", f"{l10[0]:,} of {l10[1]:,} new players" if l10[1] else "no new players yet"),
                 (f"{ads / n:.1f}" if n else "—", "Ad views per player", f"{kd.get('interstitial', 0):,} between levels · {kd.get('rewarded', 0):,} rewarded" if n else "no players yet"),
                 (f"{B.get('watched', 0):,}", "Reward videos watched", f"of {B.get('offers', 0):,} offers · {pl(B.get('watchu', 0))}", rw_pop(B)),
@@ -1361,19 +1373,19 @@ def game_section():
                 (f"{B.get('shares', 0):,}", "Shares", f"by {pl(B.get('shareu', 0))}"),
                 (f"{buy:,}" if RCTX else "—", "Purchases", "all versions and players" if RCTX else "RevenueCat not loaded"),
                 (pct(rm[0], rm[1]), "Reminders on", f"{rm[0]:,} of {rm[1]:,} new players · {rm[2]:,} turned off" if rm[1] else "no new players yet")]
-    grid = lambda T: "".join(f"<div class='gt'><b>{e(x[0])}</b><span>{e(x[1])}</span><small>{e(x[2])}</small></div>" + (f"<template class='rwt'>{x[3]}</template>" if len(x) > 3 else "") for x in T)
+    grid = lambda T: "".join(f"<div class='gt'><b>{e(x[0])}</b><span>{e(x[1])}</span><small>{e(x[2])}</small></div>" + (("<template class='lvt' data-t='" + e(x[4]) + "'>" if len(x) > 4 else "<template class='rwt'>") + x[3] + "</template>" if len(x) > 3 else "") for x in T)
     VB, PB = G.get("vf"), G.get("pre")
     XB = G.get("vx") or {}   # Guy, Nov 19: 1.3.18+, once it is on the App Store
     VIEWS = ["all"] + (["pre"] if PB else []) + (["vf"] if VB else []) + list(XB)
     tiles_html = "".join(f"<div class='gst' id='gst-{v}-{t}-{w}'{'' if (v, t, w) == ('all', 'd7', 'all') else ' hidden'}>" + (grid(mk_tiles(v, t, w)) if t in RGS else "<p class='sub gempty'>Game stats start Nov 1, 2026.</p>") + "</div>" for v in VIEWS for t, _ in PERS for w in ("all", "new"))
-    tiles_html += (f"<style>{CMAP_CSS} .gt.rwc{{cursor:pointer}} .gt.rwc span{{text-decoration:underline dotted;text-underline-offset:3px}} .rwtab td{{white-space:nowrap}} .rwtab tr.rwh td{{color:var(--muted);font-size:13px}} .rwtot td{{font-weight:600}}</style>"
-                   "<div class='cmo' id='rwpop' hidden><div class='cmc' style='max-width:560px'><button class='cmx' id='rwx' aria-label='Close'>×</button><div class='cmh'><h2>Reward videos by type</h2><small id='rwsub'></small></div><div id='rwbody'></div></div></div>"
+    tiles_html += (f"<style>{CMAP_CSS} .gt.rwc{{cursor:pointer}} .gt.rwc span{{text-decoration:underline dotted;text-underline-offset:3px}} .rwtab td{{white-space:nowrap}} .rwtab tr.rwh td{{color:var(--muted);font-size:13px}} .rwtot td{{font-weight:600}} .lvb{{width:90px}} .lvb i{{display:block;height:10px;border-radius:3px;background:#12A4A4;min-width:2px}}</style>"
+                   "<div class='cmo' id='rwpop' hidden><div class='cmc' style='max-width:560px'><button class='cmx' id='rwx' aria-label='Close'>×</button><div class='cmh'><h2 id='rwh2'>Reward videos by type</h2><small id='rwsub'></small></div><div id='rwbody'></div></div></div>"
                    """<script>(() => { const ov = document.getElementById('rwpop'); if (!ov) return;
   const close = () => { ov.hidden = true; document.body.style.overflow = ''; };
   document.getElementById('rwx').onclick = close; ov.addEventListener('click', e => { if (e.target === ov) close(); });
   addEventListener('keydown', e => { if (e.key === 'Escape' && !ov.hidden) close(); });
-  document.querySelectorAll('template.rwt').forEach(t => { const c = t.previousElementSibling; if (!c) return; c.classList.add('rwc'); c.setAttribute('role', 'button'); c.tabIndex = 0;
-    const open = () => { const g = c.closest('.gst'); document.getElementById('rwbody').innerHTML = t.innerHTML;
+  document.querySelectorAll('template.rwt, template.lvt').forEach(t => { const c = t.previousElementSibling; if (!c) return; c.classList.add('rwc'); c.setAttribute('role', 'button'); c.tabIndex = 0;
+    const open = () => { const g = c.closest('.gst'); document.getElementById('rwbody').innerHTML = t.innerHTML; document.getElementById('rwh2').textContent = t.dataset.t || 'Reward videos by type';
       const f = [...document.querySelectorAll("select[aria-label='App versions'], #psel, #tsel")].filter(x => x.offsetParent && x.closest('.gcard')).map(x => x.options[x.selectedIndex].text);
       document.getElementById('rwsub').textContent = f.join(' · '); ov.hidden = false; document.body.style.overflow = 'hidden'; };
     c.addEventListener('click', open); c.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } }); }); })();</script>""")
