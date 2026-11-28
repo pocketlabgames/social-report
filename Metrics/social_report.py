@@ -178,7 +178,7 @@ def fetch():
                 RCTX.update({r.date: int(r.tx) for r in d.itertuples() if pd.notna(r.tx)})
             if "Money Lite" in got:
                 d = got.pop("Money Lite")
-                MONEY.update({r.date: {"ads": None if pd.isna(r.ads) else float(r.ads), "iap": None if pd.isna(r.iap) else float(r.iap), "n": None if pd.isna(r.iapn) else int(r.iapn), "rwd": None if pd.isna(r.rwd) else int(r.rwd)} for r in d.itertuples()})
+                MONEY.update({r.date: {"ads": None if pd.isna(r.ads) else float(r.ads), "iap": None if pd.isna(r.iap) else float(r.iap), "n": None if pd.isna(r.iapn) else int(r.iapn), "rwd": None if pd.isna(r.rwd) else int(r.rwd), "prod": json.loads(r.iapp) if "iapp" in d.columns and isinstance(r.iapp, str) else {}} for r in d.itertuples()})
             out.update(got)
             if err:
                 errors.append(err)
@@ -200,7 +200,7 @@ def fetch():
         if not MONEY and money_lite and os.path.exists(money_lite.CACHE):
             m = json.load(open(money_lite.CACHE))
             for d in set(m.get("ads", {})) | set(m.get("iap", {})):
-                MONEY[d] = {"ads": m.get("ads", {}).get(d), "iap": m.get("iap", {}).get(d), "n": m.get("iapn", {}).get(d), "rwd": m.get("rwd", {}).get(d)}
+                MONEY[d] = {"ads": m.get("ads", {}).get(d), "iap": m.get("iap", {}).get(d), "n": m.get("iapn", {}).get(d), "rwd": m.get("rwd", {}).get(d), "prod": m.get("iapp", {}).get(d) or {}}
     except Exception as e:
         errors.append(f"Apple cache fallback: {type(e).__name__}: {e}"[:200])
     if GAME:
@@ -1342,6 +1342,59 @@ def game_section():
         return ("<table class='cmnt rwtab'><tr class='rwh'><td class='cmnm'><b>Furthest level</b></td><td class='cmnn'>Players</td><td class='cmnn'>Share</td><td class='lvb'></td></tr>" + body
                 + f"<tr class='rwtot'><td class='cmnm'><b>Total</b></td><td class='cmnn'>{tot:,}</td><td class='cmnn'>100%</td><td></td></tr></table>"
                 + "<p class='cmne'>Each player counts once, in the group of the highest level they reached. Same players and days as the card.</p>")
+    def tbl(head, rows, tot=None, note=""):   # Guy, Nov 28: "make all the cards in that area clickable": one table per card pop-up
+        h = "<tr class='rwh'>" + "".join(f"<td class='{'cmnm' if i == 0 else 'cmnn'}'>{'<b>' + x + '</b>' if i == 0 else x}</td>" for i, x in enumerate(head)) + "</tr>"
+        rr = "".join("<tr class='pr'>" + "".join(f"<td class='{'cmnm' if i == 0 else 'cmnn'}'>{x}</td>" for i, x in enumerate(r)) + "</tr>" for r in rows)
+        tt = ("<tr class='rwtot'>" + "".join(f"<td class='{'cmnm' if i == 0 else 'cmnn'}'>{'<b>' + x + '</b>' if i == 0 else x}</td>" for i, x in enumerate(tot)) + "</tr>") if tot else ""
+        return (f"<table class='cmnt rwtab'>{h}{rr}{tt}</table>" if rows else "<p class='cmne'>Nothing to show for these days yet.</p>") + (f"<p class='cmne'>{note}</p>" if note else "")
+    P_ = lambda a, b: f"{a / b * 100:.0f}%" if b else "—"
+    DAY_ = lambda d: dt.date.fromisoformat(d if "-" in d else f"{d[:4]}-{d[4:6]}-{d[6:]}").strftime("%a %b %-d")
+    NAME_ = lambda t: "Unknown" if t in ("", "(not set)") else t.replace("_", " ").capitalize()
+    GB_ = [1, 6, 11, 16, 21, 31, 51, 101]
+    GN_ = lambda i: f"{GB_[i]}+" if i == len(GB_) - 1 else f"{GB_[i]}–{GB_[i + 1] - 1}"
+
+    def days_pop(rows, what, card=None):   # rows [day, new players, did it]; card = the card's [did, new] when it comes from elsewhere (the D-1 badge)
+        rows = [r for r in rows if r[1]]
+        a, b = sum(r[2] for r in rows), sum(r[1] for r in rows)
+        diff = f" The card uses the Retention badge's count ({card[0]:,} of {card[1]:,}), which is figured separately, so it can differ from these days." if card and [a, b] != list(card[:2]) else ""
+        return tbl(["Start day", "New players", what, "%"], [[DAY_(r[0]), f"{r[1]:,}", f"{r[2]:,}", P_(r[2], r[1])] for r in rows], ["Total", f"{b:,}", f"{a:,}", P_(a, b)], "New players = first day on these versions and played level 1." + diff)
+
+    def win_pop(B):
+        g = [[0, 0] for _ in GB_]; oth, ns = [0, 0], [0, 0]
+        for k, c in (B.get("winlv") or {}).items():
+            lv, oc = k.rsplit("|", 1)
+            if oc in ("skip", "", "(not set)"):
+                continue
+            x = g[max(i for i, v in enumerate(GB_) if v <= int(lv))] if lv.isdigit() and int(lv) >= 1 else ns if lv in ("", "(not set)") else oth
+            x[1] += c; x[0] += c if oc == "win" else 0
+        rows = [[f"Levels {GN_(i)}", f"{w:,}", f"{t:,}", P_(w, t)] for i, (w, t) in enumerate(g) if t] + ([["Events and other", f"{oth[0]:,}", f"{oth[1]:,}", P_(*oth)]] if oth[1] else []) + ([["Level not sent (older versions)", f"{ns[0]:,}", f"{ns[1]:,}", P_(*ns)]] if ns[1] else [])
+        tw, tt = sum(x[0] for x in g) + oth[0] + ns[0], sum(x[1] for x in g) + oth[1] + ns[1]
+        return tbl(["Levels", "Wins", "Attempts", "Win rate"], rows, ["Total", f"{tw:,}", f"{tt:,}", P_(tw, tt)], "Attempts = every level played to a win or a loss (skips left out), same as the card.")
+
+    def ad_pop(B, n):
+        kd, inc = B.get("kind") or {}, B.get("adinc") or {}
+        nm = {"interstitial": "Between levels", "rewarded": "Reward videos"}
+        ks = sorted(set(kd) | set(inc), key=lambda k: -kd.get(k, 0))
+        usd = lambda v: f"${v:,.2f}" if v >= 0.005 or v == 0 else "&lt;$0.01"
+        rows = [[e(nm.get(k, NAME_(k))), f"{kd.get(k, 0):,}", f"{kd.get(k, 0) / n:.1f}" if n else "—", usd(inc.get(k, 0))] for k in ks if kd.get(k, 0) or inc.get(k, 0)]
+        T = sum(kd.values())
+        return tbl(["Type", "Views", "Per player", "Income"], rows, ["Total", f"{T:,}", f"{T / n:.1f}" if n else "—", usd(sum(inc.values()))], "Income = what AdMob paid, sent by the game from 1.3.19.")
+
+    def rem_pop(B):
+        on, nn, off = (B.get("remind") or [0, 0, 0])[:3]; full = min(B.get("rfull", 0), on)
+        rows = [["Full reminders", f"{full:,}", P_(full, nn)], ["Quiet reminders only", f"{on - full:,}", P_(on - full, nn)], ["Turned off", f"{off:,}", P_(off, nn)], ["No answer yet", f"{max(0, nn - on - off):,}", P_(max(0, nn - on - off), nn)]]
+        return tbl(["", "New players", "%"], rows, ["New players", f"{nn:,}", ""], "Quiet = Apple's trial (Notification Center only). A player who turned reminders on and later off counts in both rows.")
+
+    def buy_pop(r):
+        pr = {}
+        for d, m in MONEY.items():
+            if r and r[0] <= d <= r[1]:
+                for t, (u, v) in ((m or {}).get("prod") or {}).items():
+                    x = pr.setdefault(t, [0, 0.0]); x[0] += u; x[1] += v
+        rows = [[e(t), f"{u:,}", f"${v:,.2f}"] for t, (u, v) in sorted(pr.items(), key=lambda x: (-x[1][1], x[0])) if u]
+        return tbl(["Product", "Bought", "Proceeds"], rows, ["Total", f"{sum(x[0] for x in pr.values()):,}", f"${sum(x[1] for x in pr.values()):,.2f}"] if rows else None,
+                   "From Apple's daily sales report, which comes a day late, so today isn't in it yet. The card counts RevenueCat, so the two can differ by a purchase or two. Proceeds = after Apple's cut, in US dollars.")
+
     def mk_tiles(view, per, who):   # Guy, Nov 25: "clean up the section to make the cards and data consistent": 12 cards, each = number, name, one short line; every card covers the same players and the same days
         B = ((G.get("tiles") or {}).get(view) or {}).get(per + "|" + who) or {}
         pl = lambda n: f"{n:,} player{'' if n == 1 else 's'}"
@@ -1357,28 +1410,30 @@ def game_section():
                 return ("—", name, "no new players to count yet")
             a, b = v[2], v[3]
             sp = mdx(a) + ("" if a == b else "–" + dt.date.fromisoformat(b).strftime('%-d' if a[:7] == b[:7] else '%b %-d'))
-            return (pct(v[0], v[1]), name, f"{v[0]:,} of {v[1]:,} new players · started {sp}")
+            return (pct(v[0], v[1]), name, f"{v[0]:,} of {v[1]:,} new players · started {sp}", days_pop(B.get(k + "d") or [], "Came back", v[:2] if view == "all" and per == "d7" and RET.get(k) is not None else None), name + " by start day")
         oc = B.get("outcome") or {}; tries = sum(x for k, x in oc.items() if k != "skip")
         kd = B.get("kind") or {}; ads = sum(kd.values())
         hf = B.get("half"); l10 = B.get("l10") or [0, 0]; rm = B.get("remind") or [0, 0, 0]; r = RGS.get(per)
         buy = sum(v for k, v in RCTX.items() if r and r[0] <= k <= r[1])
-        return [(f"{n:,}", "New players" if who == "new" else "Active players", f"of {B.get('other', 0):,} active players" if who == "new" else f"{nw:,} new"),
+        return [(f"{n:,}", "New players" if who == "new" else "Active players", f"of {B.get('other', 0):,} active players" if who == "new" else f"{nw:,} new",
+                 tbl(["Version", "Players"], [[e(k), f"{c:,}"] for k, c in sorted((B.get("byver") or {}).items(), key=lambda x: [int(p) if p.isdigit() else 0 for p in x[0].split(".")], reverse=True) if c], None,
+                     "A player who used two versions counts under both, so the rows can add up to more than the card." + (" New-player rows count everyone whose first day was in these days, reinstalls included." if who == "new" else "")), "Players by version"),
                 ret("d1", "Day-1 return"), ret("d7", "Day-7 return"),
-                (pct(oc.get("win", 0), tries), "Win rate", f"{oc.get('win', 0):,} of {tries:,} level attempts" if tries else "no level attempts yet"),
+                (pct(oc.get("win", 0), tries), "Win rate", f"{oc.get('win', 0):,} of {tries:,} level attempts" if tries else "no level attempts yet", win_pop(B), "Win rate by level"),
                 (f"{hf[0]}" if hf else "—", "Typical furthest level", f"half of {pl(hf[1])} · top player {hf[2]:,}" if hf else "no players yet", lv_pop(B), "Players by furthest level"),
-                (pct(*l10), "Reached level 10 on day one", f"{l10[0]:,} of {l10[1]:,} new players" if l10[1] else "no new players yet"),
-                (f"{ads / n:.1f}" if n else "—", "Ad views per player", f"{kd.get('interstitial', 0):,} between levels · {kd.get('rewarded', 0):,} rewarded" if n else "no players yet"),
+                (pct(*l10), "Reached level 10 on day one", f"{l10[0]:,} of {l10[1]:,} new players" if l10[1] else "no new players yet", days_pop(B.get("l10d") or [], "Reached 10"), "Level 10 on day one by start day"),
+                (f"{ads / n:.1f}" if n else "—", "Ad views per player", f"{kd.get('interstitial', 0):,} between levels · {kd.get('rewarded', 0):,} rewarded" if n else "no players yet", ad_pop(B, n), "Ads by type"),
                 (f"{B.get('watched', 0):,}", "Reward videos watched", f"of {B.get('offers', 0):,} offers · {pl(B.get('watchu', 0))}", rw_pop(B)),
                 (f"{B.get('stir', 0) + B.get('solve', 0):,}", "Super Stir / Solve uses", f"{B.get('stir', 0):,} Stir · {B.get('solve', 0):,} Solve · {pl(B.get('superu', 0))}"),
-                (f"{B.get('shares', 0):,}", "Shares", f"by {pl(B.get('shareu', 0))}"),
-                (f"{buy:,}" if RCTX else "—", "Purchases", "all versions and players" if RCTX else "RevenueCat not loaded"),
-                (pct(rm[0], rm[1]), "Reminders on", f"{rm[0]:,} of {rm[1]:,} new players · {rm[2]:,} turned off" if rm[1] else "no new players yet")]
+                (f"{B.get('shares', 0):,}", "Shares", f"by {pl(B.get('shareu', 0))}", tbl(["What was shared", "Shares"], [[e(NAME_(k)), f"{c:,}"] for k, c in sorted((B.get("shkind") or {}).items(), key=lambda x: -x[1]) if c], ["Total", f"{B.get('shares', 0):,}"]), "Shares by type"),
+                (f"{buy:,}" if RCTX else "—", "Purchases", "all versions and players" if RCTX else "RevenueCat not loaded", buy_pop(r), "Purchases by product"),
+                (pct(rm[0], rm[1]), "Reminders on", f"{rm[0]:,} of {rm[1]:,} new players · {rm[2]:,} turned off" if rm[1] else "no new players yet", rem_pop(B), "Reminders by answer")]
     grid = lambda T: "".join(f"<div class='gt'><b>{e(x[0])}</b><span>{e(x[1])}</span><small>{e(x[2])}</small></div>" + (("<template class='lvt' data-t='" + e(x[4]) + "'>" if len(x) > 4 else "<template class='rwt'>") + x[3] + "</template>" if len(x) > 3 else "") for x in T)
     VB, PB = G.get("vf"), G.get("pre")
     XB = G.get("vx") or {}   # Guy, Nov 19: 1.3.18+, once it is on the App Store
     VIEWS = ["all"] + (["pre"] if PB else []) + (["vf"] if VB else []) + list(XB)
     tiles_html = "".join(f"<div class='gst' id='gst-{v}-{t}-{w}'{'' if (v, t, w) == ('all', 'd7', 'all') else ' hidden'}>" + (grid(mk_tiles(v, t, w)) if t in RGS else "<p class='sub gempty'>Game stats start Nov 1, 2026.</p>") + "</div>" for v in VIEWS for t, _ in PERS for w in ("all", "new"))
-    tiles_html += (f"<style>{CMAP_CSS} .gt.rwc{{cursor:pointer}} .gt.rwc span{{text-decoration:underline dotted;text-underline-offset:3px}} .rwtab td{{white-space:nowrap}} .rwtab tr.rwh td{{color:var(--muted);font-size:13px}} .rwtot td{{font-weight:600}} .lvb{{width:90px}} .lvb i{{display:block;height:10px;border-radius:3px;background:#12A4A4;min-width:2px}}</style>"
+    tiles_html += (f"<style>{CMAP_CSS} .gt.rwc{{cursor:pointer}} .gt.rwc span{{text-decoration:underline dotted;text-underline-offset:3px}} .rwtab td{{white-space:nowrap}} .rwtab tr.rwh td{{color:var(--muted);font-size:13px}} .rwtot td{{font-weight:600}} #rwbody{{overflow-x:auto}} .rwtab td.cmnm{{white-space:normal}} @media (max-width:500px){{.rwtab td{{padding-left:5px;padding-right:5px;font-size:13px}} .lvb{{width:60px!important}}}} .lvb{{width:90px}} .lvb i{{display:block;height:10px;border-radius:3px;background:#12A4A4;min-width:2px}}</style>"
                    "<div class='cmo' id='rwpop' hidden><div class='cmc' style='max-width:560px'><button class='cmx' id='rwx' aria-label='Close'>×</button><div class='cmh'><h2 id='rwh2'>Reward videos by type</h2><small id='rwsub'></small></div><div id='rwbody'></div></div></div>"
                    """<script>(() => { const ov = document.getElementById('rwpop'); if (!ov) return;
   const close = () => { ov.hidden = true; document.body.style.overflow = ''; };

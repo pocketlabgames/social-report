@@ -431,6 +431,78 @@ def _check_game(C, page, keys, today, G, on_sale):
             if _t and "%" in _t[0]:
                 _a, _b = n1(_t[1], r"^([\d,]+) of"), n1(_t[1], r"of ([\d,]+) new")
                 C.true(f"Reminders on % adds up in {_id}", _b and abs(round(_a / _b * 100) - n1(_t[0], r"(\d+)%")) <= 1, f"{_t[0]} vs {_a} of {_b}")
+        # Guy, Nov 28: "make all the cards in that area clickable": every card has a pop-up; own pulls for each table (All versions / Last 7 days / All players)
+        _s0 = seg("gst-all-d7-all")
+        def _pop(t):   # (rows {name: [cells]}, total cells or None) of one card pop-up
+            m_ = re.search(r"<template class='lvt' data-t='" + re.escape(html.escape(t)) + r"'>(.*?)</template>", _s0, re.S)
+            if not m_:
+                return None, None
+            cl = lambda r: [html.unescape(re.sub("<[^>]+>", "", x)) for x in re.findall(r"<td[^>]*>(.*?)</td>", r)]
+            rows = {c[0]: c[1:] for c in (cl(r) for r in re.findall(r"<tr class='pr'>(.*?)</tr>", m_.group(1)))}
+            tt = re.search(r"<tr class='rwtot'>(.*?)</tr>", m_.group(1))
+            return rows, (cl(tt.group(1))[1:] if tt else None)
+        _i = lambda x: int(str(x).replace(",", "").replace("$", "") or 0)
+        _usd = lambda x: 0.0 if str(x).startswith("<") else float(str(x).replace("$", "").replace(",", "") or 0)
+        C.same("Every Game stats card opens a pop-up (Super Stir / Solve waits for Guy)", len(re.findall(r"<template class='(?:lvt|rwt)'", _s0)), 11, 0)
+        # Players by version
+        _r, _ = _pop("Players by version")
+        C.true("Players by version pop-up", bool(_r), "missing")
+        for (v_,), (n_,) in run(d7, ["appVersion"], ["activeUsers"], wk):
+            if int(n_):
+                C.same(f"Players by version {v_}", _i((_r or {}).get(v_, ["0"])[0]), int(n_), max(1, wobble(int(n_))))
+        # Day-1 / Day-7 / level 10 by start day: rows add up; level 10 total = the card
+        for t_, card_, pat_ in (("Day-1 return by start day", "Day-1 return", None), ("Day-7 return by start day", "Day-7 return", None), ("Level 10 on day one by start day", "Reached level 10 on day one", r"^([\d,]+) of")):
+            _r, _t = _pop(t_)
+            C.true(f"{t_} pop-up", bool(_r) and bool(_t), "missing")
+            if _r and _t:
+                C.true(f"{t_}: rows add up", sum(_i(x[0]) for x in _r.values()) == _i(_t[0]) and sum(_i(x[1]) for x in _r.values()) == _i(_t[1]), f"total {_t}")
+                if pat_:
+                    C.same(f"{t_}: total = the card", _i(_t[1]), n1(tile(card_)[1], pat_), 0)
+                    C.same(f"{t_}: new players = the card", _i(_t[0]), n1(tile(card_)[1], r"of ([\d,]+) new"), 0)
+                elif "Retention badge" not in _s0.split(f"data-t='{t_}'", 1)[1].split("</template>", 1)[0]:
+                    C.same(f"{t_}: total = the card", _i(_t[1]), n1(tile(card_)[1], r"^([\d,]+) of"), 0)
+        # Win rate by level (own pull: level_end by level and outcome)
+        _G8 = [1, 6, 11, 16, 21, 31, 51, 101]
+        _wgn = lambda lv: next(f"Levels {a}–{b - 1}" for a, b in zip(_G8, _G8[1:]) if a <= lv < b) if lv < 101 else "Levels 101+"
+        _r, _t = _pop("Win rate by level"); _wg = {}
+        for (k_, o_), (n_,) in run(d7, ["customEvent:key", "customEvent:outcome"], ["eventCount"], AND(wk, has("eventName", "level_end"))):
+            if o_ in ("skip", "", "(not set)"):
+                continue
+            g_ = _wgn(int(k_)) if k_.isdigit() and int(k_) >= 1 else "Level not sent (older versions)" if k_ in ("", "(not set)") else "Events and other"
+            x_ = _wg.setdefault(g_, [0, 0]); x_[1] += int(n_); x_[0] += int(n_) if o_ == "win" else 0
+        C.true("Win rate pop-up: total = the card", bool(_t) and (_i(_t[0]), _i(_t[1])) == (n1(tile("Win rate")[1], r"^([\d,]+) of"), n1(tile("Win rate")[1], r"of ([\d,]+) level")), f"{_t}")
+        for g_, (w_, n_) in _wg.items():
+            C.same(f"Win rate pop-up {g_}: attempts", _i((_r or {}).get(g_, ["0", "0"])[1]), n_, wobble(n_))
+            C.same(f"Win rate pop-up {g_}: wins", _i((_r or {}).get(g_, ["0", "0"])[0]), w_, wobble(w_))
+        # Ads by type: views = the card; income own pull (ad_revenue by kind)
+        _r, _t = _pop("Ads by type")
+        C.true("Ads pop-up: views add up to the card", bool(_t) and _i(_t[0]) == sum(kind.values()) or abs(_i(_t[0] if _t else 0) - sum(kind.values())) <= wobble(sum(kind.values())), f"{_t}")
+        for (k_,), (v_,) in run(d7, ["customEvent:kind"], ["eventValue"], AND(wk, has("eventName", "ad_revenue"))):
+            nm_ = {"interstitial": "Between levels", "rewarded": "Reward videos"}.get(k_, k_.replace("_", " ").capitalize())
+            C.same(f"Ads pop-up {nm_}: income (cents)", round(_usd((_r or {}).get(nm_, ["0", "0", "0"])[2]) * 100), round(float(v_) * 100), max(1, round(float(v_) * 5)))
+        # Shares by type
+        _r, _t = _pop("Shares by type")
+        C.true("Shares pop-up: total = the card", (_t is None and n1(tile("Shares")[0], r"([\d,]+)") == 0) or (bool(_t) and _i(_t[0]) == n1(tile("Shares")[0], r"([\d,]+)") == sum(_i(x[0]) for x in (_r or {}).values())), f"{_t}")
+        # Purchases by product: Apple sales report (money-cache) units, same days as the card
+        _r, _t = _pop("Purchases by product")
+        try:
+            _mc = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "money-cache.json")))
+            _pd = G.get("periods", {}).get("d7") or [d7[0].isoformat(), d7[1].isoformat()]
+            _un = sum(int(v or 0) for d, v in (_mc.get("iapn") or {}).items() if _pd[0] <= d <= _pd[1])
+            C.same("Purchases pop-up: bought = Apple's sales report", _i(_t[0]) if _t else 0, _un, 0)
+        except Exception as _e3:
+            C.fails.append(f"Purchases pop-up check could not run: {type(_e3).__name__}: {_e3}"[:240])
+        # Reminders by answer: rows = the card; full reminders own funnel (level 1 -> allow)
+        _r, _t = _pop("Reminders by answer")
+        if _r:
+            _rf = funnel(d7[0], d7[1], [AND(_co, L1V), AND(_co, among("eventName", ["soft_authorized", "remind_allow"]))])[1]
+            C.same("Reminders pop-up: full + quiet = the card's on", _i(_r["Full reminders"][0]) + _i(_r["Quiet reminders only"][0]), n1(tile("Reminders on")[1], r"^([\d,]+) of"), 0)
+            C.same("Reminders pop-up: turned off = the card", _i(_r["Turned off"][0]), n1(tile("Reminders on")[1], r"([\d,]+) turned off"), 0)
+            C.same("Reminders pop-up: full reminders", _i(_r["Full reminders"][0]), min(_rf, _ro), max(1, wobble(_rf)))
+            _off = funnel(d7[0], d7[1], [AND(_co, L1V), AND(_co, among("eventName", ["soft_denied", "remind_off"]))])[1]
+            C.same("Reminders: turned off (level 1 -> off)", n1(tile("Reminders on")[1], r"([\d,]+) turned off"), _off, max(1, wobble(_off)))
+        else:
+            C.true("Reminders pop-up", False, "missing")
         # Guy, Nov 22: Installed (est.) tile's 30-day line = GA4 devices active in the last 30 days (own pull)
         _m30 = re.search(r"([\d,]+) devices opened it in the last 30 days", page)
         C.true("Installed tile: 30-day devices line", bool(_m30) or "Installed (est.)" not in page, "missing")

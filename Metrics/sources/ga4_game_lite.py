@@ -377,6 +377,13 @@ def fetch(keys_dir, today):
             return o
         mvd = addf(q(["customEvent:placement"], ["eventValue"], ev("ad_revenue"), {"filter": {"fieldName": "customEvent:kind", "stringFilter": {"value": "rewarded"}}}))
         sh, shu = add(q(["customEvent:kind"], ["eventCount"], ev("share_done")), lambda d: d[1]), add(q([], ["totalUsers"], ev("share_done")))
+        # Guy, Nov 28: "make all the cards in that area clickable": breakdowns for the card pop-ups
+        byv = add(q(["appVersion"], ["activeUsers"]), lambda d: d[1])   # players by version (a player on two versions counts in both)
+        wlv = add(q(["customEvent:key", "customEvent:outcome"], ["eventCount"], ev("level_end")), lambda d: d[1] + "|" + d[2])   # level attempts by level and outcome
+        adk = {}
+        for d, v in q(["customEvent:kind"], ["eventValue"], ev("ad_revenue")):   # AdMob income by ad type (1.3.19+)
+            for who in ("all",) + (("new",) if d[0] in FD[d[-1]] else ()):
+                x = adk.setdefault((d[-1], who), {}); x[d[1]] = x.get(d[1], 0) + float(v[0])
         # furthest level of the middle player
         # Nov 27: the "new" side only counts players who played level 1 (L1), so a reinstall that came back on level 6 is not a new player on level 6
         lvl = {}
@@ -430,7 +437,14 @@ def fetch(keys_dir, today):
                 return 0
             fd = INN("firstSessionDate", sorted(ds))
             return _fun1(s, [AND(fil, fd, INN("eventName", names), NO_CT), AND(fil, fd, L1, NO_CT)], min(D(d) for d in ds).isoformat(), today.isoformat())[1]
-        ron, roff = {k: rq(R_ON, FD[k]) for k, _, _ in PER}, {k: rq(R_OFF, FD[k]) for k, _, _ in PER}
+
+        def rq2(names, ds):   # Guy, Nov 28: full reminders / turned off come after level 1 (the reminder card shows after a win), so the order is level 1 -> answer
+            if not ds:
+                return 0
+            fd = INN("firstSessionDate", sorted(ds))
+            return _fun1(s, [AND(fil, fd, L1, NO_CT), AND(fil, fd, INN("eventName", names), NO_CT)], min(D(d) for d in ds).isoformat(), today.isoformat())[1]
+        ron, roff = {k: rq(R_ON, FD[k]) for k, _, _ in PER}, {k: rq2(R_OFF, FD[k]) for k, _, _ in PER}   # Nov 28: turned off read 0 with the launch-first order
+        rfull = {k: rq2(["soft_authorized", "remind_allow"], FD[k]) for k, _, _ in PER}   # Guy, Nov 28: full reminders (the rest of "on" = quiet only)
         NEWN = {k: sum(base.get(d, 0) for d in FD[k]) for k, _, _ in PER}   # new players = first day on these versions, one number on every card
         # Nov 27: typical / top level of new players (played level 1): funnel L1 -> max level >= lv, asked only where the plain count could pass
         for k, _, _ in PER:
@@ -469,7 +483,11 @@ def fetch(keys_dir, today):
                                     "offers": sum(n for x, n in g(mv).items() if x.startswith("rewarded_offer_shown|")), "watched": sum(n for x, n in g(mv).items() if x.startswith("rewarded_watched|")), "watchu": g(mvu).get("n", 0),
                                     "rwtype": {t: [g(mv).get("rewarded_watched|" + t, 0), g(mv).get("rewarded_offer_shown|" + t, 0), round(g(mvd).get(t, 0), 4)] for t in sorted({x.split("|", 1)[1] for x in g(mv)} | set(g(mvd)))}, "shares": sum(g(sh).values()), "shareu": g(shu).get("n", 0),
                                     "half": half.get((k, who)), "grp": grp.get((k, who)), "l10": [sum(hi10.get((d, d), 0) for d in FD[k]), NEWN[k]], "d1": ret(W1[k], b1), "d7": ret(W7[k], b7),
-                                    "remind": [min(NEWN[k], ron[k]), NEWN[k], roff[k]]}
+                                    "remind": [min(NEWN[k], ron[k]), NEWN[k], roff[k]], "rfull": rfull[k],
+                                    "byver": g(byv), "winlv": g(wlv), "adinc": {x: round(v, 4) for x, v in g(adk).items()}, "shkind": g(sh),
+                                    "d1d": [[d.isoformat(), base.get(key(d), 0), min(b1.get(key(d), 0), base.get(key(d), 0))] for d in W1[k]],
+                                    "d7d": [[d.isoformat(), base.get(key(d), 0), min(b7.get(key(d), 0), base.get(key(d), 0))] for d in W7[k]],
+                                    "l10d": [[x, base.get(x, 0), hi10.get((x, x), 0)] for x in sorted(FD[k])]}
         return S
 
     def block(vf, since, until, label):
